@@ -1,0 +1,170 @@
+# ToroERP
+
+<div align="center">
+
+![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![Milestone](https://img.shields.io/badge/fase%20actual-M0%20Setup-lightgrey?style=flat-square)
+
+**Backend**
+
+![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+
+**Frontend / Desktop**
+
+![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=black)
+![Electron](https://img.shields.io/badge/Electron-47848F?style=flat-square&logo=electron&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+
+**Librerías clave**
+
+![React Hook Form](https://img.shields.io/badge/React_Hook_Form-Forms-EC5990?style=flat-square&logo=reacthookform&logoColor=white)
+![Zod](https://img.shields.io/badge/Zod-Validation-3E67B1?style=flat-square&logo=zod&logoColor=white)
+![TanStack Query](https://img.shields.io/badge/TanStack_Query-Data_Fetching-FF4154?style=flat-square&logo=reactquery&logoColor=white)
+
+**Calidad y herramientas**
+
+![Jest](https://img.shields.io/badge/Jest-Testing-C21325?style=flat-square&logo=jest&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?style=flat-square&logo=playwright&logoColor=white)
+![ESLint](https://img.shields.io/badge/ESLint-Linting-4B32C3?style=flat-square&logo=eslint&logoColor=white)
+![Prettier](https://img.shields.io/badge/Prettier-Formatting-F7B93E?style=flat-square&logo=prettier&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-Local_Dev-2496ED?style=flat-square&logo=docker&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm-Package_Manager-F69220?style=flat-square&logo=pnpm&logoColor=white)
+
+</div>
+
+ERP de escritorio para gestión de **inventario, producción, compras y ventas**, construido como monorepo con backend en **NestJS + Prisma + PostgreSQL** y cliente de escritorio en **Electron + React + TypeScript**.
+
+Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistema productivo real: RBAC, trazabilidad completa de inventario (Kardex), transacciones consistentes, tests automatizados y decisiones de arquitectura documentadas.
+
+## Índice
+
+- [Visión](#visión)
+- [¿Por qué este proyecto?](#por-qué-este-proyecto)
+- [Arquitectura](#arquitectura)
+- [Principios de diseño](#principios-de-diseño)
+- [Stack tecnológico](#stack-tecnológico)
+- [Estructura del monorepo](#estructura-del-monorepo)
+- [Roadmap](#roadmap)
+- [Estado actual](#estado-actual)
+- [Seguimiento del trabajo](#seguimiento-del-trabajo)
+- [Decisiones de arquitectura (ADRs)](#decisiones-de-arquitectura-adrs)
+- [Licencia](#licencia)
+
+## Visión
+
+Muchas pequeñas y medianas empresas manufactureras manejan su inventario y producción en hojas de cálculo, sin trazabilidad real de por qué cambió el stock, sin control de quién hizo qué, y sin una vista confiable del costo de producción. ToroERP busca resolver ese problema con un ERP de escritorio simple, auditable y correcto por diseño: cada movimiento de inventario queda registrado de forma permanente, cada acción queda asociada a un usuario y un rol, y el stock nunca se edita a mano — se calcula a partir de su historia.
+
+## ¿Por qué este proyecto?
+
+ToroERP es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. El objetivo no es cubrir todas las funcionalidades de un ERP comercial, sino construir un subconjunto reducido con la misma disciplina de ingeniería que un producto en producción: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas.
+
+## Arquitectura
+
+```mermaid
+flowchart LR
+    subgraph Cliente["Desktop (Electron)"]
+        UI["React + TypeScript + Tailwind"]
+    end
+
+    subgraph Servidor["Backend (NestJS)"]
+        API["REST API"]
+        Auth["Auth + RBAC"]
+        Inv["Inventario / Kardex"]
+        Prod["Producción"]
+        Ventas["Ventas / Clientes / Proveedores"]
+    end
+
+    DB[("PostgreSQL")]
+
+    UI -- "HTTPS / JSON" --> API
+    API --> Auth
+    API --> Inv
+    API --> Prod
+    API --> Ventas
+    Auth --> DB
+    Inv --> DB
+    Prod --> DB
+    Ventas --> DB
+```
+
+Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cierre del proyecto ([M6](#roadmap)).
+
+## Principios de diseño
+
+- **Kardex append-only**: los movimientos de inventario (`StockMovement`) nunca se editan ni se borran. El stock actual siempre se deriva de la suma de movimientos, nunca es un campo que se sobreescribe directamente.
+- **RBAC desde la base**: todo endpoint sensible pasa por un guard de roles/permisos reutilizable, no por chequeos ad-hoc dispersos en el código.
+- **Auditoría real**: cada acción relevante sobre una entidad queda registrada en `AuditLog` con el estado anterior y posterior.
+- **Consistencia transaccional**: operaciones críticas (ajustes de stock, cierre de órdenes de producción) usan transacciones de Prisma con nivel de aislamiento explícito para evitar condiciones de carrera.
+- **Decisiones documentadas**: cambios de arquitectura relevantes se registran como ADR, no solo en el mensaje de commit.
+
+## Stack tecnológico
+
+| Capa | Tecnología |
+|---|---|
+| Backend | NestJS, TypeScript, Prisma ORM |
+| Base de datos | PostgreSQL 16 |
+| Autenticación | JWT + Argon2 |
+| Frontend / Desktop | Electron, React, Vite, TypeScript, Tailwind CSS |
+| Formularios y validación | React Hook Form + Zod |
+| Estado de datos remotos | TanStack Query |
+| Testing | Jest (unitarios/integración), Playwright (end-to-end) |
+| Calidad de código | ESLint, Prettier, Husky, lint-staged |
+| CI/CD | GitHub Actions |
+| Empaquetado desktop | electron-builder |
+| Infraestructura local | Docker Compose |
+
+## Estructura del monorepo
+
+```
+toroERP/
+├── packages/
+│   ├── backend/     # API NestJS + Prisma
+│   └── desktop/     # Cliente Electron + React
+├── docs/
+│   └── adr/         # Architecture Decision Records
+├── docker-compose.yml
+├── pnpm-workspace.yaml
+└── README.md
+```
+
+> Esta estructura es la definida para el proyecto; se completa a medida que avanza [M0 - Setup del repositorio](#roadmap).
+
+## Roadmap
+
+El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub:
+
+| Milestone | Alcance |
+|---|---|
+| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/toroERP/milestone/1) | Monorepo, linting, Docker Compose, CI base |
+| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/toroERP/milestone/2) | Prisma schema base, JWT + Argon2, guard RBAC, Swagger |
+| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/toroERP/milestone/3) | Módulo insignia: Kardex append-only, transacciones consistentes |
+| [M3 - Producción](https://github.com/TomasPosada0626/toroERP/milestone/4) | BOM, órdenes de producción, costeo |
+| [M4 - Frontend Electron](https://github.com/TomasPosada0626/toroERP/milestone/5) | Cliente de escritorio, pantallas de inventario y producción |
+| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/toroERP/milestone/6) | Módulos CRUD estándar y reportes |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/toroERP/milestone/7) | E2E, CI completo, ADRs, diagrama C4 |
+
+## Estado actual
+
+🚧 En **M0 - Setup del repositorio**. Todavía no hay código de aplicación; este README documenta la visión y arquitectura objetivo mientras se construye la base del proyecto.
+
+## Seguimiento del trabajo
+
+El trabajo se gestiona con GitHub Issues, Milestones y un [Project board](https://github.com/users/TomasPosada0626/projects/3):
+
+- **Milestones** agrupan issues por fase (M0–M6, ver [Roadmap](#roadmap)).
+- **Labels** describen área (`backend`, `frontend`, `infra`, `db`), tipo (`feature`, `bug`, `refactor`, `docs`, `test`, `adr`) y prioridad (`priority:high|medium|low`).
+- El **Project board** refleja el estado real de cada issue (`Todo` / `In Progress` / `Done`) a medida que se completa el trabajo.
+
+## Decisiones de arquitectura (ADRs)
+
+Las decisiones de arquitectura significativas (por qué Kardex append-only, por qué Electron en vez de una SPA servida, por qué NestJS + Prisma, método de costeo de producción) se documentarán como ADRs en `docs/adr/` conforme se tomen, según lo planeado en M2, M3 y M6.
+
+## Licencia
+
+Distribuido bajo licencia [MIT](./LICENSE).
