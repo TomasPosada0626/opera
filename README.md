@@ -5,7 +5,7 @@
 ![CI](https://github.com/TomasPosada0626/opera/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Milestone](https://img.shields.io/badge/fase%20actual-M0%20Setup-lightgrey?style=flat-square)
+![Milestone](https://img.shields.io/badge/fase%20actual-M1%20Backend%20Auth%2BRBAC-lightgrey?style=flat-square)
 
 **Backend**
 
@@ -160,6 +160,9 @@ pnpm install
 # PostgreSQL 16 local
 docker compose up -d
 
+# Cliente de Prisma (regenerar tras cualquier cambio de schema.prisma)
+pnpm db:generate
+
 # Backend (NestJS) — http://localhost:3000
 pnpm dev:backend
 
@@ -167,11 +170,11 @@ pnpm dev:backend
 pnpm dev:desktop
 ```
 
-> Prisma todavía no está conectado al backend (llega en [M1](#roadmap)); por ahora `docker compose up -d` solo deja PostgreSQL disponible en `localhost:5432`.
+> Si el puerto 5432 ya está en uso en tu máquina (por ejemplo, otro PostgreSQL local), ajusta `POSTGRES_PORT` y el puerto de `DATABASE_URL` en tu `.env` — ambos los lee `docker-compose.yml` y Prisma respectivamente.
 
 ## Estado actual
 
-🚧 Cerrando **M0 - Setup del repositorio**. Monorepo, backend NestJS, cliente Electron+React+Vite+Tailwind, ESLint+Prettier+Husky+lint-staged y CI (lint + build en cada PR) ya están andando. Falta M1 en adelante: Prisma, auth, RBAC y los módulos de negocio.
+🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma ya está instalado y conectado a PostgreSQL vía `PrismaService`; falta el resto de M1: schema base (User/Role/Permission, AuditLog), auth JWT+Argon2, guard RBAC y Swagger.
 
 ## Seguimiento del trabajo
 
