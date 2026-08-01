@@ -16,6 +16,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -52,5 +53,14 @@ export class UsersController {
   @Patch(':id/deactivate')
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.deactivate(id, req.user.sub);
+  }
+
+  @Patch(':id/reset-password')
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.usersService.resetPassword(id, dto, req.user.sub);
   }
 }
