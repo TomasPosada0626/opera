@@ -12,6 +12,7 @@
     "db:migrate": "pnpm --filter backend db:migrate",
     "db:deploy": "pnpm --filter backend db:deploy",
     "db:studio": "pnpm --filter backend db:studio",
+    "db:seed": "pnpm --filter backend db:seed",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "eslint .",
