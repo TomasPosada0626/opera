@@ -6,6 +6,7 @@
   "private": true,
   "license": "MIT",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
