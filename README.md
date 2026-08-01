@@ -9,8 +9,6 @@
 **Backend**
 
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white)
-![Prisma](https://img.shields.io/badge/Prisma-2D3748?style=flat-square&logo=prisma&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
 
 **Frontend / Desktop**
@@ -20,20 +18,11 @@
 ![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
 
-**Librerías clave**
-
-![React Hook Form](https://img.shields.io/badge/React_Hook_Form-Forms-EC5990?style=flat-square&logo=reacthookform&logoColor=white)
-![Zod](https://img.shields.io/badge/Zod-Validation-3E67B1?style=flat-square&logo=zod&logoColor=white)
-![TanStack Query](https://img.shields.io/badge/TanStack_Query-Data_Fetching-FF4154?style=flat-square&logo=reactquery&logoColor=white)
-
 **Calidad y herramientas**
 
 ![Jest](https://img.shields.io/badge/Jest-Testing-C21325?style=flat-square&logo=jest&logoColor=white)
-![Playwright](https://img.shields.io/badge/Playwright-E2E-2EAD33?style=flat-square&logo=playwright&logoColor=white)
 ![ESLint](https://img.shields.io/badge/ESLint-Linting-4B32C3?style=flat-square&logo=eslint&logoColor=white)
 ![Prettier](https://img.shields.io/badge/Prettier-Formatting-F7B93E?style=flat-square&logo=prettier&logoColor=black)
-![Docker](https://img.shields.io/badge/Docker-Local_Dev-2496ED?style=flat-square&logo=docker&logoColor=white)
-![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI%2FCD-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-Package_Manager-F69220?style=flat-square&logo=pnpm&logoColor=white)
 
 </div>
@@ -51,6 +40,7 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 - [Stack tecnológico](#stack-tecnológico)
 - [Estructura del monorepo](#estructura-del-monorepo)
 - [Roadmap](#roadmap)
+- [Puesta en marcha](#puesta-en-marcha)
 - [Estado actual](#estado-actual)
 - [Seguimiento del trabajo](#seguimiento-del-trabajo)
 - [Decisiones de arquitectura (ADRs)](#decisiones-de-arquitectura-adrs)
@@ -125,15 +115,16 @@ Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cie
 toroERP/
 ├── packages/
 │   ├── backend/     # API NestJS + Prisma
-│   └── desktop/     # Cliente Electron + React
+│   └── desktop/     # Cliente Electron + React + Vite + Tailwind
 ├── docs/
 │   └── adr/         # Architecture Decision Records
 ├── docker-compose.yml
+├── package.json
 ├── pnpm-workspace.yaml
 └── README.md
 ```
 
-> Esta estructura es la definida para el proyecto; se completa a medida que avanza [M0 - Setup del repositorio](#roadmap).
+> `docker-compose.yml` y `docs/adr/` todavía no existen; se agregan en los siguientes issues de [M0](#roadmap).
 
 ## Roadmap
 
@@ -149,9 +140,25 @@ El trabajo está organizado en milestones, cada uno con sus issues de seguimient
 | [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/toroERP/milestone/6) | Módulos CRUD estándar y reportes |
 | [M6 - Calidad y documentación](https://github.com/TomasPosada0626/toroERP/milestone/7) | E2E, CI completo, ADRs, diagrama C4 |
 
+## Puesta en marcha
+
+Requisitos: Node.js ≥ 20, pnpm ≥ 9.
+
+```bash
+pnpm install
+
+# Backend (NestJS) — http://localhost:3000
+pnpm dev:backend
+
+# Desktop (Electron)
+pnpm dev:desktop
+```
+
+> Todavía no hay base de datos conectada ni variables de entorno (`docker-compose.yml`, Prisma) — llegan en los siguientes issues de [M0 y M1](#roadmap).
+
 ## Estado actual
 
-🚧 En **M0 - Setup del repositorio**. Todavía no hay código de aplicación; este README documenta la visión y arquitectura objetivo mientras se construye la base del proyecto.
+🚧 En **M0 - Setup del repositorio**. El monorepo, el backend NestJS y el cliente Electron+React+Vite+Tailwind ya arrancan en modo desarrollo; todavía faltan linting/Husky, Docker Compose y CI base.
 
 ## Seguimiento del trabajo
 
