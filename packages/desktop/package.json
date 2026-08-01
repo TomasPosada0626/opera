@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "version": "0.0.1",
-  "description": "Cliente de escritorio de ToroERP (Electron + React + Vite + Tailwind)",
+  "description": "Cliente de escritorio de Opera (Electron + React + Vite + Tailwind)",
   "author": "Tomas Posada",
   "private": true,
   "license": "MIT",

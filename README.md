@@ -1,8 +1,8 @@
-# ToroERP
+# Opera
 
 <div align="center">
 
-![CI](https://github.com/TomasPosada0626/toroERP/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/TomasPosada0626/opera/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![Milestone](https://img.shields.io/badge/fase%20actual-M0%20Setup-lightgrey?style=flat-square)
@@ -30,7 +30,7 @@
 
 </div>
 
-ERP de escritorio para gestión de **inventario, producción, compras y ventas**, construido como monorepo con backend en **NestJS + Prisma + PostgreSQL** y cliente de escritorio en **Electron + React + TypeScript**.
+**Opera** — Plataforma de Gestión Operativa Empresarial: un ERP de escritorio para **inventario, producción, compras y ventas**, construido como monorepo con backend en **NestJS + Prisma + PostgreSQL** y cliente de escritorio en **Electron + React + TypeScript**.
 
 Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistema productivo real: RBAC, trazabilidad completa de inventario (Kardex), transacciones consistentes, tests automatizados y decisiones de arquitectura documentadas.
 
@@ -51,11 +51,11 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 
 ## Visión
 
-Muchas pequeñas y medianas empresas manufactureras manejan su inventario y producción en hojas de cálculo, sin trazabilidad real de por qué cambió el stock, sin control de quién hizo qué, y sin una vista confiable del costo de producción. ToroERP busca resolver ese problema con un ERP de escritorio simple, auditable y correcto por diseño: cada movimiento de inventario queda registrado de forma permanente, cada acción queda asociada a un usuario y un rol, y el stock nunca se edita a mano — se calcula a partir de su historia.
+Muchas pequeñas y medianas empresas manufactureras manejan su inventario y producción en hojas de cálculo, sin trazabilidad real de por qué cambió el stock, sin control de quién hizo qué, y sin una vista confiable del costo de producción. Opera busca resolver ese problema con un ERP de escritorio simple, auditable y correcto por diseño: cada movimiento de inventario queda registrado de forma permanente, cada acción queda asociada a un usuario y un rol, y el stock nunca se edita a mano — se calcula a partir de su historia.
 
 ## ¿Por qué este proyecto?
 
-ToroERP es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. El objetivo no es cubrir todas las funcionalidades de un ERP comercial, sino construir un subconjunto reducido con la misma disciplina de ingeniería que un producto en producción: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas.
+Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. El objetivo no es cubrir todas las funcionalidades de un ERP comercial, sino construir un subconjunto reducido con la misma disciplina de ingeniería que un producto en producción: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas.
 
 ## Arquitectura
 
@@ -115,7 +115,7 @@ Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cie
 ## Estructura del monorepo
 
 ```
-toroERP/
+opera/
 ├── .github/
 │   └── workflows/   # CI (lint + build en cada PR)
 ├── .husky/
@@ -139,15 +139,15 @@ toroERP/
 
 El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub:
 
-| Milestone                                                                                  | Alcance                                                         |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/toroERP/milestone/1)       | Monorepo, linting, Docker Compose, CI base                      |
-| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/toroERP/milestone/2)        | Prisma schema base, JWT + Argon2, guard RBAC, Swagger           |
-| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/toroERP/milestone/3)         | Módulo insignia: Kardex append-only, transacciones consistentes |
-| [M3 - Producción](https://github.com/TomasPosada0626/toroERP/milestone/4)                  | BOM, órdenes de producción, costeo                              |
-| [M4 - Frontend Electron](https://github.com/TomasPosada0626/toroERP/milestone/5)           | Cliente de escritorio, pantallas de inventario y producción     |
-| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/toroERP/milestone/6) | Módulos CRUD estándar y reportes                                |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/toroERP/milestone/7)     | E2E, CI completo, ADRs, diagrama C4                             |
+| Milestone                                                                                | Alcance                                                         |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/opera/milestone/1)       | Monorepo, linting, Docker Compose, CI base                      |
+| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/opera/milestone/2)        | Prisma schema base, JWT + Argon2, guard RBAC, Swagger           |
+| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/opera/milestone/3)         | Módulo insignia: Kardex append-only, transacciones consistentes |
+| [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                  | BOM, órdenes de producción, costeo                              |
+| [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)           | Cliente de escritorio, pantallas de inventario y producción     |
+| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Módulos CRUD estándar y reportes                                |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)     | E2E, CI completo, ADRs, diagrama C4                             |
 
 ## Puesta en marcha
 

@@ -1,7 +1,7 @@
 {
   "name": "backend",
   "version": "0.0.1",
-  "description": "API REST de ToroERP (NestJS + Prisma + PostgreSQL)",
+  "description": "API REST de Opera (NestJS + Prisma + PostgreSQL)",
   "author": "Tomas Posada",
   "private": true,
   "license": "MIT",

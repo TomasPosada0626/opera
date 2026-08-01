@@ -1,21 +1,21 @@
 services:
   postgres:
     image: postgres:16
-    container_name: toroerp-postgres
+    container_name: opera-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-toroerp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-toroerp}
-      POSTGRES_DB: ${POSTGRES_DB:-toroerp}
+      POSTGRES_USER: ${POSTGRES_USER:-opera}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opera}
+      POSTGRES_DB: ${POSTGRES_DB:-opera}
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
-      - toroerp_postgres_data:/var/lib/postgresql/data
+      - opera_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-toroerp}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-opera}']
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
-  toroerp_postgres_data:
+  opera_postgres_data:
