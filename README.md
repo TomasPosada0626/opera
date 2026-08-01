@@ -55,7 +55,7 @@ Muchas pequeñas y medianas empresas manufactureras manejan su inventario y prod
 
 ## ¿Por qué este proyecto?
 
-Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. El objetivo no es cubrir todas las funcionalidades de un ERP comercial, sino construir un subconjunto reducido con la misma disciplina de ingeniería que un producto en producción: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas.
+Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. La meta es un ERP completo y usable en producción real — inventario, producción, compras, ventas, clientes, proveedores, reportes y dashboard —, construido con la misma disciplina de ingeniería que un producto comercial: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas en cada pieza que se agrega, no solo al final.
 
 ## Arquitectura
 
@@ -139,15 +139,15 @@ opera/
 
 El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub:
 
-| Milestone                                                                                | Alcance                                                         |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/opera/milestone/1)       | Monorepo, linting, Docker Compose, CI base                      |
-| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/opera/milestone/2)        | Prisma schema base, JWT + Argon2, guard RBAC, Swagger           |
-| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/opera/milestone/3)         | Módulo insignia: Kardex append-only, transacciones consistentes |
-| [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                  | BOM, órdenes de producción, costeo                              |
-| [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)           | Cliente de escritorio, pantallas de inventario y producción     |
-| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Módulos CRUD estándar y reportes                                |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)     | E2E, CI completo, ADRs, diagrama C4                             |
+| Milestone                                                                                        | Alcance                                                                                                                       |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/opera/milestone/1)               | Monorepo, linting, Docker Compose, CI base                                                                                    |
+| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/opera/milestone/2)                | Prisma schema base, JWT + Argon2, guard RBAC, Swagger, CI con tests y `pnpm audit`                                            |
+| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/opera/milestone/3)                 | Módulo insignia: bodegas/ubicaciones, Kardex append-only, transacciones consistentes, filtros reutilizables, alertas de stock |
+| [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                          | BOM, órdenes de producción, costeo                                                                                            |
+| [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)                   | Cliente de escritorio, pantallas de inventario y producción                                                                   |
+| [M5 - Ventas/Compras/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Ventas, compras, clientes, proveedores, saldos pendientes, reportes (PDF/Excel), dashboard, búsqueda global                   |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              |
 
 ## Puesta en marcha
 
