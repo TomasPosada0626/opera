@@ -9,10 +9,39 @@
     "dev:backend": "pnpm --filter backend start:dev",
     "dev:desktop": "pnpm --filter desktop dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-prettier": "^5.2.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.4.2",
+    "typescript-eslint": "^8.20.0"
   },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@9.15.5"
+  "packageManager": "pnpm@9.15.5",
+  "lint-staged": {
+    "packages/backend/**/*.ts": [
+      "eslint --fix"
+    ],
+    "packages/desktop/**/*.{ts,tsx}": [
+      "eslint --fix"
+    ],
+    "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml,css,html}": [
+      "prettier --write"
+    ]
+  }
 }
