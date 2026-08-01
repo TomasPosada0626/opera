@@ -14,7 +14,15 @@ export class AuthService {
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      include: { roles: { include: { role: true } } },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: { permissions: { include: { permission: true } } },
+            },
+          },
+        },
+      },
     });
 
     if (
@@ -30,10 +38,18 @@ export class AuthService {
 
   async login(email: string, password: string) {
     const user = await this.validateUser(email, password);
+    const permissions = new Set<string>();
+    for (const { role } of user.roles) {
+      for (const { permission } of role.permissions) {
+        permissions.add(permission.name);
+      }
+    }
+
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       roles: user.roles.map(({ role }) => role.name),
+      permissions: [...permissions],
     };
 
     return { accessToken: await this.jwtService.signAsync(payload) };
