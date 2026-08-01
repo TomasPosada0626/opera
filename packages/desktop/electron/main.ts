@@ -28,7 +28,7 @@ let win: BrowserWindow | null;
 
 function createWindow() {
   win = new BrowserWindow({
-    title: 'ToroERP',
+    title: 'Opera',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },

@@ -1,8 +1,8 @@
 {
-  "name": "toroerp",
+  "name": "opera",
   "private": true,
   "version": "0.0.1",
-  "description": "ERP de escritorio para gestión de inventario, producción, compras y ventas.",
+  "description": "Opera — Plataforma de Gestión Operativa Empresarial (ERP de escritorio para inventario, producción, compras y ventas).",
   "license": "MIT",
   "author": "Tomas Posada",
   "scripts": {
