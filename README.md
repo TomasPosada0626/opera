@@ -2,6 +2,7 @@
 
 <div align="center">
 
+![CI](https://github.com/TomasPosada0626/toroERP/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 ![Milestone](https://img.shields.io/badge/fase%20actual-M0%20Setup-lightgrey?style=flat-square)
@@ -24,6 +25,8 @@
 ![ESLint](https://img.shields.io/badge/ESLint-Linting-4B32C3?style=flat-square&logo=eslint&logoColor=white)
 ![Prettier](https://img.shields.io/badge/Prettier-Formatting-F7B93E?style=flat-square&logo=prettier&logoColor=black)
 ![pnpm](https://img.shields.io/badge/pnpm-Package_Manager-F69220?style=flat-square&logo=pnpm&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Local_Dev-2496ED?style=flat-square&logo=docker&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 
 </div>
 
@@ -95,57 +98,67 @@ Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cie
 
 ## Stack tecnológico
 
-| Capa | Tecnología |
-|---|---|
-| Backend | NestJS, TypeScript, Prisma ORM |
-| Base de datos | PostgreSQL 16 |
-| Autenticación | JWT + Argon2 |
-| Frontend / Desktop | Electron, React, Vite, TypeScript, Tailwind CSS |
-| Formularios y validación | React Hook Form + Zod |
-| Estado de datos remotos | TanStack Query |
-| Testing | Jest (unitarios/integración), Playwright (end-to-end) |
-| Calidad de código | ESLint, Prettier, Husky, lint-staged |
-| CI/CD | GitHub Actions |
-| Empaquetado desktop | electron-builder |
-| Infraestructura local | Docker Compose |
+| Capa                     | Tecnología                                            |
+| ------------------------ | ----------------------------------------------------- |
+| Backend                  | NestJS, TypeScript, Prisma ORM                        |
+| Base de datos            | PostgreSQL 16                                         |
+| Autenticación            | JWT + Argon2                                          |
+| Frontend / Desktop       | Electron, React, Vite, TypeScript, Tailwind CSS       |
+| Formularios y validación | React Hook Form + Zod                                 |
+| Estado de datos remotos  | TanStack Query                                        |
+| Testing                  | Jest (unitarios/integración), Playwright (end-to-end) |
+| Calidad de código        | ESLint, Prettier, Husky, lint-staged                  |
+| CI/CD                    | GitHub Actions                                        |
+| Empaquetado desktop      | electron-builder                                      |
+| Infraestructura local    | Docker Compose                                        |
 
 ## Estructura del monorepo
 
 ```
 toroERP/
+├── .github/
+│   └── workflows/   # CI (lint + build en cada PR)
+├── .husky/
+│   └── pre-commit   # lint-staged (ESLint + Prettier)
 ├── packages/
 │   ├── backend/     # API NestJS + Prisma
 │   └── desktop/     # Cliente Electron + React + Vite + Tailwind
 ├── docs/
 │   └── adr/         # Architecture Decision Records
 ├── docker-compose.yml
+├── eslint.config.mjs
+├── .env.example
 ├── package.json
 ├── pnpm-workspace.yaml
 └── README.md
 ```
 
-> `docker-compose.yml` y `docs/adr/` todavía no existen; se agregan en los siguientes issues de [M0](#roadmap).
+> `docs/adr/` todavía no existe; se agrega cuando se documente la primera decisión de arquitectura (ver [M2](#roadmap)).
 
 ## Roadmap
 
 El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub:
 
-| Milestone | Alcance |
-|---|---|
-| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/toroERP/milestone/1) | Monorepo, linting, Docker Compose, CI base |
-| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/toroERP/milestone/2) | Prisma schema base, JWT + Argon2, guard RBAC, Swagger |
-| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/toroERP/milestone/3) | Módulo insignia: Kardex append-only, transacciones consistentes |
-| [M3 - Producción](https://github.com/TomasPosada0626/toroERP/milestone/4) | BOM, órdenes de producción, costeo |
-| [M4 - Frontend Electron](https://github.com/TomasPosada0626/toroERP/milestone/5) | Cliente de escritorio, pantallas de inventario y producción |
-| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/toroERP/milestone/6) | Módulos CRUD estándar y reportes |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/toroERP/milestone/7) | E2E, CI completo, ADRs, diagrama C4 |
+| Milestone                                                                                  | Alcance                                                         |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| [M0 - Setup del repositorio](https://github.com/TomasPosada0626/toroERP/milestone/1)       | Monorepo, linting, Docker Compose, CI base                      |
+| [M1 - Backend: Auth + RBAC](https://github.com/TomasPosada0626/toroERP/milestone/2)        | Prisma schema base, JWT + Argon2, guard RBAC, Swagger           |
+| [M2 - Inventario + Kardex](https://github.com/TomasPosada0626/toroERP/milestone/3)         | Módulo insignia: Kardex append-only, transacciones consistentes |
+| [M3 - Producción](https://github.com/TomasPosada0626/toroERP/milestone/4)                  | BOM, órdenes de producción, costeo                              |
+| [M4 - Frontend Electron](https://github.com/TomasPosada0626/toroERP/milestone/5)           | Cliente de escritorio, pantallas de inventario y producción     |
+| [M5 - Ventas/Clientes/Proveedores](https://github.com/TomasPosada0626/toroERP/milestone/6) | Módulos CRUD estándar y reportes                                |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/toroERP/milestone/7)     | E2E, CI completo, ADRs, diagrama C4                             |
 
 ## Puesta en marcha
 
-Requisitos: Node.js ≥ 20, pnpm ≥ 9.
+Requisitos: Node.js ≥ 20, pnpm ≥ 9, Docker.
 
 ```bash
+cp .env.example .env
 pnpm install
+
+# PostgreSQL 16 local
+docker compose up -d
 
 # Backend (NestJS) — http://localhost:3000
 pnpm dev:backend
@@ -154,11 +167,11 @@ pnpm dev:backend
 pnpm dev:desktop
 ```
 
-> Todavía no hay base de datos conectada ni variables de entorno (`docker-compose.yml`, Prisma) — llegan en los siguientes issues de [M0 y M1](#roadmap).
+> Prisma todavía no está conectado al backend (llega en [M1](#roadmap)); por ahora `docker compose up -d` solo deja PostgreSQL disponible en `localhost:5432`.
 
 ## Estado actual
 
-🚧 En **M0 - Setup del repositorio**. El monorepo, el backend NestJS y el cliente Electron+React+Vite+Tailwind ya arrancan en modo desarrollo; todavía faltan linting/Husky, Docker Compose y CI base.
+🚧 Cerrando **M0 - Setup del repositorio**. Monorepo, backend NestJS, cliente Electron+React+Vite+Tailwind, ESLint+Prettier+Husky+lint-staged y CI (lint + build en cada PR) ya están andando. Falta M1 en adelante: Prisma, auth, RBAC y los módulos de negocio.
 
 ## Seguimiento del trabajo
 
