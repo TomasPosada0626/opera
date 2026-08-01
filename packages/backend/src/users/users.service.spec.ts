@@ -111,4 +111,45 @@ describe('UsersService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('throws NotFoundException when resetting the password of a user that does not exist', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.resetPassword(
+        'missing',
+        { newPassword: 'brand-new-password' },
+        'acting-user',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('hashes the new password and never logs it in the audit trail', async () => {
+    prisma.user.findUnique.mockResolvedValue(baseUser);
+    prisma.user.update.mockResolvedValue(baseUser);
+
+    const result = await service.resetPassword(
+      'user-1',
+      { newPassword: 'brand-new-password' },
+      'acting-user',
+    );
+
+    const [[updateArgs]] = prisma.user.update.mock.calls as [
+      { data: { password: string } },
+    ][];
+    expect(updateArgs.data.password).not.toBe('brand-new-password');
+    expect(result).not.toHaveProperty('password');
+
+    const [[auditArgs]] = audit.log.mock.calls as [Record<string, unknown>][];
+    expect(auditArgs).toEqual(
+      expect.objectContaining({
+        action: 'PASSWORD_RESET',
+        entity: 'User',
+        userId: 'acting-user',
+      }),
+    );
+    expect(auditArgs).not.toHaveProperty('before');
+    expect(auditArgs).not.toHaveProperty('after');
+  });
 });

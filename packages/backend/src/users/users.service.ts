@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 const userInclude = { roles: { include: { role: true } } };
 
@@ -123,6 +124,30 @@ export class UsersService {
       action: 'DEACTIVATE',
       before: toResponse(before),
       after: toResponse(user),
+    });
+
+    return toResponse(user);
+  }
+
+  async resetPassword(id: string, dto: ResetPasswordDto, actingUserId: string) {
+    const existing = await this.prisma.user.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { password: await argon2.hash(dto.newPassword) },
+      include: userInclude,
+    });
+
+    // No antes/después: la contraseña (ni siquiera el hash) no debe quedar en el
+    // audit trail. Basta con dejar constancia de que el reseteo ocurrió.
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'User',
+      entityId: user.id,
+      action: 'PASSWORD_RESET',
     });
 
     return toResponse(user);
