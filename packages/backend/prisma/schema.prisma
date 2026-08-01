@@ -17,6 +17,7 @@ model User {
   name      String
   isActive  Boolean    @default(true)
   roles     UserRole[]
+  auditLogs AuditLog[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
@@ -56,4 +57,21 @@ model RolePermission {
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+}
+
+// Ledger append-only: cada acción relevante sobre una entidad queda registrada
+// aquí con su estado anterior y posterior. No se edita ni se borra.
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  entity    String
+  entityId  String
+  action    String
+  before    Json?
+  after     Json?
+  timestamp DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
 }
