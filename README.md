@@ -163,6 +163,12 @@ docker compose up -d
 # Cliente de Prisma (regenerar tras cualquier cambio de schema.prisma)
 pnpm db:generate
 
+# Aplica las migraciones ya commiteadas
+pnpm db:deploy
+
+# Crea el rol y usuario Administrador inicial (ver ADMIN_EMAIL/ADMIN_PASSWORD en .env)
+pnpm db:seed
+
 # Backend (NestJS) — http://localhost:3000
 pnpm dev:backend
 
@@ -174,7 +180,7 @@ pnpm dev:desktop
 
 ## Estado actual
 
-🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya está listo para proteger endpoints, y CI ya corre los tests en cada push/PR (antes solo lint + build); falta CRUD de usuarios, reseteo de contraseña, `pnpm audit` en CI y Swagger.
+🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya protege endpoints reales, y CI ya corre los tests en cada push/PR (antes solo lint + build). El CRUD de usuarios (solo Administrador) ya funciona end-to-end — con `AuditLog` registrando cada creación/edición/desactivación —, y hay un seed (`pnpm db:seed`) que crea el rol y usuario Administrador inicial; falta reseteo de contraseña, `pnpm audit` en CI y Swagger.
 
 ## Seguimiento del trabajo
 
