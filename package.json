@@ -8,6 +8,10 @@
   "scripts": {
     "dev:backend": "pnpm --filter backend start:dev",
     "dev:desktop": "pnpm --filter desktop dev",
+    "db:generate": "pnpm --filter backend db:generate",
+    "db:migrate": "pnpm --filter backend db:migrate",
+    "db:deploy": "pnpm --filter backend db:deploy",
+    "db:studio": "pnpm --filter backend db:studio",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "eslint .",
