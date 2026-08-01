@@ -180,7 +180,7 @@ pnpm dev:desktop
 
 ## Estado actual
 
-🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya protege endpoints reales, y CI ya corre los tests en cada push/PR (antes solo lint + build). El CRUD de usuarios (solo Administrador) ya funciona end-to-end — con `AuditLog` registrando cada creación/edición/desactivación/reseteo de contraseña —, y hay un seed (`pnpm db:seed`) que crea el rol y usuario Administrador inicial; falta `pnpm audit` en CI y Swagger.
+🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya protege endpoints reales, y CI ya corre los tests en cada push/PR (antes solo lint + build). El CRUD de usuarios (solo Administrador) ya funciona end-to-end — con `AuditLog` registrando cada creación/edición/desactivación/reseteo de contraseña —, hay un seed (`pnpm db:seed`) que crea el rol y usuario Administrador inicial, y todo el módulo de auth/RBAC tiene cobertura de tests (22 tests, 5 suites); falta `pnpm audit` en CI y Swagger.
 
 ## Seguimiento del trabajo
 
