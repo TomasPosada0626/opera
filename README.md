@@ -174,7 +174,7 @@ pnpm dev:desktop
 
 ## Estado actual
 
-🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), y el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya está listo para proteger endpoints; falta CRUD de usuarios, reseteo de contraseña, CI con tests y Swagger.
+🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya está listo para proteger endpoints, y CI ya corre los tests en cada push/PR (antes solo lint + build); falta CRUD de usuarios, reseteo de contraseña, `pnpm audit` en CI y Swagger.
 
 ## Seguimiento del trabajo
 
