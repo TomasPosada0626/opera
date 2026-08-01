@@ -151,7 +151,7 @@ El trabajo está organizado en milestones, cada uno con sus issues de seguimient
 
 ## Puesta en marcha
 
-Requisitos: Node.js ≥ 20, pnpm ≥ 9, Docker.
+Requisitos: Node.js ≥ 22, pnpm ≥ 9, Docker.
 
 ```bash
 cp .env.example .env
