@@ -38,6 +38,11 @@
     "node": ">=24"
   },
   "packageManager": "pnpm@9.15.5",
+  "pnpm": {
+    "overrides": {
+      "@nestjs/swagger>js-yaml": "^5.2.2"
+    }
+  },
   "lint-staged": {
     "packages/backend/**/*.ts": [
       "eslint --fix"
