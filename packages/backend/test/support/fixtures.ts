@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -7,6 +8,30 @@ interface TestUser {
   id: string;
   email: string;
   token: string;
+}
+
+// upsert no es atómico frente a dos procesos concurrentes creando el mismo
+// rol por primera vez (dos specs distintos corriendo en paralelo, cada uno
+// asegurando que 'ADMIN' exista): ambos pueden leer "no existe" y chocar en
+// el create, violando el unique de `name`. El runner de e2e ya corre serial
+// (--runInBand, ver test:e2e) precisamente para evitar esto entre archivos,
+// pero esta función queda defendida igual por si alguna vez deja de serlo.
+async function ensureRole(prisma: PrismaService, name: string) {
+  try {
+    return await prisma.role.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return prisma.role.findUniqueOrThrow({ where: { name } });
+    }
+    throw error;
+  }
 }
 
 // roleName omitido = usuario autenticado sin ningún rol (para probar el
@@ -29,11 +54,7 @@ export async function createUserAndLogin(
   });
 
   if (opts.roleName) {
-    const role = await prisma.role.upsert({
-      where: { name: opts.roleName },
-      update: {},
-      create: { name: opts.roleName },
-    });
+    const role = await ensureRole(prisma, opts.roleName);
     await prisma.userRole.create({
       data: { userId: user.id, roleId: role.id },
     });
