@@ -415,4 +415,76 @@ describe('InventoryService', () => {
       expect(result[0].currentStock.toString()).toBe('0');
     });
   });
+
+  describe('getAverageCost', () => {
+    it('returns zero when there are no movements yet', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([]);
+
+      const result = await service.getAverageCost('product-1');
+
+      expect(result.toString()).toBe('0');
+    });
+
+    it('returns the unit cost of a single entrada', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
+      ]);
+
+      const result = await service.getAverageCost('product-1');
+
+      expect(result.toString()).toBe('2');
+    });
+
+    it('weights the average by quantity across multiple entradas', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(4) },
+      ]);
+
+      const result = await service.getAverageCost('product-1');
+
+      // (10*2 + 10*4) / 20 = 3
+      expect(result.toString()).toBe('3');
+    });
+
+    it('leaves the average unchanged after a salida, and recalculates on the next entrada', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(4) },
+        { quantity: new Prisma.Decimal(-5), unitCost: null },
+        { quantity: new Prisma.Decimal(5), unitCost: new Prisma.Decimal(9) },
+      ]);
+
+      const result = await service.getAverageCost('product-1');
+
+      // tras las dos primeras: stock=20, avg=3. Salida no cambia avg (stock=15).
+      // (15*3 + 5*9) / 20 = 90/20 = 4.5
+      expect(result.toString()).toBe('4.5');
+    });
+
+    it('treats an entrada with no declared unitCost as entering at the current average', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
+        // Ajuste positivo sin costo declarado: no debe distorsionar el promedio.
+        { quantity: new Prisma.Decimal(5), unitCost: null },
+      ]);
+
+      const result = await service.getAverageCost('product-1');
+
+      expect(result.toString()).toBe('2');
+    });
+
+    it('scopes the calculation to a single warehouse when warehouseId is given', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([]);
+
+      await service.getAverageCost('product-1', 'warehouse-1');
+
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: 'product-1', warehouseId: 'warehouse-1' },
+          orderBy: { createdAt: 'asc' },
+        }),
+      );
+    });
+  });
 });

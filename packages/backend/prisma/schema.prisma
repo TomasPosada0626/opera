@@ -172,6 +172,13 @@ model StockMovement {
   warehouse   Warehouse         @relation(fields: [warehouseId], references: [id])
   type        StockMovementType
   quantity    Decimal           @db.Decimal(12, 3)
+  // Costo unitario absoluto (nunca con signo, a diferencia de quantity) al
+  // momento de este movimiento — ver ADR 0002. En ENTRADA es el costo
+  // declarado al recibir (opcional); en SALIDA/AJUSTE es el promedio
+  // ponderado vigente al consumir, calculado y grabado por quien escribe el
+  // movimiento (#34), nunca recalculado después — el movimiento ya escrito
+  // no cambia, igual que quantity.
+  unitCost    Decimal?          @db.Decimal(14, 4)
   reason      String?
   location    String?
   userId      String
@@ -238,6 +245,13 @@ model ProductionOrder {
   userId      String
   user        User                  @relation(fields: [userId], references: [id])
   completedAt DateTime?
+  // Calculados una sola vez al completar (#34, ver ADR 0002) y nunca
+  // recalculados después — null mientras la orden sigue PENDIENTE.
+  // totalCost = suma del costo consumido de cada componente (promedio
+  // ponderado vigente al completar × cantidad consumida); unitCost =
+  // totalCost / quantity, el costo del producto terminado producido.
+  totalCost   Decimal?              @db.Decimal(14, 4)
+  unitCost    Decimal?              @db.Decimal(14, 4)
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
