@@ -5,7 +5,7 @@
 ![CI](https://github.com/TomasPosada0626/opera/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Milestone](https://img.shields.io/badge/fase%20actual-M1%20Backend%20Auth%2BRBAC-lightgrey?style=flat-square)
+![Milestone](https://img.shields.io/badge/fase%20actual-M2%20Inventario%20%2B%20Kardex-lightgrey?style=flat-square)
 
 **Backend**
 
@@ -107,6 +107,7 @@ Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cie
 | Formularios y validación | React Hook Form + Zod                                 |
 | Estado de datos remotos  | TanStack Query                                        |
 | Testing                  | Jest (unitarios/integración), Playwright (end-to-end) |
+| Documentación de API     | Swagger / OpenAPI (`@nestjs/swagger`)                 |
 | Calidad de código        | ESLint, Prettier, Husky, lint-staged                  |
 | CI/CD                    | GitHub Actions                                        |
 | Empaquetado desktop      | electron-builder                                      |
@@ -169,7 +170,7 @@ pnpm db:deploy
 # Crea el rol y usuario Administrador inicial (ver ADMIN_EMAIL/ADMIN_PASSWORD en .env)
 pnpm db:seed
 
-# Backend (NestJS) — http://localhost:3000
+# Backend (NestJS) — http://localhost:3000 (docs interactivos en /docs)
 pnpm dev:backend
 
 # Desktop (Electron)
@@ -180,7 +181,9 @@ pnpm dev:desktop
 
 ## Estado actual
 
-🚧 En **M1 - Backend: Auth + RBAC**. M0 (monorepo, ESLint+Prettier+Husky+lint-staged, CI, Docker Compose) está cerrado. Prisma está instalado y conectado a PostgreSQL vía `PrismaService`, con el schema de RBAC (`User`, `Role`, `Permission`) y el `AuditLog` (ledger append-only) ya migrados. Login con JWT y contraseñas con Argon2 ya funcionan (`POST /auth/login`), el guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) ya protege endpoints reales, y CI ya corre los tests en cada push/PR (antes solo lint + build). El CRUD de usuarios (solo Administrador) ya funciona end-to-end — con `AuditLog` registrando cada creación/edición/desactivación/reseteo de contraseña —, hay un seed (`pnpm db:seed`) que crea el rol y usuario Administrador inicial, todo el módulo de auth/RBAC tiene cobertura de tests (26 tests, 6 suites), y CI corre `pnpm audit` (falla en vulnerabilidades high/critical) más Dependabot semanal para dependencias y GitHub Actions. La revisión de seguridad de cierre de M1 encontró y corrigió un hallazgo real: los JWT no se revalidaban contra la base de datos, así que desactivar un usuario o quitarle el rol ADMIN no invalidaba tokens ya emitidos — ahora `JwtStrategy` revalida `isActive` y refresca roles/permisos en cada request; falta Swagger.
+✅ **M0** y **M1 (Backend: Auth + RBAC)** cerrados. El backend tiene: Prisma conectado a PostgreSQL, schema de RBAC (`User`, `Role`, `Permission`) y `AuditLog` (ledger append-only) migrados; login JWT con contraseñas Argon2; guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) que revalida contra la base de datos en cada request (no solo contra el token); CRUD de usuarios (solo Administrador) con auditoría en cada mutación; reseteo de contraseña por Administrador; seed del usuario Administrador inicial (`pnpm db:seed`); docs interactivos en `/docs` (Swagger/OpenAPI); y CI que corre lint, tests (26 tests, 6 suites), `pnpm audit` y build en cada push/PR, más Dependabot semanal. Una revisión de seguridad de cierre (`/security-review`) encontró y corrigió un hallazgo real (JWT sin revalidación — ver [issue #79](https://github.com/TomasPosada0626/opera/issues/79)).
+
+🚧 Sigue **M2 - Inventario + Kardex**: bodegas/ubicaciones, productos, Kardex append-only, transacciones consistentes, filtros reutilizables, alertas de stock.
 
 ## Seguimiento del trabajo
 
