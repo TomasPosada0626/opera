@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('InventoryService', () => {
   let txStockMovement: { aggregate: jest.Mock; create: jest.Mock };
   let prisma: {
-    product: { findUnique: jest.Mock };
+    product: { findUnique: jest.Mock; findMany: jest.Mock };
     warehouse: { findUnique: jest.Mock };
     stockMovement: {
       aggregate: jest.Mock;
@@ -26,7 +26,7 @@ describe('InventoryService', () => {
   beforeEach(() => {
     txStockMovement = { aggregate: jest.fn(), create: jest.fn() };
     prisma = {
-      product: { findUnique: jest.fn() },
+      product: { findUnique: jest.fn(), findMany: jest.fn() },
       warehouse: { findUnique: jest.fn() },
       stockMovement: {
         findMany: jest.fn(),
@@ -369,6 +369,50 @@ describe('InventoryService', () => {
       expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
       );
+    });
+  });
+
+  describe('getLowStockProducts', () => {
+    it('returns an empty array when no product has a minStock threshold configured', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      const result = await service.getLowStockProducts();
+
+      expect(result).toEqual([]);
+      expect(prisma.stockMovement.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('includes only products whose current stock is below minStock', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'product-1', minStock: new Prisma.Decimal(10) },
+        { id: 'product-2', minStock: new Prisma.Decimal(5) },
+      ]);
+      prisma.stockMovement.groupBy.mockResolvedValue([
+        { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(3) } },
+        { productId: 'product-2', _sum: { quantity: new Prisma.Decimal(20) } },
+      ]);
+
+      const result = await service.getLowStockProducts();
+
+      expect(result.map((product) => product.id)).toEqual(['product-1']);
+      expect(result[0].currentStock.toString()).toBe('3');
+      expect(prisma.stockMovement.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: { in: ['product-1', 'product-2'] } },
+        }),
+      );
+    });
+
+    it('treats a product with no movements yet as zero stock', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'product-1', minStock: new Prisma.Decimal(10) },
+      ]);
+      prisma.stockMovement.groupBy.mockResolvedValue([]);
+
+      const result = await service.getLowStockProducts();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].currentStock.toString()).toBe('0');
     });
   });
 });
