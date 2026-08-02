@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -38,6 +39,16 @@ export class InventoryController {
     ]);
 
     return { productId, stock, byWarehouse };
+  }
+
+  @Get(':productId/kardex')
+  async getKardex(
+    @Param('productId') productId: string,
+    @Query('warehouseId') warehouseId?: string,
+  ) {
+    await this.inventoryService.assertProductExists(productId);
+
+    return this.inventoryService.getKardex(productId, warehouseId);
   }
 
   @Post('entradas')

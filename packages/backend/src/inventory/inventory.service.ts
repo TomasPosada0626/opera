@@ -182,4 +182,18 @@ export class InventoryService {
       stock: _sum.quantity ?? new Prisma.Decimal(0),
     }));
   }
+
+  // Historial completo, más reciente primero. Sin paginación todavía — llega
+  // con #66 (filtros/paginación reutilizables), aplicada de forma pareja a
+  // este y a los demás listados, no solo aquí.
+  getKardex(productId: string, warehouseId?: string) {
+    return this.prisma.stockMovement.findMany({
+      where: { productId, ...(warehouseId ? { warehouseId } : {}) },
+      include: {
+        warehouse: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 }
