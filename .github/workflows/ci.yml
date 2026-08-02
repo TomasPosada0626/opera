@@ -24,9 +24,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # Solo para el servicio de Postgres de este job — nada que ver con el
-      # .env local (gitignorado), que no existe en el runner de CI.
+      # Solo para este job — nada que ver con el .env local (gitignorado),
+      # que no existe en el runner de CI. JWT_SECRET no es un secreto real:
+      # solo firma tokens que viven y mueren dentro de esta corrida de CI.
       DATABASE_URL: postgresql://opera:opera@localhost:5432/opera?schema=public
+      JWT_SECRET: ci-test-secret-not-for-production
+      JWT_EXPIRES_IN: 1d
     steps:
       - name: Checkout
         uses: actions/checkout@v4
