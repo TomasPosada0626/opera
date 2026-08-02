@@ -17,6 +17,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { InventoryService } from './inventory.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateExitDto } from './dto/create-exit.dto';
+import { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -49,5 +50,14 @@ export class InventoryController {
   @HttpCode(HttpStatus.CREATED)
   createExit(@Body() dto: CreateExitDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createExit(dto, req.user.sub);
+  }
+
+  @Post('ajustes')
+  @HttpCode(HttpStatus.CREATED)
+  createAdjustment(
+    @Body() dto: CreateAdjustmentDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.inventoryService.createAdjustment(dto, req.user.sub);
   }
 }

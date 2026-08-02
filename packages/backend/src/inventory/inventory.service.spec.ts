@@ -234,4 +234,88 @@ describe('InventoryService', () => {
       ).rejects.toBeInstanceOf(ConflictException);
     });
   });
+
+  describe('createAdjustment', () => {
+    beforeEach(() => {
+      prisma.product.findUnique.mockResolvedValue({ id: 'product-1' });
+      prisma.warehouse.findUnique.mockResolvedValue({ id: 'warehouse-1' });
+    });
+
+    it('allows a positive adjustment (correcting stock upward)', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(10) },
+      });
+      txStockMovement.create.mockResolvedValue({ id: 'movement-1' });
+
+      await service.createAdjustment(
+        {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          quantity: 15,
+          reason: 'Conteo físico',
+        },
+        'acting-user',
+      );
+
+      expect(txStockMovement.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          type: 'AJUSTE',
+          quantity: 15,
+          reason: 'Conteo físico',
+          location: undefined,
+          userId: 'acting-user',
+        },
+      });
+    });
+
+    it('allows a negative adjustment as long as the result does not go below zero', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(10) },
+      });
+      txStockMovement.create.mockResolvedValue({ id: 'movement-1' });
+
+      await service.createAdjustment(
+        {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          quantity: -4,
+          reason: 'Merma',
+        },
+        'acting-user',
+      );
+
+      expect(txStockMovement.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          type: 'AJUSTE',
+          quantity: -4,
+          reason: 'Merma',
+          location: undefined,
+          userId: 'acting-user',
+        },
+      });
+    });
+
+    it('rejects a negative adjustment that would push stock below zero', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(10) },
+      });
+
+      await expect(
+        service.createAdjustment(
+          {
+            productId: 'product-1',
+            warehouseId: 'warehouse-1',
+            quantity: -20,
+            reason: 'Merma',
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(txStockMovement.create).not.toHaveBeenCalled();
+    });
+  });
 });
