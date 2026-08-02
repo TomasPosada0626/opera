@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ProductionOrdersService } from './production-orders.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,6 +35,11 @@ describe('ProductionOrdersService', () => {
     ],
   };
 
+  let txClient: {
+    billOfMaterials: { findUnique: jest.Mock };
+    stockMovement: { create: jest.Mock };
+    productionOrder: { update: jest.Mock };
+  };
   let prisma: {
     product: { findUnique: jest.Mock };
     warehouse: { findUnique: jest.Mock };
@@ -41,12 +50,18 @@ describe('ProductionOrdersService', () => {
       create: jest.Mock;
       count: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
   let inventory: { getStock: jest.Mock };
   let audit: { log: jest.Mock };
   let service: ProductionOrdersService;
 
   beforeEach(() => {
+    txClient = {
+      billOfMaterials: { findUnique: jest.fn() },
+      stockMovement: { create: jest.fn() },
+      productionOrder: { update: jest.fn() },
+    };
     prisma = {
       product: { findUnique: jest.fn() },
       warehouse: { findUnique: jest.fn() },
@@ -57,6 +72,9 @@ describe('ProductionOrdersService', () => {
         create: jest.fn(),
         count: jest.fn(),
       },
+      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+        callback(txClient),
+      ),
     };
     inventory = { getStock: jest.fn() };
     audit = { log: jest.fn() };
@@ -218,6 +236,121 @@ describe('ProductionOrdersService', () => {
           userId: 'acting-user',
         }),
       );
+    });
+  });
+
+  describe('complete', () => {
+    const pendingOrder = {
+      id: 'order-1',
+      productId: 'product-1',
+      warehouseId: 'warehouse-1',
+      quantity: 10,
+      status: 'PENDIENTE',
+    };
+
+    it('throws NotFoundException when the order does not exist', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.complete('missing', 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('throws BadRequestException when the order is not PENDIENTE', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue({
+        ...pendingOrder,
+        status: 'COMPLETADA',
+      });
+
+      await expect(
+        service.complete('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the recipe is no longer active', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
+      txClient.billOfMaterials.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.complete('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(txClient.stockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException listing shortages when a component lacks stock', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
+      txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
+      inventory.getStock
+        .mockResolvedValueOnce(new Prisma.Decimal(20))
+        .mockResolvedValueOnce(new Prisma.Decimal(5));
+
+      await expect(
+        service.complete('order-1', 'acting-user'),
+      ).rejects.toMatchObject({
+        response: {
+          shortages: [expect.objectContaining({ componentId: 'component-b' })],
+        },
+      });
+      expect(txClient.stockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a SALIDA per component, an ENTRADA for the finished good, and marks the order COMPLETADA', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
+      txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
+      inventory.getStock
+        .mockResolvedValueOnce(new Prisma.Decimal(20))
+        .mockResolvedValueOnce(new Prisma.Decimal(10));
+      txClient.productionOrder.update.mockResolvedValue({
+        ...pendingOrder,
+        status: 'COMPLETADA',
+        completedAt: new Date('2026-01-01'),
+      });
+
+      const result = await service.complete('order-1', 'acting-user');
+
+      const calls = txClient.stockMovement.create.mock.calls as [
+        { data: { productId: string; type: string; quantity: Prisma.Decimal } },
+      ][];
+      const movements = calls.map(([{ data }]) => ({
+        productId: data.productId,
+        type: data.type,
+        quantity: data.quantity.toString(),
+      }));
+      expect(movements).toEqual(
+        expect.arrayContaining([
+          { productId: 'component-a', type: 'SALIDA', quantity: '-20' },
+          { productId: 'component-b', type: 'SALIDA', quantity: '-10' },
+          { productId: 'product-1', type: 'ENTRADA', quantity: '10' },
+        ]),
+      );
+      const [[updateArgs]] = txClient.productionOrder.update.mock.calls as [
+        { where: { id: string }; data: { status: string } },
+      ][];
+      expect(updateArgs.where).toEqual({ id: 'order-1' });
+      expect(updateArgs.data.status).toBe('COMPLETADA');
+      expect(result.status).toBe('COMPLETADA');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'COMPLETE',
+          entity: 'ProductionOrder',
+          entityId: 'order-1',
+        }),
+      );
+    });
+
+    it('converts a P2034 write-conflict error into ConflictException', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
+      prisma.$transaction.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('conflict', {
+          code: 'P2034',
+          clientVersion: '6.19.3',
+        }),
+      );
+
+      await expect(
+        service.complete('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

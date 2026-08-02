@@ -53,4 +53,10 @@ export class ProductionOrdersController {
   ) {
     return this.productionOrdersService.create(dto, req.user.sub);
   }
+
+  @Post(':id/complete')
+  @Roles('ADMIN')
+  complete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.productionOrdersService.complete(id, req.user.sub);
+  }
 }
