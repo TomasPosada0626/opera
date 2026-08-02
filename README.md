@@ -202,6 +202,8 @@ TanStack Query (#38) configurado como cliente único para consumir la API del ba
 
 React Hook Form + Zod (#39) para "validación de formularios consistente en toda la app": el primer building block compartido es `<TextField>` (`src/components/form/`), que decide en un solo lugar cómo se ve una etiqueta, un input y su mensaje de error (con atributos ARIA correctos) — el login (#40) y los formularios de movimiento de inventario (#43) lo reutilizan en vez de repetir marcado ligeramente distinto cada vez. Sin un formulario real todavía conectado (eso es #40); esto deja la convención lista para usarla.
 
+**Primera pantalla real: login (#40).** Formulario de correo/contraseña conectado a `POST /auth/login`, validado con Zod (`react-hook-form` + `TextField`), y una mutación de TanStack Query que guarda el JWT (`setAuthToken`) y redirige al dashboard si el login funciona, o muestra un error inline (distinguiendo 401 de otros fallos) si no. El router ya protege la ruta raíz: sin token, `/` redirige a `/login` vía un `loader`; con token, `/login` redirige de vuelta a `/` — la verificación mínima de sesión, no la navegación completa por rol (#41). Verificado en vivo en la ventana real de Electron. En el camino apareció un bug real de integración: el backend no tenía CORS configurado (`app.enableCors()` nunca se llamó en `main.ts`), así que el navegador bloqueaba la petición de login desde el renderer — corregido; el JWT va por header `Authorization`, no por cookie, así que un CORS abierto no agrega superficie de CSRF.
+
 ## Seguimiento del trabajo
 
 El trabajo se gestiona con GitHub Issues, Milestones y un [Project board](https://github.com/users/TomasPosada0626/projects/3):
