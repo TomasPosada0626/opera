@@ -17,6 +17,7 @@ describe('WarehousesService', () => {
     warehouse: {
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
     };
@@ -29,6 +30,7 @@ describe('WarehousesService', () => {
       warehouse: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
       },
@@ -58,14 +60,50 @@ describe('WarehousesService', () => {
     );
   });
 
-  it('lists all warehouses ordered by name', async () => {
+  it('lists warehouses paginated and ordered by name by default', async () => {
     prisma.warehouse.findMany.mockResolvedValue([baseWarehouse]);
+    prisma.warehouse.count.mockResolvedValue(1);
 
-    const result = await service.findAll();
+    const result = await service.findAll({});
 
-    expect(result).toEqual([baseWarehouse]);
+    expect(result).toEqual({
+      data: [baseWarehouse],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
     expect(prisma.warehouse.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ orderBy: { name: 'asc' } }),
+      expect.objectContaining({
+        where: {},
+        orderBy: { name: 'asc' },
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('filters warehouses by name when search is given', async () => {
+    prisma.warehouse.findMany.mockResolvedValue([]);
+    prisma.warehouse.count.mockResolvedValue(0);
+
+    await service.findAll({ search: 'norte' });
+
+    expect(prisma.warehouse.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { contains: 'norte', mode: 'insensitive' } },
+      }),
+    );
+    expect(prisma.warehouse.count).toHaveBeenCalledWith({
+      where: { name: { contains: 'norte', mode: 'insensitive' } },
+    });
+  });
+
+  it('falls back to sorting by name when sortBy is not an allowed field', async () => {
+    prisma.warehouse.findMany.mockResolvedValue([]);
+    prisma.warehouse.count.mockResolvedValue(0);
+
+    await service.findAll({ sortBy: 'location', sortOrder: 'desc' });
+
+    expect(prisma.warehouse.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { name: 'desc' } }),
     );
   });
 
