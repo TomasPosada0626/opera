@@ -1,8 +1,5 @@
 import { app, BrowserWindow } from 'electron';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The built directory structure
 //
@@ -11,7 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // │ │
 // │ ├─┬ dist-electron
 // │ │ ├── main.js
-// │ │ └── preload.mjs
+// │ │ └── preload.js
 // │
 process.env.APP_ROOT = path.join(__dirname, '..');
 
@@ -30,7 +27,7 @@ function createWindow() {
   win = new BrowserWindow({
     title: 'Opera',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 

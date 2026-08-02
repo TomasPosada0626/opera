@@ -46,7 +46,7 @@ export default tseslint.config(
   },
   // Desktop (Electron + React)
   {
-    files: ['packages/desktop/**/*.{ts,tsx}'],
+    files: ['packages/desktop/**/*.{ts,tsx,mts}'],
     plugins: {
       'react-hooks': reactHooks,
       'react-refresh': reactRefresh,

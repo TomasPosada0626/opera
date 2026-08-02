@@ -5,7 +5,6 @@
   "author": "Tomas Posada",
   "private": true,
   "license": "MIT",
-  "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
