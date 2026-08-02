@@ -184,7 +184,7 @@ pnpm dev:desktop
 
 ✅ **M0** y **M1 (Backend: Auth + RBAC)** cerrados. El backend tiene: Prisma conectado a PostgreSQL, schema de RBAC (`User`, `Role`, `Permission`) y `AuditLog` (ledger append-only) migrados; login JWT con contraseñas Argon2; guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) que revalida contra la base de datos en cada request (no solo contra el token); CRUD de usuarios (solo Administrador) con auditoría en cada mutación; reseteo de contraseña por Administrador; seed del usuario Administrador inicial (`pnpm db:seed`); docs interactivos en `/docs` (Swagger/OpenAPI); y CI que corre lint, tests (26 tests, 6 suites), `pnpm audit` y build en cada push/PR, más Dependabot semanal. Una revisión de seguridad de cierre (`/security-review`) encontró y corrigió un hallazgo real (JWT sin revalidación — ver [issue #79](https://github.com/TomasPosada0626/opera/issues/79)).
 
-🚧 En **M2 - Inventario + Kardex**: `Warehouse` (bodegas), `Product`/`Category`/`Unit` (catálogo) migrados y con CRUD completo (lectura abierta a cualquier usuario autenticado, escritura solo Administrador, con auditoría en cada mutación); falta Kardex append-only, transacciones consistentes, filtros reutilizables y alertas de stock.
+🚧 En **M2 - Inventario + Kardex**: `Warehouse` (bodegas), `Product`/`Category`/`Unit` (catálogo) migrados y con CRUD completo. El schema de `StockMovement` (Kardex append-only) también está migrado — `quantity` guarda el delta con signo (ENTRADA positivo, SALIDA negativo, AJUSTE cualquiera) para que el stock actual sea una simple suma; falta cálculo de stock, transacciones consistentes, endpoints de movimiento, filtros reutilizables y alertas de stock.
 
 ## Seguimiento del trabajo
 
