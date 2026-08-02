@@ -16,6 +16,7 @@ import { RbacGuard } from '../auth/guards/rbac.guard';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { InventoryService } from './inventory.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
+import { CreateExitDto } from './dto/create-exit.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -42,5 +43,11 @@ export class InventoryController {
   @HttpCode(HttpStatus.CREATED)
   createEntry(@Body() dto: CreateEntryDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createEntry(dto, req.user.sub);
+  }
+
+  @Post('salidas')
+  @HttpCode(HttpStatus.CREATED)
+  createExit(@Body() dto: CreateExitDto, @Req() req: AuthenticatedRequest) {
+    return this.inventoryService.createExit(dto, req.user.sub);
   }
 }
