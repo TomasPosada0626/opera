@@ -9,6 +9,24 @@ on:
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: opera
+          POSTGRES_PASSWORD: opera
+          POSTGRES_DB: opera
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opera"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Solo para el servicio de Postgres de este job — nada que ver con el
+      # .env local (gitignorado), que no existe en el runner de CI.
+      DATABASE_URL: postgresql://opera:opera@localhost:5432/opera?schema=public
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +54,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Apply database migrations
+        run: pnpm --filter backend exec prisma migrate deploy
+
+      - name: E2E tests
+        run: pnpm --filter backend test:e2e
 
       - name: Build backend
         run: pnpm --filter backend build
