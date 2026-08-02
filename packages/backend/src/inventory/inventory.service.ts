@@ -8,8 +8,16 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateExitDto } from './dto/create-exit.dto';
+import { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 
 type TransactionClient = Prisma.TransactionClient;
+
+interface MovementRefs {
+  productId: string;
+  warehouseId: string;
+  reason?: string;
+  location?: string;
+}
 
 @Injectable()
 export class InventoryService {
@@ -76,40 +84,42 @@ export class InventoryService {
     return result._sum.quantity ?? new Prisma.Decimal(0);
   }
 
-  // SALIDA resta stock, y a diferencia de ENTRADA necesita decidir ANTES de
-  // escribir (¿hay suficiente disponible?) — eso abre una ventana de condición
-  // de carrera entre leer el stock y crear el movimiento si dos requests
-  // concurrentes leen el mismo stock antes de que cualquiera escriba (ver ADR
-  // 0001 y #25). $transaction con nivel Serializable hace que Postgres aborte
-  // una de las dos transacciones en conflicto en vez de dejar pasar ambas.
-  async createExit(dto: CreateExitDto, userId: string) {
-    await Promise.all([
-      this.assertProductExists(dto.productId),
-      this.assertWarehouseExists(dto.warehouseId),
-    ]);
-
+  // SALIDA y AJUSTE (a diferencia de ENTRADA) pueden reducir el stock, y
+  // necesitan decidir ANTES de escribir (¿el resultado se queda en 0 o más?)
+  // — eso abre una ventana de condición de carrera entre leer el stock y
+  // crear el movimiento si dos requests concurrentes leen el mismo stock
+  // antes de que cualquiera escriba (ver ADR 0001 y #25). $transaction con
+  // nivel Serializable hace que Postgres aborte una de las dos transacciones
+  // en conflicto en vez de dejar pasar un sobregiro.
+  private async createMovementWithStockCheck(
+    type: 'SALIDA' | 'AJUSTE',
+    refs: MovementRefs,
+    delta: number,
+    userId: string,
+  ) {
     try {
       return await this.prisma.$transaction(
         async (tx: TransactionClient) => {
           const currentStock = await this.getStock(
-            dto.productId,
-            dto.warehouseId,
+            refs.productId,
+            refs.warehouseId,
             tx,
           );
-          if (currentStock.lessThan(dto.quantity)) {
+          const resultingStock = currentStock.plus(delta);
+          if (resultingStock.lessThan(0)) {
             throw new BadRequestException(
-              `Stock insuficiente: disponible ${currentStock.toString()}, solicitado ${dto.quantity}`,
+              `Stock insuficiente: disponible ${currentStock.toString()}, quedaría en ${resultingStock.toString()}`,
             );
           }
 
           return tx.stockMovement.create({
             data: {
-              productId: dto.productId,
-              warehouseId: dto.warehouseId,
-              type: 'SALIDA',
-              quantity: -dto.quantity,
-              reason: dto.reason,
-              location: dto.location,
+              productId: refs.productId,
+              warehouseId: refs.warehouseId,
+              type,
+              quantity: delta,
+              reason: refs.reason,
+              location: refs.location,
               userId,
             },
           });
@@ -118,18 +128,46 @@ export class InventoryService {
       );
     } catch (error) {
       // P2034: Postgres abortó la transacción por conflicto de serialización
-      // (dos SALIDA concurrentes leyeron el mismo stock). No es un bug —
+      // (dos movimientos concurrentes leyeron el mismo stock). No es un bug —
       // es exactamente la protección que se buscaba; el cliente debe reintentar.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2034'
       ) {
         throw new ConflictException(
-          'Conflicto al registrar la salida, intenta de nuevo',
+          `Conflicto al registrar el movimiento, intenta de nuevo`,
         );
       }
       throw error;
     }
+  }
+
+  async createExit(dto: CreateExitDto, userId: string) {
+    await Promise.all([
+      this.assertProductExists(dto.productId),
+      this.assertWarehouseExists(dto.warehouseId),
+    ]);
+
+    return this.createMovementWithStockCheck(
+      'SALIDA',
+      dto,
+      -dto.quantity,
+      userId,
+    );
+  }
+
+  async createAdjustment(dto: CreateAdjustmentDto, userId: string) {
+    await Promise.all([
+      this.assertProductExists(dto.productId),
+      this.assertWarehouseExists(dto.warehouseId),
+    ]);
+
+    return this.createMovementWithStockCheck(
+      'AJUSTE',
+      dto,
+      dto.quantity,
+      userId,
+    );
   }
 
   async getStockByWarehouse(productId: string) {
