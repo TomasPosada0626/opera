@@ -47,7 +47,7 @@
     "packages/backend/**/*.ts": [
       "eslint --fix"
     ],
-    "packages/desktop/**/*.{ts,tsx}": [
+    "packages/desktop/**/*.{ts,tsx,mts}": [
       "eslint --fix"
     ],
     "*.{ts,tsx,js,mjs,cjs,json,md,yml,yaml,css,html}": [
