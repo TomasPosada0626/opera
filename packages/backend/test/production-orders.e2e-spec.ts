@@ -209,4 +209,159 @@ describe('Production orders (e2e)', () => {
       .set('Authorization', `Bearer ${staffToken}`)
       .expect(404);
   });
+
+  describe('complete', () => {
+    it('rejects completion by a non-ADMIN user', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-COMP-RBAC-FG-${unique}`,
+        'Terminado RBAC',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-COMP-RBAC-COMP-${unique}`,
+        'Componente RBAC',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 1 }]);
+      await stockUp(componentId, 10);
+      const createResponse = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (createResponse.body as { id: string }).id;
+
+      await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(403);
+    });
+
+    it('returns 404 completing an order that does not exist', async () => {
+      await request(app.getHttpServer())
+        .post(
+          '/production-orders/11111111-1111-4111-8111-111111111111/complete',
+        )
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(404);
+    });
+
+    it('consumes components, enters the finished good, and marks the order COMPLETADA', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-COMP-OK-FG-${unique}`,
+        'Terminado a producir',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-COMP-OK-COMP-${unique}`,
+        'Componente a consumir',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 3 }]);
+      await stockUp(componentId, 50);
+
+      const createResponse = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 5 })
+        .expect(201);
+      const orderId = (createResponse.body as { id: string }).id;
+
+      const completeResponse = await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(201);
+      const completed = completeResponse.body as {
+        status: string;
+        completedAt: string | null;
+      };
+      expect(completed.status).toBe('COMPLETADA');
+      expect(completed.completedAt).not.toBeNull();
+
+      // Consumió 3*5=15 del componente (50 -> 35) y entró 5 del terminado.
+      const componentStock = await request(app.getHttpServer())
+        .get(`/inventory/${componentId}/stock`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect((componentStock.body as { stock: string }).stock).toBe('35');
+
+      const finishedGoodStock = await request(app.getHttpServer())
+        .get(`/inventory/${finishedGoodId}/stock`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect((finishedGoodStock.body as { stock: string }).stock).toBe('5');
+    });
+
+    it('rejects completing the same order twice', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-COMP-TWICE-FG-${unique}`,
+        'Terminado doble',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-COMP-TWICE-COMP-${unique}`,
+        'Componente doble',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 1 }]);
+      await stockUp(componentId, 10);
+      const createResponse = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (createResponse.body as { id: string }).id;
+
+      await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('rejects completion when stock dropped below what is required in the meantime', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-COMP-DRAIN-FG-${unique}`,
+        'Terminado drenado',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-COMP-DRAIN-COMP-${unique}`,
+        'Componente drenado',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 5 }]);
+      await stockUp(componentId, 10);
+      const createResponse = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (createResponse.body as { id: string }).id;
+
+      // Alguien más drena el componente entre crear y completar la orden.
+      await request(app.getHttpServer())
+        .post('/inventory/salidas')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: componentId, warehouseId, quantity: 8 })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+      const body = response.body as { shortages: { componentId: string }[] };
+      expect(body.shortages).toEqual([
+        expect.objectContaining({ componentId, required: '5', available: '2' }),
+      ]);
+    });
+  });
 });
