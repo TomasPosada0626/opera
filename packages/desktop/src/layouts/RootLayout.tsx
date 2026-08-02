@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router';
 
 // Shell mínimo — la navegación real según rol (sidebar/menú) llega en #41.
 function RootLayout() {
