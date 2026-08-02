@@ -10,6 +10,7 @@ import { WarehousesModule } from './warehouses/warehouses.module';
 import { CategoriesModule } from './categories/categories.module';
 import { UnitsModule } from './units/units.module';
 import { ProductsModule } from './products/products.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { ProductsModule } from './products/products.module';
     CategoriesModule,
     UnitsModule,
     ProductsModule,
+    InventoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
