@@ -135,7 +135,7 @@ opera/
 └── README.md
 ```
 
-> `docs/adr/` todavía no existe; se agrega cuando se documente la primera decisión de arquitectura (ver [M2](#roadmap)).
+> Ver [`docs/adr/`](docs/adr/) para las decisiones de arquitectura documentadas hasta ahora.
 
 ## Roadmap
 
@@ -196,7 +196,11 @@ El trabajo se gestiona con GitHub Issues, Milestones y un [Project board](https:
 
 ## Decisiones de arquitectura (ADRs)
 
-Las decisiones de arquitectura significativas (por qué Kardex append-only, por qué Electron en vez de una SPA servida, por qué NestJS + Prisma, método de costeo de producción) se documentarán como ADRs en `docs/adr/` conforme se tomen, según lo planeado en M2, M3 y M6.
+Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/adr/`](docs/adr/) conforme se toman:
+
+- [0001 — Kardex como ledger append-only](docs/adr/0001-kardex-append-only.md)
+
+Pendientes: por qué Electron en vez de una SPA servida, por qué NestJS + Prisma, método de costeo de producción (M3, M6).
 
 ## Licencia
 
