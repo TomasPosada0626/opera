@@ -16,6 +16,7 @@ describe('CategoriesService', () => {
     category: {
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
     };
@@ -28,6 +29,7 @@ describe('CategoriesService', () => {
       category: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
       },
@@ -53,6 +55,26 @@ describe('CategoriesService', () => {
         action: 'CREATE',
         entity: 'Category',
         userId: 'acting-user',
+      }),
+    );
+  });
+
+  it('lists categories paginated and filtered by search', async () => {
+    prisma.category.findMany.mockResolvedValue([baseCategory]);
+    prisma.category.count.mockResolvedValue(1);
+
+    const result = await service.findAll({ search: 'prima' });
+
+    expect(result).toEqual({
+      data: [baseCategory],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
+    expect(prisma.category.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { contains: 'prima', mode: 'insensitive' } },
+        orderBy: { name: 'asc' },
+        skip: 0,
+        take: 20,
       }),
     );
   });

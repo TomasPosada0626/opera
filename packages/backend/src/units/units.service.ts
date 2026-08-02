@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ListQueryDto } from '../common/dto/list-query.dto';
+import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
+
+const sortableFields = ['name', 'createdAt'] as const;
 
 @Injectable()
 export class UnitsService {
@@ -25,8 +30,26 @@ export class UnitsService {
     return unit;
   }
 
-  findAll() {
-    return this.prisma.unit.findMany({ orderBy: { name: 'asc' } });
+  findAll(query: ListQueryDto) {
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy,
+      sortOrder = 'asc',
+      search,
+    } = query;
+    const where: Prisma.UnitWhereInput = search
+      ? { name: { contains: search, mode: 'insensitive' } }
+      : {};
+    const orderBy = resolveOrderBy(sortBy, sortOrder, sortableFields, 'name');
+
+    return paginate(
+      () => this.prisma.unit.count({ where }),
+      ({ skip, take }) =>
+        this.prisma.unit.findMany({ where, orderBy, skip, take }),
+      page,
+      pageSize,
+    );
   }
 
   async findOne(id: string) {

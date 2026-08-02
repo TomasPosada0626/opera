@@ -17,6 +17,7 @@ describe('InventoryService', () => {
       groupBy: jest.Mock;
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -32,6 +33,7 @@ describe('InventoryService', () => {
         aggregate: jest.fn(),
         groupBy: jest.fn(),
         create: jest.fn(),
+        count: jest.fn(),
       },
       $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
         callback({ stockMovement: txStockMovement }),
@@ -322,32 +324,50 @@ describe('InventoryService', () => {
   });
 
   describe('getKardex', () => {
-    it('returns movements ordered most-recent-first, scoped to the product', async () => {
+    it('returns movements paginated, ordered most-recent-first, scoped to the product', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([
         { id: 'movement-2' },
         { id: 'movement-1' },
       ]);
+      prisma.stockMovement.count.mockResolvedValue(2);
 
-      const result = await service.getKardex('product-1');
+      const result = await service.getKardex('product-1', {});
 
       expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { productId: 'product-1' },
           orderBy: { createdAt: 'desc' },
+          skip: 0,
+          take: 20,
         }),
       );
-      expect(result).toEqual([{ id: 'movement-2' }, { id: 'movement-1' }]);
+      expect(result).toEqual({
+        data: [{ id: 'movement-2' }, { id: 'movement-1' }],
+        meta: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+      });
     });
 
     it('scopes to a single warehouse when warehouseId is given', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([]);
+      prisma.stockMovement.count.mockResolvedValue(0);
 
-      await service.getKardex('product-1', 'warehouse-1');
+      await service.getKardex('product-1', { warehouseId: 'warehouse-1' });
 
       expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { productId: 'product-1', warehouseId: 'warehouse-1' },
         }),
+      );
+    });
+
+    it('respects an explicit sortOrder override', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([]);
+      prisma.stockMovement.count.mockResolvedValue(0);
+
+      await service.getKardex('product-1', { sortOrder: 'asc' });
+
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ orderBy: { createdAt: 'asc' } }),
       );
     });
   });

@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ListQueryDto } from '../common/dto/list-query.dto';
+import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
 const productInclude = { category: true, unit: true };
+const sortableFields = ['name', 'sku', 'createdAt'] as const;
 
 @Injectable()
 export class ProductsService {
@@ -30,11 +34,37 @@ export class ProductsService {
     return product;
   }
 
-  findAll() {
-    return this.prisma.product.findMany({
-      include: productInclude,
-      orderBy: { name: 'asc' },
-    });
+  findAll(query: ListQueryDto) {
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy,
+      sortOrder = 'asc',
+      search,
+    } = query;
+    const where: Prisma.ProductWhereInput = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { sku: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+    const orderBy = resolveOrderBy(sortBy, sortOrder, sortableFields, 'name');
+
+    return paginate(
+      () => this.prisma.product.count({ where }),
+      ({ skip, take }) =>
+        this.prisma.product.findMany({
+          where,
+          include: productInclude,
+          orderBy,
+          skip,
+          take,
+        }),
+      page,
+      pageSize,
+    );
   }
 
   async findOne(id: string) {

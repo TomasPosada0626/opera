@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ListQueryDto } from '../common/dto/list-query.dto';
+import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
+
+const sortableFields = ['name', 'createdAt'] as const;
 
 @Injectable()
 export class WarehousesService {
@@ -25,8 +30,26 @@ export class WarehousesService {
     return warehouse;
   }
 
-  findAll() {
-    return this.prisma.warehouse.findMany({ orderBy: { name: 'asc' } });
+  findAll(query: ListQueryDto) {
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy,
+      sortOrder = 'asc',
+      search,
+    } = query;
+    const where: Prisma.WarehouseWhereInput = search
+      ? { name: { contains: search, mode: 'insensitive' } }
+      : {};
+    const orderBy = resolveOrderBy(sortBy, sortOrder, sortableFields, 'name');
+
+    return paginate(
+      () => this.prisma.warehouse.count({ where }),
+      ({ skip, take }) =>
+        this.prisma.warehouse.findMany({ where, orderBy, skip, take }),
+      page,
+      pageSize,
+    );
   }
 
   async findOne(id: string) {
