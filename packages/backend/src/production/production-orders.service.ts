@@ -183,6 +183,7 @@ export class ProductionOrdersService {
           const requirements: {
             componentId: string;
             required: Prisma.Decimal;
+            unitCost: Prisma.Decimal;
           }[] = [];
           for (const item of bom.items) {
             const required = item.quantity.mul(order.quantity);
@@ -199,7 +200,19 @@ export class ProductionOrdersService {
                 available: available.toString(),
               });
             }
-            requirements.push({ componentId: item.componentId, required });
+            // Costo promedio ponderado vigente de este componente (ADR
+            // 0002) — es lo que vale cada unidad consumida, no lo que costó
+            // originalmente comprarla.
+            const unitCost = await this.inventory.getAverageCost(
+              item.componentId,
+              order.warehouseId,
+              tx,
+            );
+            requirements.push({
+              componentId: item.componentId,
+              required,
+              unitCost,
+            });
           }
           if (shortages.length > 0) {
             throw new BadRequestException({
@@ -209,18 +222,27 @@ export class ProductionOrdersService {
             });
           }
 
+          let totalCost = new Prisma.Decimal(0);
           for (const requirement of requirements) {
+            totalCost = totalCost.plus(
+              requirement.unitCost.times(requirement.required),
+            );
             await tx.stockMovement.create({
               data: {
                 productId: requirement.componentId,
                 warehouseId: order.warehouseId,
                 type: 'SALIDA',
                 quantity: requirement.required.negated(),
+                unitCost: requirement.unitCost,
                 reason: `Consumo de orden de producción ${order.id}`,
                 userId: actingUserId,
               },
             });
           }
+          // Costo del producto terminado = costo total de lo consumido /
+          // cantidad producida — el mismo promedio ponderado, ahora del lado
+          // de la salida (ver ADR 0002).
+          const finishedGoodUnitCost = totalCost.dividedBy(order.quantity);
 
           await tx.stockMovement.create({
             data: {
@@ -228,6 +250,7 @@ export class ProductionOrdersService {
               warehouseId: order.warehouseId,
               type: 'ENTRADA',
               quantity: order.quantity,
+              unitCost: finishedGoodUnitCost,
               reason: `Producción completada, orden ${order.id}`,
               userId: actingUserId,
             },
@@ -235,7 +258,12 @@ export class ProductionOrdersService {
 
           return tx.productionOrder.update({
             where: { id: order.id },
-            data: { status: 'COMPLETADA', completedAt: new Date() },
+            data: {
+              status: 'COMPLETADA',
+              completedAt: new Date(),
+              totalCost,
+              unitCost: finishedGoodUnitCost,
+            },
             include: orderInclude,
           });
         },

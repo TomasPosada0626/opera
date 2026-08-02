@@ -17,4 +17,11 @@ export class CreateEntryDto {
   @IsOptional()
   @IsString()
   location?: string;
+
+  // Costo pagado al recibir esta entrada (ver ADR 0002) — opcional; sin él,
+  // el cálculo de costo promedio ponderado (#34) asume el promedio vigente
+  // en vez de distorsionarlo con un costo desconocido.
+  @IsOptional()
+  @IsPositive()
+  unitCost?: number;
 }

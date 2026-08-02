@@ -75,11 +75,15 @@ describe('Production orders (e2e)', () => {
     return product.id;
   }
 
-  async function stockUp(productId: string, quantity: number) {
+  async function stockUp(
+    productId: string,
+    quantity: number,
+    unitCost?: number,
+  ) {
     await request(app.getHttpServer())
       .post('/inventory/entradas')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ productId, warehouseId, quantity })
+      .send({ productId, warehouseId, quantity, unitCost })
       .expect(201);
   }
 
@@ -236,6 +240,66 @@ describe('Production orders (e2e)', () => {
         .post(`/production-orders/${orderId}/complete`)
         .set('Authorization', `Bearer ${staffToken}`)
         .expect(403);
+    });
+
+    it('costs the finished good by weighted average of the components consumed (ADR 0002)', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-COST-FG-${unique}`,
+        'Terminado costeado',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-COST-COMP-${unique}`,
+        'Componente costeado',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 5 }]);
+      // Promedio ponderado del componente: (10*2 + 10*4) / 20 = 3.
+      await stockUp(componentId, 10, 2);
+      await stockUp(componentId, 10, 4);
+
+      const createResponse = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 2 })
+        .expect(201);
+      const orderId = (createResponse.body as { id: string }).id;
+
+      const completeResponse = await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(201);
+      const completed = completeResponse.body as {
+        totalCost: string;
+        unitCost: string;
+      };
+      // required: 5*2=10 del componente a 3/u = 30 de costo total.
+      // costo del terminado = 30 / 2 (order.quantity) = 15.
+      expect(completed.totalCost).toBe('30');
+      expect(completed.unitCost).toBe('15');
+
+      const componentKardex = await request(app.getHttpServer())
+        .get(`/inventory/${componentId}/kardex`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      const componentSalida = (
+        componentKardex.body as {
+          data: { type: string; unitCost: string | null }[];
+        }
+      ).data.find((movement) => movement.type === 'SALIDA');
+      expect(componentSalida?.unitCost).toBe('3');
+
+      const finishedGoodKardex = await request(app.getHttpServer())
+        .get(`/inventory/${finishedGoodId}/kardex`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      const finishedGoodEntrada = (
+        finishedGoodKardex.body as {
+          data: { type: string; unitCost: string | null }[];
+        }
+      ).data.find((movement) => movement.type === 'ENTRADA');
+      expect(finishedGoodEntrada?.unitCost).toBe('15');
     });
 
     it('returns 404 completing an order that does not exist', async () => {
