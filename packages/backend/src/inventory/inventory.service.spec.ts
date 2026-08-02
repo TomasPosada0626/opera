@@ -6,14 +6,24 @@ import { PrismaService } from '../prisma/prisma.service';
 describe('InventoryService', () => {
   let prisma: {
     product: { findUnique: jest.Mock };
-    stockMovement: { aggregate: jest.Mock; groupBy: jest.Mock };
+    warehouse: { findUnique: jest.Mock };
+    stockMovement: {
+      aggregate: jest.Mock;
+      groupBy: jest.Mock;
+      create: jest.Mock;
+    };
   };
   let service: InventoryService;
 
   beforeEach(() => {
     prisma = {
       product: { findUnique: jest.fn() },
-      stockMovement: { aggregate: jest.fn(), groupBy: jest.fn() },
+      warehouse: { findUnique: jest.fn() },
+      stockMovement: {
+        aggregate: jest.fn(),
+        groupBy: jest.fn(),
+        create: jest.fn(),
+      },
     };
     service = new InventoryService(prisma as unknown as PrismaService);
   });
@@ -96,6 +106,58 @@ describe('InventoryService', () => {
         { warehouseId: 'warehouse-1', stock: '10' },
         { warehouseId: 'warehouse-2', stock: '0' },
       ]);
+    });
+  });
+
+  describe('createEntry', () => {
+    const dto = {
+      productId: 'product-1',
+      warehouseId: 'warehouse-1',
+      quantity: 25,
+    };
+
+    it('throws NotFoundException when the product does not exist', async () => {
+      prisma.product.findUnique.mockResolvedValue(null);
+      prisma.warehouse.findUnique.mockResolvedValue({ id: 'warehouse-1' });
+
+      await expect(
+        service.createEntry(dto, 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the warehouse does not exist', async () => {
+      prisma.product.findUnique.mockResolvedValue({ id: 'product-1' });
+      prisma.warehouse.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.createEntry(dto, 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.stockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a positive-quantity ENTRADA movement for the acting user', async () => {
+      prisma.product.findUnique.mockResolvedValue({ id: 'product-1' });
+      prisma.warehouse.findUnique.mockResolvedValue({ id: 'warehouse-1' });
+      prisma.stockMovement.create.mockResolvedValue({
+        id: 'movement-1',
+        ...dto,
+        type: 'ENTRADA',
+      });
+
+      await service.createEntry(dto, 'acting-user');
+
+      expect(prisma.stockMovement.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          type: 'ENTRADA',
+          quantity: 25,
+          reason: undefined,
+          location: undefined,
+          userId: 'acting-user',
+        },
+      });
     });
   });
 });
