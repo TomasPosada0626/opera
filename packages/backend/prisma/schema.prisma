@@ -122,21 +122,28 @@ enum ProductType {
 // (#28, M3) y BillOfMaterials (#29) se apoyan en este mismo catálogo en vez
 // de duplicar "un ítem con nombre, unidad y stock" en una tabla paralela.
 model Product {
-  id             String          @id @default(uuid())
-  sku            String          @unique
-  name           String
-  type           ProductType
-  categoryId     String
-  category       Category        @relation(fields: [categoryId], references: [id])
-  unitId         String
-  unit           Unit            @relation(fields: [unitId], references: [id])
+  id                String                @id @default(uuid())
+  sku               String                @unique
+  name              String
+  type              ProductType
+  categoryId        String
+  category          Category              @relation(fields: [categoryId], references: [id])
+  unitId            String
+  unit              Unit                  @relation(fields: [unitId], references: [id])
   // Umbrales de alerta (#67); null = sin umbral configurado, no "alertar en 0".
-  minStock       Decimal?        @db.Decimal(12, 3)
-  maxStock       Decimal?        @db.Decimal(12, 3)
-  isActive       Boolean         @default(true)
-  stockMovements StockMovement[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  minStock          Decimal?              @db.Decimal(12, 3)
+  maxStock          Decimal?              @db.Decimal(12, 3)
+  isActive          Boolean               @default(true)
+  stockMovements    StockMovement[]
+  // La receta que ESTE producto produce (type debe ser FINISHED_GOOD,
+  // validado en el service — Prisma no expresa constraints condicionales
+  // sobre un enum) y las líneas donde este producto se consume como insumo
+  // de otra receta — son relaciones distintas al mismo modelo Product, cada
+  // una necesita su propio nombre.
+  recipe            BillOfMaterials?      @relation("ProductRecipe")
+  usedAsComponentIn BillOfMaterialsItem[] @relation("ProductComponent")
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([categoryId])
   @@index([unitId])
@@ -170,4 +177,37 @@ model StockMovement {
 
   @@index([productId, warehouseId])
   @@index([warehouseId])
+}
+
+// Receta de un producto terminado: qué materiales (y cuánto de cada uno) se
+// consumen para producir 1 unidad. Una sola receta activa por producto (no
+// versionada/histórica) — si eso cambia, la orden de producción (#30) que ya
+// se completó no necesita "recordar" qué receta se usó porque su consumo
+// real ya quedó grabado como StockMovement, que es el ledger que importa.
+model BillOfMaterials {
+  id        String                @id @default(uuid())
+  productId String                @unique
+  product   Product               @relation("ProductRecipe", fields: [productId], references: [id])
+  isActive  Boolean               @default(true)
+  items     BillOfMaterialsItem[]
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+}
+
+// componentId normalmente será un Product con type RAW_MATERIAL o SUPPLY
+// (validado en el service, no en el schema — Prisma no expresa constraints
+// condicionales sobre un enum de otra tabla).
+model BillOfMaterialsItem {
+  id                String          @id @default(uuid())
+  billOfMaterialsId String
+  billOfMaterials   BillOfMaterials @relation(fields: [billOfMaterialsId], references: [id], onDelete: Cascade)
+  componentId       String
+  component         Product         @relation("ProductComponent", fields: [componentId], references: [id])
+  // Cantidad de componentId requerida para producir 1 unidad del producto
+  // terminado de la receta — la unidad de medida ya la define component.unitId.
+  quantity          Decimal         @db.Decimal(12, 3)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([billOfMaterialsId, componentId])
 }
