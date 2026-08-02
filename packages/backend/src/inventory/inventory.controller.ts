@@ -30,6 +30,11 @@ type AuthenticatedRequest = Request & { user: JwtPayload };
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
+  @Get('alertas/bajo-stock')
+  getLowStockProducts() {
+    return this.inventoryService.getLowStockProducts();
+  }
+
   @Get(':productId/stock')
   async getStock(@Param('productId') productId: string) {
     await this.inventoryService.assertProductExists(productId);

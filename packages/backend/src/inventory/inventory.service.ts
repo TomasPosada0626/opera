@@ -186,6 +186,43 @@ export class InventoryService {
     }));
   }
 
+  // Reporte, no un listado paginable: el umbral compara stock calculado
+  // (agregado de StockMovement) contra minStock, algo que Prisma no puede
+  // expresar en un WHERE — se filtra en memoria sobre el conjunto (ya acotado
+  // a productos con umbral configurado) de candidatos.
+  async getLowStockProducts() {
+    const candidates = await this.prisma.product.findMany({
+      where: { isActive: true, minStock: { not: null } },
+      include: { category: true, unit: true },
+    });
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const grouped = await this.prisma.stockMovement.groupBy({
+      by: ['productId'],
+      where: { productId: { in: candidates.map((product) => product.id) } },
+      _sum: { quantity: true },
+    });
+    const stockByProduct = new Map(
+      grouped.map(({ productId, _sum }) => [
+        productId,
+        _sum.quantity ?? new Prisma.Decimal(0),
+      ]),
+    );
+
+    return candidates
+      .map((product) => ({
+        ...product,
+        currentStock: stockByProduct.get(product.id) ?? new Prisma.Decimal(0),
+      }))
+      .filter(
+        (product) =>
+          product.minStock !== null &&
+          product.currentStock.lessThan(product.minStock),
+      );
+  }
+
   // Historial paginado, más reciente primero por defecto (ver KardexQueryDto).
   getKardex(productId: string, query: KardexQueryDto) {
     const {
