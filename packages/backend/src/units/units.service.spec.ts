@@ -83,6 +83,30 @@ describe('UnitsService', () => {
     );
   });
 
+  it('updates a unit and logs an UPDATE audit entry with before/after', async () => {
+    prisma.unit.findUnique.mockResolvedValue(baseUnit);
+    prisma.unit.update.mockResolvedValue({ ...baseUnit, name: 'Gramo' });
+
+    const result = await service.update(
+      'unit-1',
+      { name: 'Gramo' },
+      'acting-user',
+    );
+
+    expect(prisma.unit.update).toHaveBeenCalledWith({
+      where: { id: 'unit-1' },
+      data: { name: 'Gramo' },
+    });
+    expect(result.name).toBe('Gramo');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'UPDATE',
+        entity: 'Unit',
+        before: baseUnit,
+      }),
+    );
+  });
+
   it('deactivates a unit by setting isActive to false and logs a DEACTIVATE audit entry', async () => {
     prisma.unit.findUnique.mockResolvedValue(baseUnit);
     prisma.unit.update.mockResolvedValue({ ...baseUnit, isActive: false });

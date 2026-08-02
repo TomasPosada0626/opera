@@ -124,6 +124,33 @@ describe('WarehousesService', () => {
     expect(prisma.warehouse.update).not.toHaveBeenCalled();
   });
 
+  it('updates a warehouse and logs an UPDATE audit entry with before/after', async () => {
+    prisma.warehouse.findUnique.mockResolvedValue(baseWarehouse);
+    prisma.warehouse.update.mockResolvedValue({
+      ...baseWarehouse,
+      location: 'New location',
+    });
+
+    const result = await service.update(
+      'warehouse-1',
+      { location: 'New location' },
+      'acting-user',
+    );
+
+    expect(prisma.warehouse.update).toHaveBeenCalledWith({
+      where: { id: 'warehouse-1' },
+      data: { location: 'New location' },
+    });
+    expect(result.location).toBe('New location');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'UPDATE',
+        entity: 'Warehouse',
+        before: baseWarehouse,
+      }),
+    );
+  });
+
   it('deactivates a warehouse by setting isActive to false and logs a DEACTIVATE audit entry', async () => {
     prisma.warehouse.findUnique.mockResolvedValue(baseWarehouse);
     prisma.warehouse.update.mockResolvedValue({

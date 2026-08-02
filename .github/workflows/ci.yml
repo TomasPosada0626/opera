@@ -55,8 +55,8 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
-      - name: Test
-        run: pnpm test
+      - name: Test (unit, with coverage gate)
+        run: pnpm --filter backend test:cov
 
       - name: Apply database migrations
         run: pnpm --filter backend exec prisma migrate deploy
