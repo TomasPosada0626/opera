@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -20,6 +21,8 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
+@ApiTags('users')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RbacGuard)
 @Roles('ADMIN')
 @Controller('users')
