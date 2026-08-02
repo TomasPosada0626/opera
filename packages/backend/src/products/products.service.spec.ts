@@ -24,6 +24,7 @@ describe('ProductsService', () => {
     product: {
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
     };
@@ -36,6 +37,7 @@ describe('ProductsService', () => {
       product: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
       },
@@ -68,6 +70,50 @@ describe('ProductsService', () => {
         entity: 'Product',
         userId: 'acting-user',
       }),
+    );
+  });
+
+  it('lists products paginated and ordered by name by default', async () => {
+    prisma.product.findMany.mockResolvedValue([baseProduct]);
+    prisma.product.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result).toEqual({
+      data: [baseProduct],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, orderBy: { name: 'asc' } }),
+    );
+  });
+
+  it('searches products by name or sku', async () => {
+    prisma.product.findMany.mockResolvedValue([baseProduct]);
+    prisma.product.count.mockResolvedValue(1);
+
+    await service.findAll({ search: 'SKU-001' });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          OR: [
+            { name: { contains: 'SKU-001', mode: 'insensitive' } },
+            { sku: { contains: 'SKU-001', mode: 'insensitive' } },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('sorts products by sku when requested', async () => {
+    prisma.product.findMany.mockResolvedValue([]);
+    prisma.product.count.mockResolvedValue(0);
+
+    await service.findAll({ sortBy: 'sku', sortOrder: 'desc' });
+
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { sku: 'desc' } }),
     );
   });
 

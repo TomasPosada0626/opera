@@ -19,6 +19,7 @@ import { InventoryService } from './inventory.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateExitDto } from './dto/create-exit.dto';
 import { CreateAdjustmentDto } from './dto/create-adjustment.dto';
+import { KardexQueryDto } from './dto/kardex-query.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -44,11 +45,11 @@ export class InventoryController {
   @Get(':productId/kardex')
   async getKardex(
     @Param('productId') productId: string,
-    @Query('warehouseId') warehouseId?: string,
+    @Query() query: KardexQueryDto,
   ) {
     await this.inventoryService.assertProductExists(productId);
 
-    return this.inventoryService.getKardex(productId, warehouseId);
+    return this.inventoryService.getKardex(productId, query);
   }
 
   @Post('entradas')

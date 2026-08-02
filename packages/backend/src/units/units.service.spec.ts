@@ -17,6 +17,7 @@ describe('UnitsService', () => {
     unit: {
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
     };
@@ -29,6 +30,7 @@ describe('UnitsService', () => {
       unit: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
       },
@@ -55,6 +57,21 @@ describe('UnitsService', () => {
         entity: 'Unit',
         userId: 'acting-user',
       }),
+    );
+  });
+
+  it('lists units paginated and ordered by name by default', async () => {
+    prisma.unit.findMany.mockResolvedValue([baseUnit]);
+    prisma.unit.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result).toEqual({
+      data: [baseUnit],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
+    expect(prisma.unit.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {}, orderBy: { name: 'asc' } }),
     );
   });
 
