@@ -87,6 +87,33 @@ describe('CategoriesService', () => {
     );
   });
 
+  it('updates a category and logs an UPDATE audit entry with before/after', async () => {
+    prisma.category.findUnique.mockResolvedValue(baseCategory);
+    prisma.category.update.mockResolvedValue({
+      ...baseCategory,
+      name: 'Updated',
+    });
+
+    const result = await service.update(
+      'category-1',
+      { name: 'Updated' },
+      'acting-user',
+    );
+
+    expect(prisma.category.update).toHaveBeenCalledWith({
+      where: { id: 'category-1' },
+      data: { name: 'Updated' },
+    });
+    expect(result.name).toBe('Updated');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'UPDATE',
+        entity: 'Category',
+        before: baseCategory,
+      }),
+    );
+  });
+
   it('deactivates a category by setting isActive to false and logs a DEACTIVATE audit entry', async () => {
     prisma.category.findUnique.mockResolvedValue(baseCategory);
     prisma.category.update.mockResolvedValue({
