@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { toRolesAndPermissions } from './roles-permissions.util';
 
 @Injectable()
 export class AuthService {
@@ -38,18 +39,13 @@ export class AuthService {
 
   async login(email: string, password: string) {
     const user = await this.validateUser(email, password);
-    const permissions = new Set<string>();
-    for (const { role } of user.roles) {
-      for (const { permission } of role.permissions) {
-        permissions.add(permission.name);
-      }
-    }
+    const { roles, permissions } = toRolesAndPermissions(user);
 
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      roles: user.roles.map(({ role }) => role.name),
-      permissions: [...permissions],
+      roles,
+      permissions,
     };
 
     return { accessToken: await this.jwtService.signAsync(payload) };
