@@ -196,6 +196,8 @@ Un push de solo documentación (ADR 0002) reventó la suite e2e en CI sin tocar 
 
 React Router (#37) configurado con `createHashRouter` — no `BrowserRouter`: la app empaquetada carga desde `file://`, sin servidor que resuelva rutas de historial en un refresh, y el hash sí funciona con un archivo estático. Estructura mínima por ahora (`RootLayout` con solo un `Outlet`, rutas `/login` y `/` como placeholders, `*` como 404) — la navegación real según rol llega en #41, las pantallas reales en #40/#42-45.
 
+TanStack Query (#38) configurado como cliente único para consumir la API del backend: `apiFetch<T>()` (`src/lib/api-client.ts`) es un wrapper delgado sobre `fetch` que arma la URL contra `VITE_API_URL` (por defecto `http://localhost:3000` en dev), adjunta el JWT como `Authorization: Bearer` si existe, y traduce respuestas no-OK a `ApiError` (con el `statusCode` y el `message` ya "aplanado" — el `ValidationPipe` de Nest puede devolver `message` como array). El token vive en `localStorage` detrás de `src/lib/auth-token.ts`, aislado en un solo módulo para poder migrar a algo más seguro (p. ej. `safeStorage` de Electron vía el proceso principal) sin tocar el código que llama a la API. `QueryClient` no reintenta 401/403/404 (un token inválido o un recurso inexistente no se arregla reintentando) — sí reintenta el resto hasta 2 veces. Devtools de React Query solo en dev.
+
 ## Seguimiento del trabajo
 
 El trabajo se gestiona con GitHub Issues, Milestones y un [Project board](https://github.com/users/TomasPosada0626/projects/3):
