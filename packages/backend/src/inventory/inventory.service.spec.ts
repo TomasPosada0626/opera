@@ -16,6 +16,7 @@ describe('InventoryService', () => {
       aggregate: jest.Mock;
       groupBy: jest.Mock;
       create: jest.Mock;
+      findMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -27,6 +28,7 @@ describe('InventoryService', () => {
       product: { findUnique: jest.fn() },
       warehouse: { findUnique: jest.fn() },
       stockMovement: {
+        findMany: jest.fn(),
         aggregate: jest.fn(),
         groupBy: jest.fn(),
         create: jest.fn(),
@@ -316,6 +318,37 @@ describe('InventoryService', () => {
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(txStockMovement.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getKardex', () => {
+    it('returns movements ordered most-recent-first, scoped to the product', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        { id: 'movement-2' },
+        { id: 'movement-1' },
+      ]);
+
+      const result = await service.getKardex('product-1');
+
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: 'product-1' },
+          orderBy: { createdAt: 'desc' },
+        }),
+      );
+      expect(result).toEqual([{ id: 'movement-2' }, { id: 'movement-1' }]);
+    });
+
+    it('scopes to a single warehouse when warehouseId is given', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([]);
+
+      await service.getKardex('product-1', 'warehouse-1');
+
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: 'product-1', warehouseId: 'warehouse-1' },
+        }),
+      );
     });
   });
 });
