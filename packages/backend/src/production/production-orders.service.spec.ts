@@ -52,7 +52,7 @@ describe('ProductionOrdersService', () => {
     };
     $transaction: jest.Mock;
   };
-  let inventory: { getStock: jest.Mock };
+  let inventory: { getStock: jest.Mock; getAverageCost: jest.Mock };
   let audit: { log: jest.Mock };
   let service: ProductionOrdersService;
 
@@ -76,7 +76,7 @@ describe('ProductionOrdersService', () => {
         callback(txClient),
       ),
     };
-    inventory = { getStock: jest.fn() };
+    inventory = { getStock: jest.fn(), getAverageCost: jest.fn() };
     audit = { log: jest.fn() };
     service = new ProductionOrdersService(
       prisma as unknown as PrismaService,
@@ -284,6 +284,7 @@ describe('ProductionOrdersService', () => {
       inventory.getStock
         .mockResolvedValueOnce(new Prisma.Decimal(20))
         .mockResolvedValueOnce(new Prisma.Decimal(5));
+      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(1));
 
       await expect(
         service.complete('order-1', 'acting-user'),
@@ -295,12 +296,16 @@ describe('ProductionOrdersService', () => {
       expect(txClient.stockMovement.create).not.toHaveBeenCalled();
     });
 
-    it('creates a SALIDA per component, an ENTRADA for the finished good, and marks the order COMPLETADA', async () => {
+    it('creates a SALIDA per component (costed at the current average), an ENTRADA for the finished good (costed at total/quantity), and marks the order COMPLETADA', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
       txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
       inventory.getStock
         .mockResolvedValueOnce(new Prisma.Decimal(20))
         .mockResolvedValueOnce(new Prisma.Decimal(10));
+      // component-a cuesta 2/unidad, component-b cuesta 3/unidad.
+      inventory.getAverageCost
+        .mockResolvedValueOnce(new Prisma.Decimal(2))
+        .mockResolvedValueOnce(new Prisma.Decimal(3));
       txClient.productionOrder.update.mockResolvedValue({
         ...pendingOrder,
         status: 'COMPLETADA',
@@ -310,25 +315,59 @@ describe('ProductionOrdersService', () => {
       const result = await service.complete('order-1', 'acting-user');
 
       const calls = txClient.stockMovement.create.mock.calls as [
-        { data: { productId: string; type: string; quantity: Prisma.Decimal } },
+        {
+          data: {
+            productId: string;
+            type: string;
+            quantity: Prisma.Decimal;
+            unitCost: Prisma.Decimal;
+          };
+        },
       ][];
       const movements = calls.map(([{ data }]) => ({
         productId: data.productId,
         type: data.type,
         quantity: data.quantity.toString(),
+        unitCost: data.unitCost.toString(),
       }));
+      // required: 2*10=20 de A a 2/u = 40; 1*10=10 de B a 3/u = 30. total=70,
+      // costo del terminado = 70/10 (order.quantity) = 7.
       expect(movements).toEqual(
         expect.arrayContaining([
-          { productId: 'component-a', type: 'SALIDA', quantity: '-20' },
-          { productId: 'component-b', type: 'SALIDA', quantity: '-10' },
-          { productId: 'product-1', type: 'ENTRADA', quantity: '10' },
+          {
+            productId: 'component-a',
+            type: 'SALIDA',
+            quantity: '-20',
+            unitCost: '2',
+          },
+          {
+            productId: 'component-b',
+            type: 'SALIDA',
+            quantity: '-10',
+            unitCost: '3',
+          },
+          {
+            productId: 'product-1',
+            type: 'ENTRADA',
+            quantity: '10',
+            unitCost: '7',
+          },
         ]),
       );
       const [[updateArgs]] = txClient.productionOrder.update.mock.calls as [
-        { where: { id: string }; data: { status: string } },
+        {
+          where: { id: string };
+          data: {
+            status: string;
+            totalCost: Prisma.Decimal;
+            unitCost: Prisma.Decimal;
+          };
+        },
       ][];
       expect(updateArgs.where).toEqual({ id: 'order-1' });
       expect(updateArgs.data.status).toBe('COMPLETADA');
+      expect(updateArgs.data.totalCost.toString()).toBe('70');
+      expect(updateArgs.data.unitCost.toString()).toBe('7');
       expect(result.status).toBe('COMPLETADA');
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({

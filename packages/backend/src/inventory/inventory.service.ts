@@ -61,6 +61,7 @@ export class InventoryService {
         warehouseId: dto.warehouseId,
         type: 'ENTRADA',
         quantity: dto.quantity,
+        unitCost: dto.unitCost,
         reason: dto.reason,
         location: dto.location,
         userId,
@@ -85,6 +86,46 @@ export class InventoryService {
     });
 
     return result._sum.quantity ?? new Prisma.Decimal(0);
+  }
+
+  // Costo promedio ponderado vigente (ver ADR 0002) — a diferencia del stock,
+  // NO es una simple SUM(): cada entrada recalcula el promedio ponderándolo
+  // por la cantidad que ya había, así que hay que recorrer el historial en
+  // orden cronológico, no agregarlo de una vez. Una salida no cambia el
+  // promedio (el costo por unidad restante es el mismo), solo reduce stock.
+  // Una entrada sin unitCost declarado (p. ej. un ajuste positivo) no
+  // distorsiona el promedio: se asume que entra al costo vigente.
+  async getAverageCost(
+    productId: string,
+    warehouseId?: string,
+    client: TransactionClient | PrismaService = this.prisma,
+  ): Promise<Prisma.Decimal> {
+    const movements = await client.stockMovement.findMany({
+      where: { productId, ...(warehouseId ? { warehouseId } : {}) },
+      orderBy: { createdAt: 'asc' },
+      select: { quantity: true, unitCost: true },
+    });
+
+    let stock = new Prisma.Decimal(0);
+    let averageCost = new Prisma.Decimal(0);
+
+    for (const movement of movements) {
+      if (movement.quantity.greaterThan(0)) {
+        const entryCost = movement.unitCost ?? averageCost;
+        const newStock = stock.plus(movement.quantity);
+        averageCost = newStock.greaterThan(0)
+          ? stock
+              .times(averageCost)
+              .plus(movement.quantity.times(entryCost))
+              .dividedBy(newStock)
+          : entryCost;
+        stock = newStock;
+      } else {
+        stock = stock.plus(movement.quantity);
+      }
+    }
+
+    return averageCost;
   }
 
   // SALIDA y AJUSTE (a diferencia de ENTRADA) pueden reducir el stock, y
