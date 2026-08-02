@@ -1,9 +1,14 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { InventoryService } from './inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 describe('InventoryService', () => {
+  let txStockMovement: { aggregate: jest.Mock; create: jest.Mock };
   let prisma: {
     product: { findUnique: jest.Mock };
     warehouse: { findUnique: jest.Mock };
@@ -12,10 +17,12 @@ describe('InventoryService', () => {
       groupBy: jest.Mock;
       create: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
   let service: InventoryService;
 
   beforeEach(() => {
+    txStockMovement = { aggregate: jest.fn(), create: jest.fn() };
     prisma = {
       product: { findUnique: jest.fn() },
       warehouse: { findUnique: jest.fn() },
@@ -24,6 +31,9 @@ describe('InventoryService', () => {
         groupBy: jest.fn(),
         create: jest.fn(),
       },
+      $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
+        callback({ stockMovement: txStockMovement }),
+      ),
     };
     service = new InventoryService(prisma as unknown as PrismaService);
   });
@@ -158,6 +168,70 @@ describe('InventoryService', () => {
           userId: 'acting-user',
         },
       });
+    });
+  });
+
+  describe('createExit', () => {
+    const dto = {
+      productId: 'product-1',
+      warehouseId: 'warehouse-1',
+      quantity: 30,
+    };
+
+    beforeEach(() => {
+      prisma.product.findUnique.mockResolvedValue({ id: 'product-1' });
+      prisma.warehouse.findUnique.mockResolvedValue({ id: 'warehouse-1' });
+    });
+
+    it('throws BadRequestException when there is not enough stock', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(10) },
+      });
+
+      await expect(
+        service.createExit(dto, 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(txStockMovement.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a negative-quantity SALIDA movement inside a Serializable transaction', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(100) },
+      });
+      txStockMovement.create.mockResolvedValue({ id: 'movement-1' });
+
+      await service.createExit(dto, 'acting-user');
+
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+      expect(txStockMovement.create).toHaveBeenCalledWith({
+        data: {
+          productId: 'product-1',
+          warehouseId: 'warehouse-1',
+          type: 'SALIDA',
+          quantity: -30,
+          reason: undefined,
+          location: undefined,
+          userId: 'acting-user',
+        },
+      });
+    });
+
+    it('converts a P2034 write-conflict error into ConflictException', async () => {
+      txStockMovement.aggregate.mockResolvedValue({
+        _sum: { quantity: new Prisma.Decimal(100) },
+      });
+      prisma.$transaction.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('conflict', {
+          code: 'P2034',
+          clientVersion: '6.19.3',
+        }),
+      );
+
+      await expect(
+        service.createExit(dto, 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

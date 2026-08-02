@@ -1,7 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
+import { CreateExitDto } from './dto/create-exit.dto';
+
+type TransactionClient = Prisma.TransactionClient;
 
 @Injectable()
 export class InventoryService {
@@ -51,17 +59,77 @@ export class InventoryService {
 
   // El stock nunca es un campo leído directamente — siempre la suma de los
   // deltas con signo en StockMovement (ver ADR 0001). Sin warehouseId, suma
-  // en todas las bodegas (stock global del producto).
+  // en todas las bodegas (stock global del producto). Acepta un cliente de
+  // transacción para que createExit pueda leer el stock dentro del mismo
+  // $transaction que valida y escribe — si no, la lectura vería un snapshot
+  // separado y la validación de "stock suficiente" no protegería nada.
   async getStock(
     productId: string,
     warehouseId?: string,
+    client: TransactionClient | PrismaService = this.prisma,
   ): Promise<Prisma.Decimal> {
-    const result = await this.prisma.stockMovement.aggregate({
+    const result = await client.stockMovement.aggregate({
       where: { productId, ...(warehouseId ? { warehouseId } : {}) },
       _sum: { quantity: true },
     });
 
     return result._sum.quantity ?? new Prisma.Decimal(0);
+  }
+
+  // SALIDA resta stock, y a diferencia de ENTRADA necesita decidir ANTES de
+  // escribir (¿hay suficiente disponible?) — eso abre una ventana de condición
+  // de carrera entre leer el stock y crear el movimiento si dos requests
+  // concurrentes leen el mismo stock antes de que cualquiera escriba (ver ADR
+  // 0001 y #25). $transaction con nivel Serializable hace que Postgres aborte
+  // una de las dos transacciones en conflicto en vez de dejar pasar ambas.
+  async createExit(dto: CreateExitDto, userId: string) {
+    await Promise.all([
+      this.assertProductExists(dto.productId),
+      this.assertWarehouseExists(dto.warehouseId),
+    ]);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx: TransactionClient) => {
+          const currentStock = await this.getStock(
+            dto.productId,
+            dto.warehouseId,
+            tx,
+          );
+          if (currentStock.lessThan(dto.quantity)) {
+            throw new BadRequestException(
+              `Stock insuficiente: disponible ${currentStock.toString()}, solicitado ${dto.quantity}`,
+            );
+          }
+
+          return tx.stockMovement.create({
+            data: {
+              productId: dto.productId,
+              warehouseId: dto.warehouseId,
+              type: 'SALIDA',
+              quantity: -dto.quantity,
+              reason: dto.reason,
+              location: dto.location,
+              userId,
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      // P2034: Postgres abortó la transacción por conflicto de serialización
+      // (dos SALIDA concurrentes leyeron el mismo stock). No es un bug —
+      // es exactamente la protección que se buscaba; el cliente debe reintentar.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2034'
+      ) {
+        throw new ConflictException(
+          'Conflicto al registrar la salida, intenta de nuevo',
+        );
+      }
+      throw error;
+    }
   }
 
   async getStockByWarehouse(productId: string) {
