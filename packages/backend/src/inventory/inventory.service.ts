@@ -250,7 +250,11 @@ export class InventoryService {
           where,
           include: {
             warehouse: { select: { id: true, name: true } },
-            user: { select: { id: true, name: true, email: true } },
+            // Sin email (ver /security-review de M2): el Kardex no tiene
+            // restricción de rol, así que cualquier usuario autenticado podía
+            // cosechar el correo de todo el que haya registrado un
+            // movimiento — id/name alcanza para la atribución.
+            user: { select: { id: true, name: true } },
           },
           orderBy,
           skip,

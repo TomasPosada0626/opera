@@ -14,6 +14,7 @@ import { Request } from 'express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { InventoryService } from './inventory.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
@@ -57,20 +58,28 @@ export class InventoryController {
     return this.inventoryService.getKardex(productId, query);
   }
 
+  // ADMIN por ahora porque es el único rol que existe (ver /security-review de
+  // M2): sin esto, cualquier JWT válido podía fabricar/drenar stock, lo que
+  // falsifica el Kardex append-only que el resto del sistema trata como
+  // autoritativo. Cuando exista un rol de operador de bodega, este decorador
+  // debería apuntar a un permiso dedicado en vez de ADMIN.
   @Post('entradas')
   @HttpCode(HttpStatus.CREATED)
+  @Roles('ADMIN')
   createEntry(@Body() dto: CreateEntryDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createEntry(dto, req.user.sub);
   }
 
   @Post('salidas')
   @HttpCode(HttpStatus.CREATED)
+  @Roles('ADMIN')
   createExit(@Body() dto: CreateExitDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createExit(dto, req.user.sub);
   }
 
   @Post('ajustes')
   @HttpCode(HttpStatus.CREATED)
+  @Roles('ADMIN')
   createAdjustment(
     @Body() dto: CreateAdjustmentDto,
     @Req() req: AuthenticatedRequest,

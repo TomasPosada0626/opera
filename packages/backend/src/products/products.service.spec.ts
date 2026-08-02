@@ -125,6 +125,34 @@ describe('ProductsService', () => {
     );
   });
 
+  it('updates a product and logs an UPDATE audit entry with before/after', async () => {
+    prisma.product.findUnique.mockResolvedValue(baseProduct);
+    prisma.product.update.mockResolvedValue({
+      ...baseProduct,
+      name: 'Tornillo 3/8"',
+    });
+
+    const result = await service.update(
+      'product-1',
+      { name: 'Tornillo 3/8"' },
+      'acting-user',
+    );
+
+    expect(prisma.product.update).toHaveBeenCalledWith({
+      where: { id: 'product-1' },
+      data: { name: 'Tornillo 3/8"' },
+      include: { category: true, unit: true },
+    });
+    expect(result.name).toBe('Tornillo 3/8"');
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'UPDATE',
+        entity: 'Product',
+        before: baseProduct,
+      }),
+    );
+  });
+
   it('deactivates a product by setting isActive to false and logs a DEACTIVATE audit entry', async () => {
     prisma.product.findUnique.mockResolvedValue(baseProduct);
     prisma.product.update.mockResolvedValue({

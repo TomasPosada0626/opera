@@ -86,4 +86,19 @@ describe('JwtStrategy', () => {
       permissions: ['users:create'],
     });
   });
+
+  it('accepts a token when updatedAt falls in the same whole second as iat, even with a later millisecond offset', async () => {
+    // payload.iat trunca a segundos enteros; updatedAt conserva milisegundos.
+    // Un usuario creado y logueado en el mismo segundo de reloj puede tener
+    // updatedAt.getTime()/1000 (con fracción) numéricamente mayor que iat
+    // (sin fracción) aunque nada haya cambiado después del login — sin
+    // Math.floor() en ambos lados, esto rechazaba el token de inmediato.
+    const user = userAt(basePayload.iat!);
+    user.updatedAt = new Date(basePayload.iat! * 1000 + 950);
+    prisma.user.findUnique.mockResolvedValue(user);
+
+    await expect(strategy.validate(basePayload)).resolves.toEqual(
+      expect.objectContaining({ sub: 'user-1' }),
+    );
+  });
 });

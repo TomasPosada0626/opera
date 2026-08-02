@@ -77,9 +77,25 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.module.ts",
+      "!**/*.dto.ts",
+      "!**/*.controller.ts",
+      "!main.ts",
+      "!config/env.ts",
+      "!prisma/prisma.service.ts",
+      "!auth/guards/jwt-auth.guard.ts",
+      "!auth/decorators/*.decorator.ts"
     ],
     "coverageDirectory": "../coverage",
+    "coverageThreshold": {
+      "global": {
+        "statements": 95,
+        "branches": 82,
+        "functions": 95,
+        "lines": 95
+      }
+    },
     "testEnvironment": "node"
   }
 }
