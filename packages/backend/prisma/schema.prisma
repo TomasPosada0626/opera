@@ -88,3 +88,53 @@ model Warehouse {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Unit {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  abbreviation String    @unique
+  isActive     Boolean   @default(true)
+  products     Product[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  isActive  Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum ProductType {
+  FINISHED_GOOD
+  RAW_MATERIAL
+  SUPPLY
+}
+
+// Catálogo único para todo lo que se mueve por Kardex: productos terminados,
+// materias primas e insumos son Product con distinto `type`, no tablas
+// separadas — StockMovement (#18) referencia un solo productId. RawMaterial
+// (#28, M3) y BillOfMaterials (#29) se apoyan en este mismo catálogo en vez
+// de duplicar "un ítem con nombre, unidad y stock" en una tabla paralela.
+model Product {
+  id         String      @id @default(uuid())
+  sku        String      @unique
+  name       String
+  type       ProductType
+  categoryId String
+  category   Category    @relation(fields: [categoryId], references: [id])
+  unitId     String
+  unit       Unit        @relation(fields: [unitId], references: [id])
+  // Umbrales de alerta (#67); null = sin umbral configurado, no "alertar en 0".
+  minStock   Decimal?    @db.Decimal(12, 3)
+  maxStock   Decimal?    @db.Decimal(12, 3)
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([categoryId])
+  @@index([unitId])
+}

@@ -91,6 +91,7 @@ Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cie
 ## Principios de diseño
 
 - **Kardex append-only**: los movimientos de inventario (`StockMovement`) nunca se editan ni se borran. El stock actual siempre se deriva de la suma de movimientos, nunca es un campo que se sobreescribe directamente.
+- **Un solo catálogo de ítems**: productos terminados, materias primas e insumos son `Product` con distinto `type`, no tablas separadas — así `StockMovement` referencia un único `productId` y todo comparte el mismo Kardex.
 - **RBAC desde la base**: todo endpoint sensible pasa por un guard de roles/permisos reutilizable, no por chequeos ad-hoc dispersos en el código.
 - **Auditoría real**: cada acción relevante sobre una entidad queda registrada en `AuditLog` con el estado anterior y posterior.
 - **Consistencia transaccional**: operaciones críticas (ajustes de stock, cierre de órdenes de producción) usan transacciones de Prisma con nivel de aislamiento explícito para evitar condiciones de carrera.
@@ -183,7 +184,7 @@ pnpm dev:desktop
 
 ✅ **M0** y **M1 (Backend: Auth + RBAC)** cerrados. El backend tiene: Prisma conectado a PostgreSQL, schema de RBAC (`User`, `Role`, `Permission`) y `AuditLog` (ledger append-only) migrados; login JWT con contraseñas Argon2; guard RBAC reutilizable (`@Roles`/`@Permissions` + `RbacGuard`) que revalida contra la base de datos en cada request (no solo contra el token); CRUD de usuarios (solo Administrador) con auditoría en cada mutación; reseteo de contraseña por Administrador; seed del usuario Administrador inicial (`pnpm db:seed`); docs interactivos en `/docs` (Swagger/OpenAPI); y CI que corre lint, tests (26 tests, 6 suites), `pnpm audit` y build en cada push/PR, más Dependabot semanal. Una revisión de seguridad de cierre (`/security-review`) encontró y corrigió un hallazgo real (JWT sin revalidación — ver [issue #79](https://github.com/TomasPosada0626/opera/issues/79)).
 
-🚧 En **M2 - Inventario + Kardex**: el schema de `Warehouse` (bodegas) ya está migrado y su CRUD funciona (lectura abierta a cualquier usuario autenticado, creación/edición/desactivación solo Administrador, con auditoría); falta productos, Kardex append-only, transacciones consistentes, filtros reutilizables y alertas de stock.
+🚧 En **M2 - Inventario + Kardex**: `Warehouse` (bodegas) ya está migrado y con CRUD (lectura abierta a cualquier usuario autenticado, escritura solo Administrador, con auditoría). El catálogo de productos (`Product`, `Category`, `Unit`) también está migrado — productos terminados, materias primas e insumos son un mismo `Product` con distinto `type`, no tablas separadas, para que todo comparta un único Kardex; falta CRUD de catálogo, Kardex append-only, transacciones consistentes, filtros reutilizables y alertas de stock.
 
 ## Seguimiento del trabajo
 
