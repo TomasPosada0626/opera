@@ -1,0 +1,79 @@
+import { useState } from 'react';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useProducts } from '../../hooks/useProducts';
+import type { Product } from '../../types/product';
+
+interface ProductPickerProps {
+  value: Product | null;
+  onChange: (product: Product | null) => void;
+  error?: string;
+}
+
+// Buscador simple en vez de un <select> con todo el catálogo: con más de
+// unas pocas decenas de productos un <select> plano deja de ser usable.
+export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 300);
+  const productsQuery = useProducts({
+    page: 1,
+    pageSize: 10,
+    search: debouncedSearch,
+  });
+  const showResults = search.length > 0;
+
+  if (value) {
+    return (
+      <div className="border-line bg-surface flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+        <span className="text-ink">
+          {value.sku} — {value.name}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          className="text-accent hover:text-accent-hover text-xs font-medium"
+        >
+          Cambiar
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Buscar producto por nombre o SKU…"
+        aria-label="Buscar producto"
+        aria-invalid={!!error}
+        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger w-full rounded-md border px-3 py-2 text-sm outline-none"
+      />
+      {showResults && (
+        <ul className="border-line bg-surface-raised absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg">
+          {productsQuery.data && productsQuery.data.data.length === 0 ? (
+            <li className="text-ink-muted px-3 py-2 text-sm">
+              Sin resultados.
+            </li>
+          ) : (
+            productsQuery.data?.data.map((product) => (
+              <li key={product.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(product);
+                    setSearch('');
+                  }}
+                  className="hover:bg-chrome text-ink w-full px-3 py-2 text-left text-sm"
+                >
+                  {product.sku} — {product.name}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+      {error && <p className="text-danger mt-1 text-xs">{error}</p>}
+    </div>
+  );
+}

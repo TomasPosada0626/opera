@@ -25,5 +25,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    // Node 22+ trae su propio `localStorage` global experimental (detrás de
+    // --localstorage-file, si no queda `undefined`) que tapa el de jsdom en
+    // vez de dejarlo pasar — auth-token.ts necesita el de jsdom para
+    // leer/escribir el JWT. Desactivarlo en los workers de test destapa el
+    // de jsdom.
+    execArgv: ['--no-experimental-webstorage'],
   },
 });

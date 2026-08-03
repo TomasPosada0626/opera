@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Badge } from '../components/ui/Badge';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
+import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
+import { MovementForm } from '../components/inventory/MovementForm';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useProducts } from '../hooks/useProducts';
 import { useStockSummary } from '../hooks/useStockSummary';
+import { getCurrentUser } from '../lib/current-user';
 import type { Product } from '../types/product';
 
 const PAGE_SIZE = 20;
@@ -18,7 +21,9 @@ const productTypeLabels: Record<Product['type'], string> = {
 function InventoryPage() {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
+  const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const search = useDebouncedValue(searchInput, 300);
+  const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
   const productsQuery = useProducts({ page, pageSize: PAGE_SIZE, search });
   const products = productsQuery.data?.data ?? [];
@@ -71,11 +76,22 @@ function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-ink text-xl font-medium">Inventario</h1>
-        <p className="text-ink-muted mt-1 text-sm">
-          Catálogo de productos y stock actual.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-ink text-xl font-medium">Inventario</h1>
+          <p className="text-ink-muted mt-1 text-sm">
+            Catálogo de productos y stock actual.
+          </p>
+        </div>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setIsMovementModalOpen(true)}
+            className="bg-accent text-on-accent hover:bg-accent-hover shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+          >
+            Nuevo movimiento
+          </button>
+        )}
       </div>
 
       <input
@@ -101,6 +117,15 @@ function InventoryPage() {
           totalPages={productsQuery.data.meta.totalPages}
           onPageChange={setPage}
         />
+      )}
+
+      {isMovementModalOpen && (
+        <Modal
+          title="Nuevo movimiento de inventario"
+          onClose={() => setIsMovementModalOpen(false)}
+        >
+          <MovementForm onSuccess={() => setIsMovementModalOpen(false)} />
+        </Modal>
       )}
     </div>
   );
