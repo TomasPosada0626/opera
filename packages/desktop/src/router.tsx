@@ -1,9 +1,14 @@
 import { createHashRouter, redirect } from 'react-router';
 import RootLayout from './layouts/RootLayout';
+import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import InventoryPage from './pages/InventoryPage';
+import ProductionOrdersPage from './pages/ProductionOrdersPage';
+import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { getAuthToken } from './lib/auth-token';
+import { getCurrentUser } from './lib/current-user';
 
 // HashRouter (no BrowserRouter): la app empaquetada carga desde file://, sin
 // servidor que resuelva rutas de historial en un refresh — el hash sí
@@ -19,12 +24,25 @@ export const router = createHashRouter([
         element: <LoginPage />,
       },
       {
-        path: '/',
-        // Sin sesión: nunca mostrar el dashboard sin pasar por login primero.
-        // Esto es solo la verificación mínima ("¿hay token?") — la
-        // navegación real según rol/permisos llega en #41.
+        element: <AppLayout />,
+        // Un solo loader en el layout protege TODAS sus rutas hijas — no
+        // hay que repetir "¿hay token?" en cada una (#41).
         loader: () => (getAuthToken() ? null : redirect('/login')),
-        element: <DashboardPage />,
+        children: [
+          { path: '/', element: <DashboardPage /> },
+          { path: '/inventario', element: <InventoryPage /> },
+          { path: '/produccion', element: <ProductionOrdersPage /> },
+          {
+            path: '/usuarios',
+            // Ocultar el ítem del sidebar es UX, no seguridad — la
+            // seguridad real ya la hace el backend (@Roles('ADMIN') en
+            // /users desde M1). Este loader es la versión de "no dejar
+            // llegar por URL directa" del mismo filtro, no un reemplazo.
+            loader: () =>
+              getCurrentUser()?.roles.includes('ADMIN') ? null : redirect('/'),
+            element: <UsersPage />,
+          },
+        ],
       },
       { path: '*', element: <NotFoundPage /> },
     ],
