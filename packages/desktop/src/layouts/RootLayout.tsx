@@ -1,15 +1,12 @@
 import { Outlet } from 'react-router';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
 
-// Shell mínimo — la navegación real según rol (sidebar/menú) llega en #41.
-// El switch de tema vive aquí porque es una preferencia global, visible en
-// cualquier pantalla (incluido login), no algo específico de una sola vista.
+// Shell mínimo que envuelve TODA la app, incluido /login. El switch de tema
+// vive en cada layout hijo (LoginPage, AppLayout) en vez de aquí — ponerlo
+// en este nivel lo duplicaría dentro de AppLayout, que ya tiene el suyo en
+// la topbar.
 function RootLayout() {
   return (
-    <div className="min-h-screen bg-surface text-ink">
-      <div className="fixed top-4 right-4 z-10">
-        <ThemeToggle />
-      </div>
+    <div className="bg-surface text-ink min-h-screen">
       <Outlet />
     </div>
   );

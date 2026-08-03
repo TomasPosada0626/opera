@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { TextField } from '../components/form/TextField';
+import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
 
@@ -38,7 +39,10 @@ function LoginPage() {
   });
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="relative flex min-h-screen items-center justify-center px-4">
+      <div className="fixed top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-1 text-center">
           <span className="text-2xl font-medium tracking-tight text-ink">
