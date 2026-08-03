@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -71,6 +72,19 @@ function InventoryPage() {
           <span>{label}</span>
         );
       },
+    },
+    {
+      key: 'kardex',
+      header: '',
+      className: 'text-right',
+      render: (product) => (
+        <Link
+          to={`/inventario/${product.id}/kardex`}
+          className="text-accent hover:text-accent-hover text-sm"
+        >
+          Ver Kardex
+        </Link>
+      ),
     },
   ];
 
