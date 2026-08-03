@@ -1,4 +1,4 @@
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 
@@ -8,3 +8,10 @@ import '@testing-library/jest-dom/vitest';
 afterEach(() => {
   cleanup();
 });
+
+// El default de 1000ms para findBy*/waitFor es ajustado para correr un solo
+// archivo; bajo `pnpm -r test` (Jest del backend y Vitest del desktop
+// compitiendo por CPU al mismo tiempo, igual que en CI) un findBy* real
+// puede tardar más que eso y fallar por timing, no por un bug — visto en
+// KardexPage.test.tsx.
+configure({ asyncUtilTimeout: 5000 });
