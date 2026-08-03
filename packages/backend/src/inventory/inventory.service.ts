@@ -227,6 +227,34 @@ export class InventoryService {
     }));
   }
 
+  // Para listados (#42): un solo groupBy en vez de N llamadas a getStock, una
+  // por fila de la tabla — mismo patrón que getLowStockProducts.
+  async getStockForProducts(productIds: string[], warehouseId?: string) {
+    if (productIds.length === 0) {
+      return [];
+    }
+
+    const grouped = await this.prisma.stockMovement.groupBy({
+      by: ['productId'],
+      where: {
+        productId: { in: productIds },
+        ...(warehouseId ? { warehouseId } : {}),
+      },
+      _sum: { quantity: true },
+    });
+    const stockByProduct = new Map(
+      grouped.map(({ productId, _sum }) => [
+        productId,
+        _sum.quantity ?? new Prisma.Decimal(0),
+      ]),
+    );
+
+    return productIds.map((productId) => ({
+      productId,
+      stock: stockByProduct.get(productId) ?? new Prisma.Decimal(0),
+    }));
+  }
+
   // Reporte, no un listado paginable: el umbral compara stock calculado
   // (agregado de StockMovement) contra minStock, algo que Prisma no puede
   // expresar en un WHERE — se filtra en memoria sobre el conjunto (ya acotado

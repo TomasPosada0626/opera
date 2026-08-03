@@ -21,6 +21,7 @@ import { CreateEntryDto } from './dto/create-entry.dto';
 import { CreateExitDto } from './dto/create-exit.dto';
 import { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 import { KardexQueryDto } from './dto/kardex-query.dto';
+import { StockSummaryQueryDto } from './dto/stock-summary-query.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -34,6 +35,14 @@ export class InventoryController {
   @Get('alertas/bajo-stock')
   getLowStockProducts() {
     return this.inventoryService.getLowStockProducts();
+  }
+
+  @Get('stock')
+  getStockSummary(@Query() query: StockSummaryQueryDto) {
+    return this.inventoryService.getStockForProducts(
+      query.productIds,
+      query.warehouseId,
+    );
   }
 
   @Get(':productId/stock')

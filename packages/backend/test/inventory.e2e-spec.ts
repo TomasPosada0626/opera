@@ -214,6 +214,45 @@ describe('Inventory (e2e)', () => {
       .expect(404);
   });
 
+  it('returns bulk stock for multiple products, defaulting products with no movements to zero (#42)', async () => {
+    const productWithStockId = await createProduct({
+      sku: `INV-BULK-A-${Date.now()}`,
+      name: 'Producto con stock',
+    });
+    const productWithoutStockId = await createProduct({
+      sku: `INV-BULK-B-${Date.now()}`,
+      name: 'Producto sin movimientos',
+    });
+
+    await request(app.getHttpServer())
+      .post('/inventory/entradas')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ productId: productWithStockId, warehouseId, quantity: 8 })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/inventory/stock')
+      .query({
+        productIds: `${productWithStockId},${productWithoutStockId}`,
+      })
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(200);
+
+    const body = response.body as { productId: string; stock: string }[];
+    expect(body).toEqual([
+      { productId: productWithStockId, stock: '8' },
+      { productId: productWithoutStockId, stock: '0' },
+    ]);
+  });
+
+  it('rejects a bulk stock request with a malformed productId (400)', async () => {
+    await request(app.getHttpServer())
+      .get('/inventory/stock')
+      .query({ productIds: 'not-a-uuid' })
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(400);
+  });
+
   it('reports a product in the low-stock alert once it falls below minStock, and excludes it once restocked', async () => {
     const productId = await createProduct({
       sku: `INV-LOWSTOCK-${Date.now()}`,
