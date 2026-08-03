@@ -123,6 +123,71 @@ describe('InventoryService', () => {
     });
   });
 
+  describe('getStockForProducts', () => {
+    it('returns an empty array without querying when given no productIds', async () => {
+      const result = await service.getStockForProducts([]);
+
+      expect(result).toEqual([]);
+      expect(prisma.stockMovement.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('returns the summed stock for a single product', async () => {
+      prisma.stockMovement.groupBy.mockResolvedValue([
+        { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(12) } },
+      ]);
+
+      const result = await service.getStockForProducts(['product-1']);
+
+      expect(
+        result.map(({ productId, stock }) => ({
+          productId,
+          stock: stock.toString(),
+        })),
+      ).toEqual([{ productId: 'product-1', stock: '12' }]);
+    });
+
+    it('returns stock for multiple products, preserving input order and defaulting missing ones to zero', async () => {
+      prisma.stockMovement.groupBy.mockResolvedValue([
+        { productId: 'product-2', _sum: { quantity: new Prisma.Decimal(5) } },
+      ]);
+
+      const result = await service.getStockForProducts([
+        'product-1',
+        'product-2',
+      ]);
+
+      expect(
+        result.map(({ productId, stock }) => ({
+          productId,
+          stock: stock.toString(),
+        })),
+      ).toEqual([
+        { productId: 'product-1', stock: '0' },
+        { productId: 'product-2', stock: '5' },
+      ]);
+      expect(prisma.stockMovement.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { productId: { in: ['product-1', 'product-2'] } },
+        }),
+      );
+    });
+
+    it('scopes the sum to a single warehouse when warehouseId is given', async () => {
+      prisma.stockMovement.groupBy.mockResolvedValue([]);
+
+      await service.getStockForProducts(['product-1'], 'warehouse-1');
+
+      expect(prisma.stockMovement.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            productId: { in: ['product-1'] },
+            warehouseId: 'warehouse-1',
+          },
+        }),
+      );
+    });
+  });
+
   describe('createEntry', () => {
     const dto = {
       productId: 'product-1',
