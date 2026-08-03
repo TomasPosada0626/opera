@@ -3,8 +3,8 @@
 function DashboardPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-2">
-      <h1 className="text-3xl font-bold">Opera</h1>
-      <p className="text-slate-400">Dashboard (pendiente)</p>
+      <h1 className="text-ink text-3xl font-medium">Opera</h1>
+      <p className="text-ink-muted">Dashboard (pendiente)</p>
     </div>
   );
 }

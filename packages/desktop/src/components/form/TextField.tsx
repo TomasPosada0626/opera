@@ -22,7 +22,7 @@ export function TextField({
     <div className="flex flex-col gap-1">
       <label
         htmlFor={registration.name}
-        className="text-sm font-medium text-slate-300"
+        className="text-ink-muted text-sm font-medium"
       >
         {label}
       </label>
@@ -31,11 +31,11 @@ export function TextField({
         type={type}
         aria-invalid={!!error}
         aria-describedby={error ? `${registration.name}-error` : undefined}
-        className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-slate-400 aria-invalid:border-red-500"
+        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 outline-none"
         {...registration}
       />
       {error && (
-        <p id={`${registration.name}-error`} className="text-xs text-red-400">
+        <p id={`${registration.name}-error`} className="text-danger text-xs">
           {error.message}
         </p>
       )}

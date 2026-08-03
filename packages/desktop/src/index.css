@@ -1,1 +1,65 @@
 @import 'tailwindcss';
+
+/* Modo oscuro por clase (.dark en <html>), no solo prefers-color-scheme —
+   el switch de tema (#85) necesita poder forzar un modo sin importar la
+   preferencia del sistema. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tokens semánticos, no colores de Tailwind sueltos por componente: cada
+   nombre describe su PROPÓSITO (superficie, texto, línea, acento, estado),
+   no un tono concreto — todas las pantallas futuras (#41-45) los
+   reutilizan, y cambiar de tema es cambiar estos valores en un solo lugar.
+   Oscuro es el modo de referencia (validado con mockup real, ver #85);
+   claro se derivó con la misma lógica (bordes translúcidos, misma escala
+   de 4 niveles de texto, mismos 3 estados semánticos) ya que el brief de
+   diseño no lo cubrió. Ningún texto usa negro/blanco puro contra su fondo
+   — evita el contraste extremo que más cansa la vista en sesiones largas. */
+@theme {
+  --color-surface: #f8fafc;
+  --color-chrome: #f1f5f9;
+  --color-chrome-strong: #eef2f6;
+  --color-surface-raised: #ffffff;
+  --color-line: rgb(15 23 42 / 8%);
+  --color-line-strong: rgb(15 23 42 / 14%);
+  --color-ink: #0f172a;
+  --color-ink-secondary: #334155;
+  --color-ink-muted: #64748b;
+  --color-ink-faint: #94a3b8;
+  --color-accent: #d97706;
+  --color-accent-hover: #b45309;
+  --color-on-accent: #ffffff;
+  --color-success: #15803d;
+  --color-success-surface: rgb(34 197 94 / 10%);
+  --color-success-line: rgb(34 197 94 / 18%);
+  --color-warning: #b45309;
+  --color-warning-surface: rgb(245 158 11 / 10%);
+  --color-warning-line: rgb(245 158 11 / 18%);
+  --color-danger: #b91c1c;
+  --color-danger-surface: rgb(239 68 68 / 10%);
+  --color-danger-line: rgb(239 68 68 / 18%);
+}
+
+.dark {
+  --color-surface: #04060c;
+  --color-chrome: #05070f;
+  --color-chrome-strong: #070a13;
+  --color-surface-raised: #080b15;
+  --color-line: rgb(148 163 184 / 8%);
+  --color-line-strong: rgb(148 163 184 / 14%);
+  --color-ink: #f8fafc;
+  --color-ink-secondary: #cbd5e1;
+  --color-ink-muted: #94a3b8;
+  --color-ink-faint: #5b677c;
+  --color-accent: #f59e0b;
+  --color-accent-hover: #fbbf24;
+  --color-on-accent: #04060c;
+  --color-success: #6fcf9e;
+  --color-success-surface: rgb(111 207 158 / 10%);
+  --color-success-line: rgb(111 207 158 / 18%);
+  --color-warning: #f0b93f;
+  --color-warning-surface: rgb(245 158 11 / 10%);
+  --color-warning-line: rgb(245 158 11 / 18%);
+  --color-danger: #e0a3a3;
+  --color-danger-surface: rgb(224 138 138 / 10%);
+  --color-danger-line: rgb(224 138 138 / 18%);
+}
