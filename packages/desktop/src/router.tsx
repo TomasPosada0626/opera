@@ -4,6 +4,7 @@ import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import InventoryPage from './pages/InventoryPage';
+import KardexPage from './pages/KardexPage';
 import ProductionOrdersPage from './pages/ProductionOrdersPage';
 import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -31,6 +32,10 @@ export const router = createHashRouter([
         children: [
           { path: '/', element: <DashboardPage /> },
           { path: '/inventario', element: <InventoryPage /> },
+          {
+            path: '/inventario/:productId/kardex',
+            element: <KardexPage />,
+          },
           { path: '/produccion', element: <ProductionOrdersPage /> },
           {
             path: '/usuarios',
