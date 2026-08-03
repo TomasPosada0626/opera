@@ -70,5 +70,8 @@ jobs:
       - name: Typecheck desktop
         run: pnpm --filter desktop exec tsc
 
-      - name: Build desktop renderer + electron
-        run: pnpm --filter desktop exec vite build
+      - name: Test desktop
+        run: pnpm --filter desktop test
+
+      - name: Build desktop (renderer + electron + package installer)
+        run: pnpm --filter desktop build

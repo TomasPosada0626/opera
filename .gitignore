@@ -9,6 +9,12 @@ build/
 coverage/
 *.tsbuildinfo
 
+# electron-builder lee sus recursos de empaquetado (icono) de
+# packages/desktop/build/ — no es un directorio de output, así que la regla
+# genérica de arriba no debe taparlo (#46).
+!packages/desktop/build/
+!packages/desktop/build/**
+
 # Env
 .env
 .env.local
