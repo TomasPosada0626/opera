@@ -73,5 +73,11 @@ jobs:
       - name: Test desktop
         run: pnpm --filter desktop test
 
-      - name: Build desktop (renderer + electron + package installer)
-        run: pnpm --filter desktop build
+      - name: Build desktop (renderer + electron)
+        run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
+
+      # Sin --win, electron-builder empaqueta para el host (linux-unpacked
+      # aquí, no el instalador de Windows que #46 pide) — el runner es
+      # ubuntu-latest, así que hay que pedir el target explícitamente.
+      - name: Package Windows installer (cross-build from Linux)
+        run: pnpm --filter desktop exec electron-builder --win --publish=never
