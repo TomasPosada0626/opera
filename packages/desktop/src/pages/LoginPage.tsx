@@ -41,10 +41,10 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-1 text-center">
-          <span className="text-2xl font-bold tracking-tight text-slate-50">
+          <span className="text-2xl font-medium tracking-tight text-ink">
             Opera
           </span>
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-ink-muted">
             Gestión operativa empresarial
           </span>
         </div>
@@ -54,7 +54,7 @@ function LoginPage() {
             void handleSubmit((values) => loginMutation.mutate(values))(event)
           }
           noValidate
-          className="flex flex-col gap-4 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-xl shadow-black/20"
+          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-xl shadow-black/5 dark:shadow-black/20"
         >
           <TextField
             label="Correo"
@@ -72,7 +72,7 @@ function LoginPage() {
           {loginMutation.isError && (
             <p
               role="alert"
-              className="rounded-md bg-red-500/10 px-3 py-2 text-sm text-red-400"
+              className="bg-danger-surface text-danger rounded-md px-3 py-2 text-sm"
             >
               {loginMutation.error instanceof ApiError &&
               loginMutation.error.statusCode === 401
@@ -84,7 +84,7 @@ function LoginPage() {
           <button
             type="submit"
             disabled={loginMutation.isPending}
-            className="mt-2 rounded-md bg-amber-500 px-4 py-2 font-medium text-slate-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="bg-accent text-on-accent hover:bg-accent-hover mt-2 rounded-md px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loginMutation.isPending ? 'Ingresando…' : 'Ingresar'}
           </button>
