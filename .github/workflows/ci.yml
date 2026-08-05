@@ -76,8 +76,30 @@ jobs:
       - name: Build desktop (renderer + electron)
         run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
 
-      # Sin --win, electron-builder empaqueta para el host (linux-unpacked
-      # aquí, no el instalador de Windows que #46 pide) — el runner es
-      # ubuntu-latest, así que hay que pedir el target explícitamente.
-      - name: Package Windows installer (cross-build from Linux)
-        run: pnpm --filter desktop exec electron-builder --win --publish=never
+  package-windows:
+    # El instalador NSIS de Windows no se puede cross-compilar de forma
+    # confiable desde ubuntu-latest: electron-builder necesita Wine para
+    # correr signtool.exe/el compilador de NSIS, y el runner de Linux no lo
+    # trae instalado ("wine process failed ENOENT"). windows-latest lo
+    # construye nativo, sin Wine de por medio — más simple y representa de
+    # verdad lo que se empaqueta.
+    runs-on: windows-latest
+    needs: lint-test-build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package Windows installer
+        run: pnpm --filter desktop build
