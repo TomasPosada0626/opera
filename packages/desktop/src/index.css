@@ -5,15 +5,37 @@
    preferencia del sistema. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Paleta de marca (logo) — deliberadamente FUERA de @theme: son los colores
+   fijos del isométrico de Opera, no tokens de interfaz. No generan
+   utilidades de Tailwind (bg-brand-*, text-brand-*) a propósito, para que
+   nadie los use por error en componentes de UI en vez del acento ámbar del
+   sistema de diseño — son dos paletas con propósitos distintos (identidad
+   de marca vs. estados interactivos). Mismo valor en claro y oscuro: el
+   logo no cambia de color entre temas, solo el chrome a su alrededor. */
+:root {
+  --brand-navy: #1e3a5f;
+  --brand-blue: #3b82f6;
+  --brand-graphite: #2b2b2b;
+  --brand-white: #f8fafc;
+}
+
 /* Tokens semánticos, no colores de Tailwind sueltos por componente: cada
    nombre describe su PROPÓSITO (superficie, texto, línea, acento, estado),
-   no un tono concreto — todas las pantallas futuras (#41-45) los
-   reutilizan, y cambiar de tema es cambiar estos valores en un solo lugar.
-   Oscuro es el modo de referencia (validado con mockup real, ver #85);
-   claro se derivó con la misma lógica (bordes translúcidos, misma escala
-   de 4 niveles de texto, mismos 3 estados semánticos) ya que el brief de
-   diseño no lo cubrió. Ningún texto usa negro/blanco puro contra su fondo
-   — evita el contraste extremo que más cansa la vista en sesiones largas. */
+   no un tono concreto — todas las pantallas lo reutilizan, y cambiar de
+   tema es cambiar estos valores en un solo lugar.
+   Oscuro es el modo de referencia. La primera versión (#85) usaba un fondo
+   casi negro puro (#04060c) con muy poco contraste entre `surface` y
+   `surface-raised` (4 puntos de RGB, invisible en la práctica) — comparado
+   contra apps reales de referencia, leía como "genérico"/plano, no
+   profesional. Revisado: fondo slate real (no negro puro), y una
+   diferencia deliberada entre `surface` y `surface-raised` para que las
+   tarjetas/tablas se vean elevadas de verdad, no flotando en el vacío.
+   `accent-surface`/`accent-line` (mismo patrón que success/warning/danger)
+   existen para el estado activo del sidebar y usos similares — el acento
+   sólido queda reservado para UN botón primario por pantalla, no repetido
+   en cada elemento interactivo. Ningún texto usa negro/blanco puro contra
+   su fondo — evita el contraste extremo que más cansa la vista en
+   sesiones largas. */
 @theme {
   --color-surface: #f8fafc;
   --color-chrome: #f1f5f9;
@@ -28,6 +50,8 @@
   --color-accent: #d97706;
   --color-accent-hover: #b45309;
   --color-on-accent: #ffffff;
+  --color-accent-surface: rgb(217 119 6 / 10%);
+  --color-accent-line: rgb(217 119 6 / 22%);
   --color-success: #15803d;
   --color-success-surface: rgb(34 197 94 / 10%);
   --color-success-line: rgb(34 197 94 / 18%);
@@ -40,26 +64,28 @@
 }
 
 .dark {
-  --color-surface: #04060c;
-  --color-chrome: #05070f;
-  --color-chrome-strong: #070a13;
-  --color-surface-raised: #080b15;
-  --color-line: rgb(148 163 184 / 8%);
-  --color-line-strong: rgb(148 163 184 / 14%);
-  --color-ink: #f8fafc;
+  --color-surface: #0b0f19;
+  --color-chrome: #0a0e18;
+  --color-chrome-strong: #0d1220;
+  --color-surface-raised: #141a2b;
+  --color-line: rgb(148 163 184 / 12%);
+  --color-line-strong: rgb(148 163 184 / 22%);
+  --color-ink: #f1f5f9;
   --color-ink-secondary: #cbd5e1;
   --color-ink-muted: #94a3b8;
   --color-ink-faint: #5b677c;
   --color-accent: #f59e0b;
   --color-accent-hover: #fbbf24;
-  --color-on-accent: #04060c;
+  --color-on-accent: #0b0f19;
+  --color-accent-surface: rgb(245 158 11 / 14%);
+  --color-accent-line: rgb(245 158 11 / 28%);
   --color-success: #6fcf9e;
-  --color-success-surface: rgb(111 207 158 / 10%);
-  --color-success-line: rgb(111 207 158 / 18%);
+  --color-success-surface: rgb(111 207 158 / 12%);
+  --color-success-line: rgb(111 207 158 / 22%);
   --color-warning: #f0b93f;
-  --color-warning-surface: rgb(245 158 11 / 10%);
-  --color-warning-line: rgb(245 158 11 / 18%);
+  --color-warning-surface: rgb(245 158 11 / 12%);
+  --color-warning-line: rgb(245 158 11 / 22%);
   --color-danger: #e0a3a3;
-  --color-danger-surface: rgb(224 138 138 / 10%);
-  --color-danger-line: rgb(224 138 138 / 18%);
+  --color-danger-surface: rgb(224 138 138 / 12%);
+  --color-danger-line: rgb(224 138 138 / 22%);
 }

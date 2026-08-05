@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Package, Search } from 'lucide-react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useProducts } from '../../hooks/useProducts';
 import type { Product } from '../../types/product';
@@ -24,13 +25,14 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
   if (value) {
     return (
       <div className="border-line bg-surface flex items-center justify-between rounded-md border px-3 py-2 text-sm">
-        <span className="text-ink">
+        <span className="text-ink flex items-center gap-2">
+          <Package className="text-ink-faint h-4 w-4 shrink-0" />
           {value.sku} — {value.name}
         </span>
         <button
           type="button"
           onClick={() => onChange(null)}
-          className="text-accent hover:text-accent-hover text-xs font-medium"
+          className="text-ink-muted hover:text-ink text-xs font-medium"
         >
           Cambiar
         </button>
@@ -40,6 +42,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
 
   return (
     <div className="relative">
+      <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
       <input
         type="text"
         value={search}
@@ -47,7 +50,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
         placeholder="Buscar producto por nombre o SKU…"
         aria-label="Buscar producto"
         aria-invalid={!!error}
-        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger w-full rounded-md border px-3 py-2 text-sm outline-none"
+        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none"
       />
       {showResults && (
         <ul className="border-line bg-surface-raised absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg">

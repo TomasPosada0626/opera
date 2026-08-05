@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
@@ -103,9 +104,10 @@ function KardexPage() {
       <div>
         <Link
           to="/inventario"
-          className="text-accent hover:text-accent-hover text-sm"
+          className="text-ink-muted hover:text-ink inline-flex items-center gap-1.5 text-sm transition-colors"
         >
-          ← Volver a inventario
+          <ArrowLeft className="h-4 w-4" />
+          Volver a inventario
         </Link>
         <h1 className="text-ink mt-2 text-xl font-medium">
           Kardex{productQuery.data ? ` — ${productQuery.data.name}` : ''}
@@ -121,7 +123,7 @@ function KardexPage() {
         value={warehouseId}
         onChange={(event) => handleWarehouseChange(event.target.value)}
         aria-label="Filtrar por bodega"
-        className="border-line bg-surface text-ink focus:border-accent w-full max-w-xs rounded-md border px-3 py-2 text-sm outline-none"
+        className="border-line bg-surface-raised text-ink focus:border-accent w-full max-w-xs rounded-md border px-3 py-2 text-sm outline-none"
       >
         <option value="">Todas las bodegas</option>
         {warehousesQuery.data?.data.map((warehouse) => (

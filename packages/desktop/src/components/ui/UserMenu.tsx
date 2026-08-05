@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { LogOut } from 'lucide-react';
 import type { CurrentUser } from '../../lib/current-user';
 
 interface UserMenuProps {
@@ -73,8 +74,9 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
             type="button"
             role="menuitem"
             onClick={onLogout}
-            className="text-ink hover:bg-surface mt-1 w-full rounded-md px-3 py-2 text-left text-sm transition-colors"
+            className="text-ink hover:bg-surface mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors"
           >
+            <LogOut className="h-4 w-4" />
             Cerrar sesión
           </button>
         </div>

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Notebook, Plus, Search } from 'lucide-react';
 import { Link } from 'react-router';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
@@ -80,9 +82,10 @@ function InventoryPage() {
       render: (product) => (
         <Link
           to={`/inventario/${product.id}/kardex`}
-          className="text-accent hover:text-accent-hover text-sm"
+          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
         >
-          Ver Kardex
+          <Notebook className="h-4 w-4" />
+          Kardex
         </Link>
       ),
     },
@@ -98,24 +101,27 @@ function InventoryPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            type="button"
+          <Button
             onClick={() => setIsMovementModalOpen(true)}
-            className="bg-accent text-on-accent hover:bg-accent-hover shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+            className="shrink-0"
           >
+            <Plus className="h-4 w-4" />
             Nuevo movimiento
-          </button>
+          </Button>
         )}
       </div>
 
-      <input
-        type="search"
-        value={searchInput}
-        onChange={(event) => handleSearchChange(event.target.value)}
-        placeholder="Buscar por nombre o SKU…"
-        aria-label="Buscar productos"
-        className="border-line bg-surface text-ink focus:border-accent w-full max-w-sm rounded-md border px-3 py-2 text-sm outline-none"
-      />
+      <div className="relative w-full max-w-sm">
+        <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(event) => handleSearchChange(event.target.value)}
+          placeholder="Buscar por nombre o SKU…"
+          aria-label="Buscar productos"
+          className="border-line bg-surface-raised text-ink focus:border-accent w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none"
+        />
+      </div>
 
       <DataTable
         columns={columns}

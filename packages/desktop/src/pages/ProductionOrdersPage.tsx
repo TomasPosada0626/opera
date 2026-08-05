@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
@@ -100,13 +102,13 @@ function ProductionOrdersPage() {
           </p>
         </div>
         {isAdmin && (
-          <button
-            type="button"
+          <Button
             onClick={() => setIsCreateModalOpen(true)}
-            className="bg-accent text-on-accent hover:bg-accent-hover shrink-0 rounded-md px-4 py-2 text-sm font-medium transition-colors"
+            className="shrink-0"
           >
+            <Plus className="h-4 w-4" />
             Nueva orden
-          </button>
+          </Button>
         )}
       </div>
 

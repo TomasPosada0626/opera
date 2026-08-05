@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 
 interface ModalProps {
   title: string;
@@ -30,17 +31,17 @@ export function Modal({ title, onClose, children }: ModalProps) {
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
-        className="border-line bg-surface-raised w-full max-w-md rounded-xl border p-6 shadow-xl shadow-black/10 dark:shadow-black/30"
+        className="border-line bg-surface-raised w-full max-w-md rounded-xl border p-6 shadow-xl shadow-black/20 dark:shadow-black/60"
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="border-line mb-4 flex items-center justify-between border-b pb-4">
           <h2 className="text-ink text-lg font-medium">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="text-ink-muted hover:text-ink text-xl leading-none"
+            className="text-ink-muted hover:text-ink hover:bg-chrome-strong rounded-md p-1 transition-colors"
           >
-            ×
+            <X className="h-4.5 w-4.5" />
           </button>
         </div>
         {children}

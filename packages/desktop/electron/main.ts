@@ -26,6 +26,11 @@ let win: BrowserWindow | null;
 function createWindow() {
   win = new BrowserWindow({
     title: 'Opera',
+    // En empaquetado, win.icon (electron-builder.json5) ya deja el ícono
+    // grabado en el .exe — esto además cubre `pnpm dev` (sin empaquetar,
+    // corriendo directo contra Electron), donde si no se pasa nada aquí
+    // se ve el ícono genérico de Electron en la barra de tareas.
+    icon: path.join(process.env.VITE_PUBLIC, 'icon-256.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Factory } from 'lucide-react';
 import { z } from 'zod';
 import { ProductPicker } from '../inventory/ProductPicker';
+import { Button } from '../ui/Button';
 import { useCreateProductionOrder } from '../../hooks/useCreateProductionOrder';
 import { useWarehouses } from '../../hooks/useWarehouses';
 import { ApiError } from '../../lib/api-client';
@@ -131,13 +133,10 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={createOrder.isPending}
-        className="bg-accent text-on-accent hover:bg-accent-hover mt-1 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-      >
+      <Button type="submit" disabled={createOrder.isPending} className="mt-1">
+        <Factory className="h-4 w-4" />
         {createOrder.isPending ? 'Creando…' : 'Crear orden'}
-      </button>
+      </Button>
     </form>
   );
 }

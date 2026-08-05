@@ -1,9 +1,12 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
+import { LogIn } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
 import { TextField } from '../components/form/TextField';
+import { Button } from '../components/ui/Button';
+import { Logo } from '../components/ui/Logo';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
@@ -44,10 +47,8 @@ function LoginPage() {
         <ThemeToggle />
       </div>
       <div className="w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-1 text-center">
-          <span className="text-2xl font-medium tracking-tight text-ink">
-            Opera
-          </span>
+        <div className="mb-8 flex flex-col items-center gap-2 text-center">
+          <Logo size={48} showWordmark />
           <span className="text-sm text-ink-muted">
             Gestión operativa empresarial
           </span>
@@ -58,7 +59,7 @@ function LoginPage() {
             void handleSubmit((values) => loginMutation.mutate(values))(event)
           }
           noValidate
-          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-xl shadow-black/5 dark:shadow-black/20"
+          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-xl shadow-black/10 dark:shadow-black/60"
         >
           <TextField
             label="Correo"
@@ -85,13 +86,14 @@ function LoginPage() {
             </p>
           )}
 
-          <button
+          <Button
             type="submit"
             disabled={loginMutation.isPending}
-            className="bg-accent text-on-accent hover:bg-accent-hover mt-2 rounded-md px-4 py-2 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2"
           >
+            <LogIn className="h-4 w-4" />
             {loginMutation.isPending ? 'Ingresando…' : 'Ingresar'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>
