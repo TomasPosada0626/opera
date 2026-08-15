@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -21,6 +23,11 @@ import { ProductionOrdersModule } from './production/production-orders.module';
       // que Nest resuelva ningún módulo — evita depender del orden de inicialización.
       ignoreEnvFile: true,
     }),
+    // Límite global por defecto para toda la API; /auth/login pisa esto con
+    // un límite propio más estricto vía @Throttle (ver AuthController).
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 100 }],
+    }),
     PrismaModule,
     AuditModule,
     AuthModule,
@@ -33,6 +40,6 @@ import { ProductionOrdersModule } from './production/production-orders.module';
     ProductionOrdersModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

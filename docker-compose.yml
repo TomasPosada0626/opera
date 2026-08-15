@@ -8,7 +8,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opera}
       POSTGRES_DB: ${POSTGRES_DB:-opera}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      # Bindeado a loopback a propósito: el backend se conecta desde el mismo
+      # host (Docker) o desde dentro del contenedor, y pnpm db:studio/db:migrate
+      # corren en la máquina local. Publicar en 0.0.0.0 dejaría la base de datos
+      # alcanzable por cualquier equipo de la LAN, saltándose la API, el guard
+      # RBAC y el AuditLog por completo.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - opera_postgres_data:/var/lib/postgresql/data
     healthcheck:
