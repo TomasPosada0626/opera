@@ -16,6 +16,9 @@ const variantClasses: Record<ButtonVariant, string> = {
 // El acento sólido (variant="primary") queda reservado para UN botón por
 // pantalla — el resto usa "secondary"/"ghost", nunca el mismo naranja
 // repetido en cada elemento clickeable (ver ajuste de diseño post-#46).
+// focus-visible (no focus a secas) — el anillo aparece por teclado, no en
+// cada click de mouse; sin esto, Tab por la app no mostraba dónde está el
+// foco en ningún botón.
 export function Button({
   variant = 'primary',
   className = '',
@@ -25,7 +28,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${variantClasses[variant]} ${className}`}
+      className={`focus-visible:ring-accent focus-visible:ring-offset-surface inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${variantClasses[variant]} ${className}`}
       {...props}
     />
   );

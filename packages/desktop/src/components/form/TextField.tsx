@@ -31,7 +31,7 @@ export function TextField({
         type={type}
         aria-invalid={!!error}
         aria-describedby={error ? `${registration.name}-error` : undefined}
-        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 outline-none"
+        className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 outline-none focus:ring-2"
         {...registration}
       />
       {error && (

@@ -50,7 +50,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="bg-accent text-on-accent flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium"
+        className="bg-accent text-on-accent focus-visible:ring-accent focus-visible:ring-offset-chrome flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
       >
         {initials(user.email)}
       </button>
@@ -58,7 +58,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
       {open && (
         <div
           role="menu"
-          className="border-line bg-surface-raised absolute right-0 z-20 mt-2 w-56 rounded-lg border p-1 shadow-xl shadow-black/10 dark:shadow-black/30"
+          className="border-line bg-surface-raised absolute right-0 z-20 mt-2 w-56 rounded-lg border p-1 shadow-xl shadow-black/10 dark:shadow-black/60"
         >
           <div className="border-line border-b px-3 py-2">
             <p className="text-ink truncate text-sm font-medium">
@@ -74,7 +74,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
             type="button"
             role="menuitem"
             onClick={onLogout}
-            className="text-ink hover:bg-surface mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors"
+            className="text-ink hover:bg-surface focus-visible:ring-accent mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2"
           >
             <LogOut className="h-4 w-4" />
             Cerrar sesión

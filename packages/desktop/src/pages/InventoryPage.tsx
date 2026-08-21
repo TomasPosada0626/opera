@@ -119,7 +119,7 @@ function InventoryPage() {
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="Buscar por nombre o SKU…"
           aria-label="Buscar productos"
-          className="border-line bg-surface-raised text-ink focus:border-accent w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none"
+          className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
         />
       </div>
 

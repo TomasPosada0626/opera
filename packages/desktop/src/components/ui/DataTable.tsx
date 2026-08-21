@@ -30,7 +30,7 @@ export function DataTable<T>({
   emptyMessage = 'Sin resultados.',
 }: DataTableProps<T>) {
   return (
-    <div className="border-line bg-surface-raised overflow-hidden rounded-xl border shadow-sm shadow-black/5 dark:shadow-black/40">
+    <div className="border-line bg-surface-raised overflow-hidden rounded-xl border shadow-md shadow-black/[0.06] dark:shadow-black/50">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>

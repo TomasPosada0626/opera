@@ -50,7 +50,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
         placeholder="Buscar producto por nombre o SKU…"
         aria-label="Buscar producto"
         aria-invalid={!!error}
-        className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none"
+        className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
       />
       {showResults && (
         <ul className="border-line bg-surface-raised absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg">

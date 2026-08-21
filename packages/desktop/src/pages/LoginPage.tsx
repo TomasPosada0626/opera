@@ -42,11 +42,19 @@ function LoginPage() {
   });
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
+      {/* Foco de luz ambiental detrás de la tarjeta — la pantalla de login
+          es la primera impresión del producto; sin esto es un formulario
+          flotando en el vacío. Deliberadamente sutil (blur enorme, opacidad
+          baja): da profundidad sin volverse un fondo de marketing. */}
+      <div
+        aria-hidden="true"
+        className="bg-accent/[0.14] dark:bg-accent/[0.2] pointer-events-none absolute top-[38%] left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[110px]"
+      />
       <div className="fixed top-4 right-4">
         <ThemeToggle />
       </div>
-      <div className="w-full max-w-sm">
+      <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
           <Logo size={48} showWordmark />
           <span className="text-sm text-ink-muted">
@@ -59,7 +67,7 @@ function LoginPage() {
             void handleSubmit((values) => loginMutation.mutate(values))(event)
           }
           noValidate
-          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-xl shadow-black/10 dark:shadow-black/60"
+          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-2xl shadow-black/10 dark:shadow-black/70"
         >
           <TextField
             label="Correo"

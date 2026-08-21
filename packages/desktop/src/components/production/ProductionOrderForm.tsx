@@ -87,7 +87,7 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
         <select
           id="warehouseId"
           {...register('warehouseId')}
-          className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           aria-invalid={!!errors.warehouseId}
         >
           <option value="">Selecciona una bodega</option>
@@ -115,7 +115,7 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
           step="any"
           {...register('quantity', { valueAsNumber: true })}
           aria-invalid={!!errors.quantity}
-          className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
         />
         {errors.quantity && (
           <p className="text-danger text-xs">{errors.quantity.message}</p>

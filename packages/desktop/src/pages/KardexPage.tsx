@@ -123,7 +123,7 @@ function KardexPage() {
         value={warehouseId}
         onChange={(event) => handleWarehouseChange(event.target.value)}
         aria-label="Filtrar por bodega"
-        className="border-line bg-surface-raised text-ink focus:border-accent w-full max-w-xs rounded-md border px-3 py-2 text-sm outline-none"
+        className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full max-w-xs rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
       >
         <option value="">Todas las bodegas</option>
         {warehousesQuery.data?.data.map((warehouse) => (

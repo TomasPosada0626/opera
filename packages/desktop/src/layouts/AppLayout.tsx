@@ -28,10 +28,10 @@ const navItems: NavItem[] = [
 
 // El acento sólido queda para un botón primario por pantalla — el ítem
 // activo del menú usa un fondo tenue + texto de acento, no un bloque
-// naranja sólido (ver ajuste de diseño post-#46).
+// azul sólido (ver ajuste de diseño post-#46).
 function navLinkClassName(isActive: boolean): string {
   const base =
-    'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors';
+    'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-chrome';
   return isActive
     ? `${base} bg-accent-surface text-accent font-medium`
     : `${base} text-ink-muted hover:text-ink hover:bg-chrome-strong`;

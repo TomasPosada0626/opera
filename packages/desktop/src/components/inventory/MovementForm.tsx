@@ -102,7 +102,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
         <select
           id="type"
           {...register('type')}
-          className="border-line bg-surface text-ink focus:border-accent rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
         >
           <option value="ENTRADA">Entrada</option>
           <option value="SALIDA">Salida</option>
@@ -134,7 +134,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
         <select
           id="warehouseId"
           {...register('warehouseId')}
-          className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           aria-invalid={!!errors.warehouseId}
         >
           <option value="">Selecciona una bodega</option>
@@ -162,7 +162,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
           step="any"
           {...register('quantity', { valueAsNumber: true })}
           aria-invalid={!!errors.quantity}
-          className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
         />
         {errors.quantity && (
           <p className="text-danger text-xs">{errors.quantity.message}</p>
@@ -186,7 +186,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
                 value === '' ? undefined : Number(value),
             })}
             aria-invalid={!!errors.unitCost}
-            className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           />
           {errors.unitCost && (
             <p className="text-danger text-xs">{errors.unitCost.message}</p>
@@ -203,7 +203,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
           type="text"
           {...register('reason')}
           aria-invalid={!!errors.reason}
-          className="border-line bg-surface text-ink focus:border-accent aria-invalid:border-danger rounded-md border px-3 py-2 text-sm outline-none"
+          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
         />
         {errors.reason && (
           <p className="text-danger text-xs">{errors.reason.message}</p>
