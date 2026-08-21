@@ -259,3 +259,43 @@ model ProductionOrder {
   @@index([warehouseId])
   @@index([status])
 }
+
+// Empieza M5. Customer y Supplier son modelos separados, no un Party
+// unificado con un flag isCustomer/isSupplier: sus relaciones downstream
+// divergen desde el día uno (Customer -> Order/Remission/Payment #50-52/72,
+// Supplier -> PurchaseOrder #68-70) y una empresa que es cliente Y
+// proveedor a la vez es una fila en cada tabla, no un caso especial de una
+// sola. taxId es @unique pero nullable a propósito: Postgres no choca dos
+// NULL entre sí, así que sigue evitando duplicados por NIT/RUT cuando el
+// dato existe, sin exigirlo en clientes/proveedores informales que no lo
+// tengan a mano al crearlos. Historial de pedidos/última compra (pedido en
+// la nota de visión de M5) no vive aquí como campo — se deriva de Order
+// (#50) cuando exista, igual que el stock se deriva de StockMovement.
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  taxId     String?  @unique
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Precio específico por producto de un proveedor (mencionado en la nota de
+// visión de M5: "editar el precio de un producto que vende un proveedor")
+// queda para cuando #68 (PurchaseOrder) defina si vive en su propia línea
+// de orden o necesita una tabla propia — no se modela aquí para no adivinar
+// esa forma antes de tener el caso de uso real delante.
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String
+  taxId     String?  @unique
+  email     String?
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
