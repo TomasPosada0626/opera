@@ -1,5 +1,11 @@
 import type { ComponentType } from 'react';
-import { LayoutDashboard, Package, Factory, Users } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Package,
+  Factory,
+  Contact,
+  Users,
+} from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { Logo } from '../components/ui/Logo';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -23,6 +29,7 @@ const navItems: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/inventario', label: 'Inventario', icon: Package },
   { to: '/produccion', label: 'Producción', icon: Factory },
+  { to: '/clientes', label: 'Clientes', icon: Contact },
   { to: '/usuarios', label: 'Usuarios', icon: Users, requiresRole: 'ADMIN' },
 ];
 
