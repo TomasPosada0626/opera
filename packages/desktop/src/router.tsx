@@ -8,7 +8,7 @@ import KardexPage from './pages/KardexPage';
 import ProductionOrdersPage from './pages/ProductionOrdersPage';
 import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
-import { getAuthToken } from './lib/auth-token';
+import { getAuthToken, initAuthToken } from './lib/auth-token';
 import { getCurrentUser } from './lib/current-user';
 
 // HashRouter (no BrowserRouter): la app empaquetada carga desde file://, sin
@@ -21,14 +21,24 @@ export const router = createHashRouter([
       {
         path: '/login',
         // Ya con sesión: /login no tiene nada que hacer, manda al dashboard.
-        loader: () => (getAuthToken() ? redirect('/') : null),
+        // `createHashRouter` dispara el loader de la ruta inicial al
+        // crearse (import-time de este módulo), antes de que main.tsx
+        // termine de hidratar el token — hay que esperar esa hidratación
+        // aquí mismo, no basta con esperarla una vez en main.tsx.
+        loader: async () => {
+          await initAuthToken();
+          return getAuthToken() ? redirect('/') : null;
+        },
         element: <LoginPage />,
       },
       {
         element: <AppLayout />,
         // Un solo loader en el layout protege TODAS sus rutas hijas — no
         // hay que repetir "¿hay token?" en cada una (#41).
-        loader: () => (getAuthToken() ? null : redirect('/login')),
+        loader: async () => {
+          await initAuthToken();
+          return getAuthToken() ? null : redirect('/login');
+        },
         children: [
           { path: '/', element: <DashboardPage /> },
           { path: '/inventario', element: <InventoryPage /> },
@@ -43,8 +53,15 @@ export const router = createHashRouter([
             // seguridad real ya la hace el backend (@Roles('ADMIN') en
             // /users desde M1). Este loader es la versión de "no dejar
             // llegar por URL directa" del mismo filtro, no un reemplazo.
-            loader: () =>
-              getCurrentUser()?.roles.includes('ADMIN') ? null : redirect('/'),
+            // Los loaders hijos corren en paralelo con el del layout
+            // padre (no en secuencia), así que también necesita esperar
+            // la hidratación por su cuenta.
+            loader: async () => {
+              await initAuthToken();
+              return getCurrentUser()?.roles.includes('ADMIN')
+                ? null
+                : redirect('/');
+            },
             element: <UsersPage />,
           },
         ],

@@ -1,5 +1,6 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
+import { clearToken, readToken, writeToken } from './secure-token-store';
 
 // The built directory structure
 //
@@ -36,10 +37,6 @@ function createWindow() {
     },
   });
 
-  win.webContents.on('did-finish-load', () => {
-    win?.webContents.send('main-process-message', new Date().toLocaleString());
-  });
-
   if (VITE_DEV_SERVER_URL) {
     void win.loadURL(VITE_DEV_SERVER_URL);
   } else {
@@ -59,5 +56,12 @@ app.on('activate', () => {
     createWindow();
   }
 });
+
+// Único secreto que cruza el puente IPC hoy (#92) — el JWT de sesión,
+// cifrado en disco vía `safeStorage` en el proceso principal en vez de
+// `localStorage` del renderer.
+ipcMain.handle('auth-token:get', () => readToken());
+ipcMain.handle('auth-token:set', (_event, token: string) => writeToken(token));
+ipcMain.handle('auth-token:clear', () => clearToken());
 
 void app.whenReady().then(createWindow);

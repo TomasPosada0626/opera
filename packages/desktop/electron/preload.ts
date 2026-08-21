@@ -1,28 +1,12 @@
-import { ipcRenderer, contextBridge } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args;
-    // `Parameters<typeof ipcRenderer.X>` resolves to Electron's loosely-typed
-    // overload, so the rest args come back as `any[]` — not a real unsafe call.
-    return ipcRenderer.on(channel, (event, ...args) =>
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      listener(event, ...args),
-    );
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args;
-    return ipcRenderer.off(channel, ...omit);
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return ipcRenderer.send(channel, ...omit);
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return ipcRenderer.invoke(channel, ...omit);
-  },
+// API acotada por canal (#92) — antes exponía `ipcRenderer` completo
+// (on/off/send/invoke) vía contextBridge sin que nada en el renderer lo
+// usara. Hoy el único secreto que cruza el puente es el JWT de sesión, así
+// que solo esos tres canales quedan expuestos.
+contextBridge.exposeInMainWorld('authToken', {
+  get: (): Promise<string | null> => ipcRenderer.invoke('auth-token:get'),
+  set: (token: string): Promise<void> =>
+    ipcRenderer.invoke('auth-token:set', token),
+  clear: (): Promise<void> => ipcRenderer.invoke('auth-token:clear'),
 });
