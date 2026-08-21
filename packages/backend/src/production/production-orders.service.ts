@@ -283,7 +283,14 @@ export class ProductionOrdersService {
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2034'
+        // P2034: Postgres abortó la transacción por conflicto de
+        // serialización. P2028: bajo contención fuerte (varios
+        // completados de la misma orden a la vez, ver #91) algunos
+        // perdedores ni siquiera llegan a competir por el commit —
+        // Prisma agota el timeout esperando el lock para *empezar* la
+        // transacción. Ambos son la misma historia de cara al cliente
+        // ("perdiste la carrera, reintenta"), no un 500 real.
+        (error.code === 'P2034' || error.code === 'P2028')
       ) {
         throw new ConflictException(
           'Conflicto al completar la orden, intenta de nuevo',
