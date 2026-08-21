@@ -7,6 +7,7 @@ import InventoryPage from './pages/InventoryPage';
 import KardexPage from './pages/KardexPage';
 import ProductionOrdersPage from './pages/ProductionOrdersPage';
 import CustomersPage from './pages/CustomersPage';
+import SuppliersPage from './pages/SuppliersPage';
 import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { getAuthToken, initAuthToken } from './lib/auth-token';
@@ -49,6 +50,7 @@ export const router = createHashRouter([
           },
           { path: '/produccion', element: <ProductionOrdersPage /> },
           { path: '/clientes', element: <CustomersPage /> },
+          { path: '/proveedores', element: <SuppliersPage /> },
           {
             path: '/usuarios',
             // Ocultar el ítem del sidebar es UX, no seguridad — la

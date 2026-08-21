@@ -4,6 +4,7 @@ import {
   Package,
   Factory,
   Contact,
+  Truck,
   Users,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
@@ -30,6 +31,7 @@ const navItems: NavItem[] = [
   { to: '/inventario', label: 'Inventario', icon: Package },
   { to: '/produccion', label: 'Producción', icon: Factory },
   { to: '/clientes', label: 'Clientes', icon: Contact },
+  { to: '/proveedores', label: 'Proveedores', icon: Truck },
   { to: '/usuarios', label: 'Usuarios', icon: Users, requiresRole: 'ADMIN' },
 ];
 
