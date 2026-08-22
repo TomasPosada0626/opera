@@ -21,6 +21,7 @@ model User {
   stockMovements   StockMovement[]
   productionOrders ProductionOrder[]
   orders           Order[]
+  remissions       Remission[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -333,6 +334,7 @@ model Order {
   user        User        @relation(fields: [userId], references: [id])
   status      OrderStatus @default(PENDIENTE)
   items       OrderItem[]
+  remissions  Remission[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
@@ -355,15 +357,64 @@ model Order {
 // espíritu que el stock derivándose de StockMovement en vez de un número
 // que alguien pueda desincronizar.
 model OrderItem {
-  id        String   @id @default(uuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  quantity  Decimal  @db.Decimal(12, 3)
-  unitPrice Decimal  @db.Decimal(14, 4)
-  createdAt DateTime @default(now())
+  id             String          @id @default(uuid())
+  orderId        String
+  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product         @relation(fields: [productId], references: [id])
+  quantity       Decimal         @db.Decimal(12, 3)
+  unitPrice      Decimal         @db.Decimal(14, 4)
+  remissionItems RemissionItem[]
+  createdAt      DateTime        @default(now())
 
   @@index([orderId])
   @@index([productId])
+}
+
+// La remisión es el documento de entrega en sí — crearla ES el hecho de
+// despachar, no un borrador que luego cambia de estado. Por eso no tiene su
+// propio campo de estado: "¿se despachó?" (nota de visión de M5) para un
+// Order se deriva de si existe al menos una Remission asociada, y "cuánto
+// se ha entregado" se deriva de SUM(RemissionItem.quantity) agrupado por
+// orderItemId — un pedido puede despacharse en varios envíos parciales, así
+// que ninguno de los dos es un campo propio aquí, mismo espíritu que
+// Order.status no intenta representar el despacho (ver comentario de Order).
+// No mueve StockMovement: el pedido (#51) ya descontó el inventario al
+// crearse — la remisión es el rastro en papel de la entrega física, no un
+// segundo movimiento de inventario del mismo hecho.
+// number es el consecutivo del documento (numeración de remisiones, uso
+// típico en la práctica comercial) — autoincremental porque un UUID no
+// sirve para un número que un humano necesita leer/citar en papel.
+model Remission {
+  id        String          @id @default(uuid())
+  number    Int             @unique @default(autoincrement())
+  orderId   String
+  order     Order           @relation(fields: [orderId], references: [id])
+  userId    String
+  user      User            @relation(fields: [userId], references: [id])
+  items     RemissionItem[]
+  createdAt DateTime        @default(now())
+
+  @@index([orderId])
+}
+
+// orderItemId (no productId suelto) — la cantidad entregada se rastrea
+// contra la línea específica del pedido que la originó, no solo contra el
+// producto: un pedido puede tener dos líneas del mismo producto a precios
+// distintos (ver OrderItem), y "cuánto falta por entregar" solo tiene
+// sentido por línea, no agregado por producto. Que SUM(quantity) de las
+// líneas de todas las remisiones de un orderItemId no exceda
+// OrderItem.quantity es responsabilidad del service que las cree (#53) —
+// Prisma no puede expresar esa restricción entre tablas en el schema.
+model RemissionItem {
+  id          String    @id @default(uuid())
+  remissionId String
+  remission   Remission @relation(fields: [remissionId], references: [id], onDelete: Cascade)
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id])
+  quantity    Decimal   @db.Decimal(12, 3)
+  createdAt   DateTime  @default(now())
+
+  @@index([remissionId])
+  @@index([orderItemId])
 }
