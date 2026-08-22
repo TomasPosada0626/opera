@@ -16,6 +16,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { ProductionOrdersModule } from './production/production-orders.module';
 import { CustomersModule } from './customers/customers.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
     ProductionOrdersModule,
     CustomersModule,
     SuppliersModule,
+    OrdersModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

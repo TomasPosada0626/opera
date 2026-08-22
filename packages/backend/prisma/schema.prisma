@@ -90,6 +90,7 @@ model Warehouse {
   isActive         Boolean           @default(true)
   stockMovements   StockMovement[]
   productionOrders ProductionOrder[]
+  orders           Order[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -317,18 +318,26 @@ enum OrderStatus {
 // también se queda simple (PENDIENTE/CANCELADO): "despachado" es un hecho
 // de Remission, no de Order — mezclarlos aquí sería adivinar cómo se
 // relacionan antes de que #52 exista.
+// warehouseId: #51 (crear pedido) descuenta stock (StockMovement SALIDA) al
+// crear el pedido, no en un paso de confirmación aparte — un pedido de
+// venta compromete inventario de inmediato, a diferencia de una orden de
+// producción que no mueve nada hasta completarse. Una sola bodega por
+// pedido, mismo patrón que ProductionOrder — no una bodega por línea.
 model Order {
-  id         String      @id @default(uuid())
-  customerId String
-  customer   Customer    @relation(fields: [customerId], references: [id])
-  userId     String
-  user       User        @relation(fields: [userId], references: [id])
-  status     OrderStatus @default(PENDIENTE)
-  items      OrderItem[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id          String      @id @default(uuid())
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  warehouseId String
+  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id])
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  status      OrderStatus @default(PENDIENTE)
+  items       OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   @@index([customerId])
+  @@index([warehouseId])
   @@index([status])
 }
 
