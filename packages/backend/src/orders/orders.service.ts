@@ -17,6 +17,20 @@ const orderInclude = {
   customer: true,
   warehouse: true,
   items: { include: { product: true } },
+  // La vista de detalle (#54) necesita mostrar cuánto se ha entregado por
+  // línea sin una segunda llamada a /remissions?orderId=... — se deriva en
+  // el cliente de estos items, mismo espíritu que el resto de "no guardar
+  // lo que se puede derivar". user en el mismo shape que remissionInclude
+  // de RemissionsService — el frontend renderiza remission.user.name igual
+  // en ambos casos (encontrado probando en vivo: sin esto, crear una
+  // remisión y ver el detalle actualizado tronaba con "Cannot read
+  // properties of undefined (reading 'name')").
+  remissions: {
+    include: {
+      user: { select: { id: true, name: true } },
+      items: true,
+    },
+  },
 };
 const sortableFields = ['createdAt', 'status'] as const;
 

@@ -33,10 +33,10 @@ async function parseErrorMessage(response: Response): Promise<string> {
   }
 }
 
-export async function apiFetch<T>(
+async function authorizedFetch(
   path: string,
   options: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   const token = getAuthToken();
 
   const response = await fetch(`${API_URL}${path}`, {
@@ -52,9 +52,28 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, await parseErrorMessage(response));
   }
 
+  return response;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await authorizedFetch(path, options);
+
   if (response.status === 204) {
     return undefined as T;
   }
 
   return (await response.json()) as T;
+}
+
+// Para respuestas binarias (el PDF de una remisión, #54) — mismo manejo de
+// auth/errores que apiFetch, pero sin el .json() final que rompería un PDF.
+export async function apiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const response = await authorizedFetch(path, options);
+  return response.blob();
 }
