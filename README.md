@@ -273,8 +273,9 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 
 - [0001 — Kardex como ledger append-only](docs/adr/0001-kardex-append-only.md)
 - [0002 — Costeo de producción por promedio ponderado](docs/adr/0002-costeo-promedio-ponderado.md)
+- [0003 — Cliente de escritorio Electron sobre una SPA servida](docs/adr/0003-electron-sobre-spa-servida.md)
 
-Pendientes: por qué Electron en vez de una SPA servida, por qué NestJS + Prisma (M6).
+Pendiente: por qué NestJS + Prisma sobre otras alternativas de backend (M6, #60).
 
 ## Licencia
 
