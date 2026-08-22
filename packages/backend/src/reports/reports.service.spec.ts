@@ -1,0 +1,227 @@
+import { Prisma } from '@prisma/client';
+import { ReportsService } from './reports.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { InventoryService } from '../inventory/inventory.service';
+
+describe('ReportsService', () => {
+  let prisma: {
+    product: { findMany: jest.Mock };
+    stockMovement: { groupBy: jest.Mock };
+    order: { findMany: jest.Mock };
+    orderItem: { findMany: jest.Mock };
+  };
+  let inventory: { getAverageCost: jest.Mock };
+  let service: ReportsService;
+
+  beforeEach(() => {
+    prisma = {
+      product: { findMany: jest.fn() },
+      stockMovement: { groupBy: jest.fn() },
+      order: { findMany: jest.fn() },
+      orderItem: { findMany: jest.fn() },
+    };
+    inventory = { getAverageCost: jest.fn() };
+    service = new ReportsService(
+      prisma as unknown as PrismaService,
+      inventory as unknown as InventoryService,
+    );
+  });
+
+  describe('getInventoryReport', () => {
+    it('returns an empty array without querying stock when there are no active products', async () => {
+      prisma.product.findMany.mockResolvedValue([]);
+
+      const result = await service.getInventoryReport();
+
+      expect(result).toEqual([]);
+      expect(prisma.stockMovement.groupBy).not.toHaveBeenCalled();
+    });
+
+    it('merges stock and average cost per product, defaulting stock to zero without movements', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'product-1',
+          sku: 'SKU-1',
+          name: 'Silla',
+          category: { name: 'Muebles' },
+          unit: { name: 'Unidad' },
+        },
+        {
+          id: 'product-2',
+          sku: 'SKU-2',
+          name: 'Mesa',
+          category: { name: 'Muebles' },
+          unit: { name: 'Unidad' },
+        },
+      ]);
+      prisma.stockMovement.groupBy.mockResolvedValue([
+        { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(8) } },
+      ]);
+      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(10));
+
+      const result = await service.getInventoryReport();
+
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          id: 'product-1',
+          stock: new Prisma.Decimal(8),
+          averageCost: new Prisma.Decimal(10),
+          stockValue: new Prisma.Decimal(80),
+        }),
+      );
+      expect(result[1]).toEqual(
+        expect.objectContaining({
+          id: 'product-2',
+          stock: new Prisma.Decimal(0),
+          stockValue: new Prisma.Decimal(0),
+        }),
+      );
+    });
+  });
+
+  describe('getSalesReport', () => {
+    it('excludes CANCELADO orders and sums quantity/revenue across lines', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        {
+          items: [
+            {
+              quantity: new Prisma.Decimal(2),
+              unitPrice: new Prisma.Decimal(50),
+            },
+            {
+              quantity: new Prisma.Decimal(1),
+              unitPrice: new Prisma.Decimal(30),
+            },
+          ],
+        },
+        {
+          items: [
+            {
+              quantity: new Prisma.Decimal(3),
+              unitPrice: new Prisma.Decimal(10),
+            },
+          ],
+        },
+      ]);
+
+      const result = await service.getSalesReport({});
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { status: { not: 'CANCELADO' } },
+        }),
+      );
+      expect(result.orderCount).toBe(2);
+      expect(result.totalQuantity.toString()).toBe('6');
+      // (2*50 + 1*30) + (3*10) = 130 + 30 = 160
+      expect(result.totalRevenue.toString()).toBe('160');
+    });
+
+    it('applies the date range as a half-open [from, to) filter', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+
+      await service.getSalesReport({ from: '2026-08-01', to: '2026-09-01' });
+
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: { not: 'CANCELADO' },
+            createdAt: {
+              gte: new Date('2026-08-01'),
+              lt: new Date('2026-09-01'),
+            },
+          },
+        }),
+      );
+    });
+
+    it('returns zeroed totals when no orders match', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+
+      const result = await service.getSalesReport({});
+
+      expect(result.orderCount).toBe(0);
+      expect(result.totalQuantity.toString()).toBe('0');
+      expect(result.totalRevenue.toString()).toBe('0');
+    });
+  });
+
+  describe('getTopProducts', () => {
+    const items = [
+      {
+        productId: 'product-1',
+        product: { id: 'product-1', sku: 'SKU-1', name: 'Silla' },
+        quantity: new Prisma.Decimal(5),
+        unitPrice: new Prisma.Decimal(10),
+      },
+      {
+        productId: 'product-2',
+        product: { id: 'product-2', sku: 'SKU-2', name: 'Mesa' },
+        quantity: new Prisma.Decimal(2),
+        unitPrice: new Prisma.Decimal(100),
+      },
+      {
+        productId: 'product-1',
+        product: { id: 'product-1', sku: 'SKU-1', name: 'Silla' },
+        quantity: new Prisma.Decimal(3),
+        unitPrice: new Prisma.Decimal(10),
+      },
+    ];
+
+    it('aggregates quantity and revenue per product across order items, sorted by most sold by default', async () => {
+      prisma.orderItem.findMany.mockResolvedValue(items);
+
+      const result = await service.getTopProducts({});
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          productId: 'product-1',
+          quantitySold: new Prisma.Decimal(8),
+          revenue: new Prisma.Decimal(80),
+        }),
+        expect.objectContaining({
+          productId: 'product-2',
+          quantitySold: new Prisma.Decimal(2),
+          revenue: new Prisma.Decimal(200),
+        }),
+      ]);
+    });
+
+    it('sorts least-sold first when sortOrder is asc', async () => {
+      prisma.orderItem.findMany.mockResolvedValue(items);
+
+      const result = await service.getTopProducts({ sortOrder: 'asc' });
+
+      expect(result.map((row) => row.productId)).toEqual([
+        'product-2',
+        'product-1',
+      ]);
+    });
+
+    it('respects the limit', async () => {
+      prisma.orderItem.findMany.mockResolvedValue(items);
+
+      const result = await service.getTopProducts({ limit: 1 });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].productId).toBe('product-1');
+    });
+
+    it('filters by non-cancelled orders and the given date range', async () => {
+      prisma.orderItem.findMany.mockResolvedValue([]);
+
+      await service.getTopProducts({ from: '2026-08-01' });
+
+      expect(prisma.orderItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            order: {
+              status: { not: 'CANCELADO' },
+              createdAt: { gte: new Date('2026-08-01') },
+            },
+          },
+        }),
+      );
+    });
+  });
+});
