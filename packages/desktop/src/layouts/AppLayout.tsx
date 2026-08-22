@@ -6,6 +6,7 @@ import {
   ShoppingCart,
   Contact,
   Truck,
+  BarChart3,
   Users,
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
   { to: '/clientes', label: 'Clientes', icon: Contact },
   { to: '/proveedores', label: 'Proveedores', icon: Truck },
+  { to: '/reportes', label: 'Reportes', icon: BarChart3 },
   { to: '/usuarios', label: 'Usuarios', icon: Users, requiresRole: 'ADMIN' },
 ];
 
