@@ -15,7 +15,7 @@ import {
 import OrderDetailPage from './OrderDetailPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
-import type { Order } from '../types/order';
+import type { Order, Remission } from '../types/order';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
@@ -80,6 +80,21 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
     ],
     remissions: [],
     createdAt: '2026-01-15T10:00:00.000Z',
+    productionStartedAt: null,
+    warehousedAt: null,
+    ...overrides,
+  };
+}
+
+function buildRemission(overrides: Partial<Remission> = {}): Remission {
+  return {
+    id: 'remission-1',
+    number: 1,
+    createdAt: '2026-01-16T10:00:00.000Z',
+    user: { id: 'user-1', name: 'Admin' },
+    items: [],
+    paymentStatus: 'CARTERA',
+    amountPaid: null,
     ...overrides,
   };
 }
@@ -112,20 +127,15 @@ describe('OrderDetailPage', () => {
     mockedApiFetch.mockResolvedValue(
       buildOrder({
         remissions: [
-          {
-            id: 'remission-1',
-            number: 1,
-            createdAt: '2026-01-16T10:00:00.000Z',
-            user: { id: 'user-1', name: 'Admin' },
+          buildRemission({
             items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          },
-          {
+          }),
+          buildRemission({
             id: 'remission-2',
             number: 2,
             createdAt: '2026-01-17T10:00:00.000Z',
-            user: { id: 'user-1', name: 'Admin' },
             items: [{ id: 'ri-2', orderItemId: 'item-1', quantity: '2' }],
-          },
+          }),
         ],
       }),
     );
@@ -167,13 +177,9 @@ describe('OrderDetailPage', () => {
     mockedApiFetch.mockResolvedValue(
       buildOrder({
         remissions: [
-          {
-            id: 'remission-1',
-            number: 1,
-            createdAt: '2026-01-16T10:00:00.000Z',
-            user: { id: 'user-1', name: 'Admin' },
+          buildRemission({
             items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          },
+          }),
         ],
       }),
     );
@@ -191,5 +197,90 @@ describe('OrderDetailPage', () => {
     ).toBeInTheDocument();
     // Pedido 10, ya entregado 4 -> pendiente 6.
     expect(screen.getByText('Pendiente: 6 de 10')).toBeInTheDocument();
+  });
+
+  it('shows the payment status badge for each remission', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            paymentStatus: 'ABONADO',
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+
+    renderWithClient(<OrderDetailPage />);
+
+    expect(await screen.findByText('Remisión No. 1')).toBeInTheDocument();
+    expect(screen.getByText('Abonó')).toBeInTheDocument();
+  });
+
+  it('shows "Editar pago" only for an ADMIN user, and opens the edit modal', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    const button = await screen.findByRole('button', { name: 'Editar pago' });
+    await user.click(button);
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Editar pago' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Estado de pago')).toHaveValue('CARTERA');
+  });
+
+  it('hides "Editar pago" for a non-ADMIN user', async () => {
+    setAuthToken(fakeJwt(['STAFF']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+
+    renderWithClient(<OrderDetailPage />);
+
+    await screen.findByText('Remisión No. 1');
+    expect(
+      screen.queryByRole('button', { name: 'Editar pago' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the "Marcar en producción" action for an ADMIN user', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(buildOrder());
+
+    renderWithClient(<OrderDetailPage />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Marcar en producción' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the status action for a non-ADMIN user', async () => {
+    setAuthToken(fakeJwt(['STAFF']));
+    mockedApiFetch.mockResolvedValue(buildOrder());
+
+    renderWithClient(<OrderDetailPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    expect(
+      screen.queryByRole('button', { name: 'Marcar en producción' }),
+    ).not.toBeInTheDocument();
   });
 });

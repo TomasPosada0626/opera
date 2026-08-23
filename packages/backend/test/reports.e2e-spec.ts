@@ -26,6 +26,7 @@ describe('Reports (e2e)', () => {
   let customerId: string;
   let productId: string;
   const orderIds: string[] = [];
+  const remissionIds: string[] = [];
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -61,7 +62,9 @@ describe('Reports (e2e)', () => {
     customerId = customer.id;
 
     // 10 de costo 5 c/u -> costo promedio 5. Vende 4 a 25 c/u -> stock 6,
-    // valor 30, ingresos 100.
+    // valor 30, ingresos 100. El pedido ya no descuenta stock al crearse —
+    // la remisión (despacho) es la que de verdad lo mueve, así que hace
+    // falta despachar explícitamente para llegar a los mismos números.
     await request(app.getHttpServer())
       .post('/inventory/entradas')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -77,10 +80,26 @@ describe('Reports (e2e)', () => {
         items: [{ productId, quantity: 4, unitPrice: 25 }],
       })
       .expect(201);
-    orderIds.push((order.body as { id: string }).id);
+    const createdOrder = order.body as { id: string; items: { id: string }[] };
+    orderIds.push(createdOrder.id);
+
+    const remission = await request(app.getHttpServer())
+      .post('/remissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        orderId: createdOrder.id,
+        paymentStatus: 'PAGADO',
+        items: [{ orderItemId: createdOrder.items[0].id, quantity: 4 }],
+      })
+      .expect(201);
+    remissionIds.push((remission.body as { id: string }).id);
   });
 
   afterAll(async () => {
+    await prisma.remissionItem.deleteMany({
+      where: { remissionId: { in: remissionIds } },
+    });
+    await prisma.remission.deleteMany({ where: { id: { in: remissionIds } } });
     await prisma.orderItem.deleteMany({
       where: { order: { id: { in: orderIds } } },
     });

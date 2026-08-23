@@ -12,13 +12,19 @@ import {
 } from './support/fixtures';
 
 // Integración real contra Postgres (no mocks), mismo espíritu que #27
-// (inventory-concurrency.e2e-spec.ts) y #91 (production-order-concurrency):
-// OrdersService.create() usa el mismo patrón $transaction Serializable +
-// reintento en P2034/P2028 que protege salidas/ajustes contra sobregiro,
-// pero nunca se probó contra Postgres real bajo pedidos concurrentes por el
-// mismo producto — solo tenía cobertura con Prisma mockeado (encontrado en
-// la auditoría de cobertura de pruebas, 2026-08-22).
-describe('Order creation concurrency (e2e)', () => {
+// (inventory-concurrency.e2e-spec.ts) y #91 (production-order-concurrency).
+//
+// Con el rediseño del ciclo de vida (fabricación sobre pedido), crear un
+// pedido ya no toca stock, así que ya no hay nada que sobregirar ahí. La
+// condición de carrera real sobre stock ahora vive en markWarehoused(): a
+// diferencia de markProduction() (que usa un `updateMany` con guard
+// atómico), markWarehoused() lee el pedido fuera de la transacción y hace
+// un `tx.order.update` incondicional dentro de ella, confiando en que
+// Postgres bajo Serializable rechace la segunda escritura concurrente sobre
+// la misma fila con un error de serialización — nunca se probó contra
+// Postgres real que ese mecanismo de verdad evite escribir la ENTRADA dos
+// veces bajo llamadas concurrentes genuinas, solo con Prisma mockeado.
+describe('Order mark-warehoused concurrency (e2e)', () => {
   jest.setTimeout(30_000);
 
   let app: INestApplication;
@@ -32,6 +38,7 @@ describe('Order creation concurrency (e2e)', () => {
   let warehouseId: string;
   let productId: string;
   let customerId: string;
+  let orderId: string;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -66,11 +73,26 @@ describe('Order creation concurrency (e2e)', () => {
       data: { name: `Cliente de prueba de concurrencia ${unique}` },
     });
     customerId = customer.id;
+
+    const order = await ordersService.create(
+      {
+        customerId,
+        warehouseId,
+        items: [{ productId, quantity: 7, unitPrice: 10 }],
+      },
+      adminUserId,
+    );
+    orderId = order.id;
+    await ordersService.markProduction(orderId, adminUserId);
   });
 
   afterAll(async () => {
-    await prisma.orderItem.deleteMany({ where: { order: { customerId } } });
-    await prisma.order.deleteMany({ where: { customerId } });
+    await prisma.remissionItem.deleteMany({
+      where: { remission: { orderId } },
+    });
+    await prisma.remission.deleteMany({ where: { orderId } });
+    await prisma.orderItem.deleteMany({ where: { orderId } });
+    await prisma.order.deleteMany({ where: { id: orderId } });
     await prisma.customer.delete({ where: { id: customerId } });
     await prisma.stockMovement.deleteMany({ where: { productId } });
     await prisma.product.delete({ where: { id: productId } });
@@ -79,47 +101,39 @@ describe('Order creation concurrency (e2e)', () => {
     await app.close();
   });
 
-  it('never lets concurrent orders for the same product oversell stock', async () => {
-    await inventoryService.createEntry(
-      { productId, warehouseId, quantity: 100, unitCost: 5 },
-      adminUserId,
-    );
-
-    // 10 pedidos concurrentes de 20 unidades cada uno = 200 solicitadas
-    // contra 100 disponibles. Como mucho 5 pueden ganar sin sobregirar.
-    const attempts = Array.from({ length: 10 }, () =>
-      ordersService.create(
-        {
-          customerId,
-          warehouseId,
-          items: [{ productId, quantity: 20, unitPrice: 10 }],
-        },
-        adminUserId,
-      ),
+  it('never double-credits stock when the same order is marked warehoused concurrently', async () => {
+    // 8 llamadas concurrentes a marcar el MISMO pedido enviado a almacén —
+    // solo una debe ganar; el resto debe rechazarse (400 si ya lo vieron
+    // EN_ALMACEN tras perder la carrera de escritura, o 409 por conflicto
+    // de serialización real de Postgres), nunca un 500 sin manejar.
+    const attempts = Array.from({ length: 8 }, () =>
+      ordersService.markWarehoused(orderId, adminUserId),
     );
     const results = await Promise.allSettled(attempts);
 
     const succeeded = results.filter((r) => r.status === 'fulfilled');
     const failed = results.filter((r) => r.status === 'rejected');
 
-    expect(failed.length).toBeGreaterThan(0);
-    expect(succeeded.length).toBeLessThanOrEqual(5);
-    // Los perdedores fallan por 400 (stock insuficiente, si llegaron después
-    // de que otros ya comitieron) o 409 (conflicto de serialización real) —
-    // nunca un 500 sin manejar.
+    expect(succeeded.length).toBe(1);
+    expect(failed.length).toBe(7);
     for (const result of failed) {
       const reason = result.reason as { getStatus?: () => number };
       expect([400, 409]).toContain(reason.getStatus?.());
     }
 
+    // Una sola ENTRADA por línea, nunca 8 — el stock final debe ser
+    // exactamente la cantidad pedida, no un múltiplo de ella.
     const finalStock = await inventoryService.getStock(productId, warehouseId);
-    const expectedStock = 100 - succeeded.length * 20;
-    expect(finalStock.toString()).toBe(expectedStock.toString());
-    expect(finalStock.greaterThanOrEqualTo(0)).toBe(true);
+    expect(finalStock.toString()).toBe('7');
 
-    // Exactamente un pedido creado por cada intento ganador — nunca de más
-    // (lo que delataría un doble-commit) ni de menos.
-    const orderCount = await prisma.order.count({ where: { customerId } });
-    expect(orderCount).toBe(succeeded.length);
+    const movementCount = await prisma.stockMovement.count({
+      where: { productId, type: 'ENTRADA' },
+    });
+    expect(movementCount).toBe(1);
+
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+    });
+    expect(order.status).toBe('EN_ALMACEN');
   });
 });

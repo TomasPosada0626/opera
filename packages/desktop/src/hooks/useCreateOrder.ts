@@ -17,12 +17,12 @@ export function useCreateOrder() {
         method: 'POST',
         body: JSON.stringify(body),
       }),
-    // Un pedido descuenta stock de inmediato (#51) — el listado de
-    // inventario/stock queda desactualizado igual que con un movimiento
-    // manual, no solo la lista de pedidos.
+    // Este negocio fabrica sobre pedido — crear el pedido ya no mueve stock
+    // (ver orders.service.ts), así que no hay nada que invalidar en
+    // inventario acá; eso ahora pasa en useMarkOrderWarehoused y
+    // useCreateRemission, que sí mueven stock de verdad.
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
-      void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
   });
 }

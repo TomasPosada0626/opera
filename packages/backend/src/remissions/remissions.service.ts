@@ -7,10 +7,12 @@ import {
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { AuditService } from '../audit/audit.service';
 import { ListQueryDto } from '../common/dto/list-query.dto';
 import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateRemissionDto } from './dto/create-remission.dto';
+import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
 
 type TransactionClient = Prisma.TransactionClient;
 const remissionInclude = {
@@ -27,10 +29,18 @@ interface Overage {
   remaining: string;
 }
 
+interface Shortage {
+  productId: string;
+  productName: string;
+  required: string;
+  available: string;
+}
+
 @Injectable()
 export class RemissionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly inventory: InventoryService,
     private readonly audit: AuditService,
   ) {}
 
@@ -69,12 +79,18 @@ export class RemissionsService {
     return remission;
   }
 
-  // Crear una remisión ES el hecho de despachar (ver schema.prisma) — lo
-  // único que hay que proteger es que la suma de lo remisionado por línea
-  // de pedido no exceda lo pedido, incluso con dos remisiones concurrentes
-  // del mismo pedido (dos personas despachando la misma línea a la vez).
-  // Serializable + P2034/P2028 tratados igual, mismo patrón que
-  // OrdersService.create() (#51) y ProductionOrdersService.complete() (#33).
+  // Crear una remisión ES el hecho de despachar (ver schema.prisma) — y a
+  // diferencia del diseño original, ahora es el momento en que el stock de
+  // verdad sale del almacén (el pedido ya no lo descuenta al crearse). Dos
+  // cosas que proteger dentro de la misma transacción Serializable: que lo
+  // remisionado por línea de pedido no exceda lo pedido (ya existía), y que
+  // el producto tenga stock real suficiente (nuevo) — ambas corren antes de
+  // cualquier escritura. Se agrupa por productId, no por orderItemId, para
+  // el chequeo de stock: dos líneas del mismo pedido pueden ser el mismo
+  // producto a precios distintos (ver OrderItem), y ambas consumen del
+  // mismo stock físico. Serializable + P2034/P2028 tratados igual, mismo
+  // patrón que OrdersService.markWarehoused() y
+  // ProductionOrdersService.complete() (#33).
   async create(dto: CreateRemissionDto, actingUserId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
@@ -123,10 +139,63 @@ export class RemissionsService {
             });
           }
 
+          const quantityByProduct = new Map<string, Prisma.Decimal>();
+          for (const item of dto.items) {
+            const orderItem = orderItemById.get(item.orderItemId)!;
+            const current =
+              quantityByProduct.get(orderItem.productId) ??
+              new Prisma.Decimal(0);
+            quantityByProduct.set(
+              orderItem.productId,
+              current.plus(item.quantity),
+            );
+          }
+
+          const shortages: Shortage[] = [];
+          for (const [productId, requested] of quantityByProduct) {
+            const available = await this.inventory.getStock(
+              productId,
+              order.warehouseId,
+              tx,
+            );
+            if (available.lessThan(requested)) {
+              const orderItem = order.items.find(
+                (item) => item.productId === productId,
+              )!;
+              shortages.push({
+                productId,
+                productName: orderItem.product.name,
+                required: requested.toString(),
+                available: available.toString(),
+              });
+            }
+          }
+          if (shortages.length > 0) {
+            throw new BadRequestException({
+              message: 'Stock insuficiente para despachar esta remisión',
+              shortages,
+            });
+          }
+
+          for (const [productId, quantity] of quantityByProduct) {
+            await tx.stockMovement.create({
+              data: {
+                productId,
+                warehouseId: order.warehouseId,
+                type: 'SALIDA',
+                quantity: quantity.negated(),
+                reason: `Despacho, remisión del pedido ${order.id}`,
+                userId: actingUserId,
+              },
+            });
+          }
+
           return tx.remission.create({
             data: {
               orderId: dto.orderId,
               userId: actingUserId,
+              paymentStatus: dto.paymentStatus,
+              amountPaid: dto.amountPaid,
               items: {
                 create: dto.items.map((item) => ({
                   orderItemId: item.orderItemId,
@@ -162,6 +231,45 @@ export class RemissionsService {
     }
   }
 
+  // El pago normalmente se confirma después del despacho, no al momento de
+  // crear la remisión — por eso es editable aparte. Sin protección de
+  // concurrencia especial: es una actualización de campos simples, sin
+  // lectura-decisión-escritura de por medio, así que no hay ventana de
+  // carrera que proteger (a diferencia de create()).
+  async updatePayment(
+    id: string,
+    dto: UpdateRemissionPaymentDto,
+    actingUserId: string,
+  ) {
+    const before = await this.findOne(id);
+
+    const updated = await this.prisma.remission.update({
+      where: { id },
+      data: {
+        paymentStatus: dto.paymentStatus,
+        amountPaid: dto.amountPaid,
+      },
+      include: remissionInclude,
+    });
+
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'Remission',
+      entityId: updated.id,
+      action: 'UPDATE_PAYMENT',
+      before: {
+        paymentStatus: before.paymentStatus,
+        amountPaid: before.amountPaid,
+      },
+      after: {
+        paymentStatus: updated.paymentStatus,
+        amountPaid: updated.amountPaid,
+      },
+    });
+
+    return updated;
+  }
+
   // pdfkit arma el PDF como un stream de chunks en vez de un archivo en
   // disco — no hay nada que limpiar después ni una carpeta de "remisiones
   // temporales" que mantener; el PDF se genera al vuelo en cada request.
@@ -174,6 +282,8 @@ export class RemissionsService {
     return { buffer, number: remission.number };
   }
 
+  // No incluye paymentStatus/amountPaid a propósito — es dato interno del
+  // negocio, nunca algo que vea el cliente en el documento que se lleva.
   private renderPdf(
     remission: Awaited<ReturnType<RemissionsService['findOne']>>,
   ): Promise<Buffer> {

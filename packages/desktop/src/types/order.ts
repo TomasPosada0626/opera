@@ -1,7 +1,10 @@
 import type { Customer } from './customer';
 import type { Warehouse } from './inventory';
 
-export type OrderStatus = 'PENDIENTE' | 'CANCELADO';
+export type OrderStatus =
+  'PENDIENTE' | 'EN_PRODUCCION' | 'EN_ALMACEN' | 'CANCELADO';
+
+export type RemissionPaymentStatus = 'PAGADO' | 'ABONADO' | 'CARTERA';
 
 // Solo los campos escalares de Product — el pedido incluye `product: true`
 // sin anidar category/unit, así que no reutiliza el tipo Product completo.
@@ -31,6 +34,8 @@ export interface Remission {
   createdAt: string;
   user: { id: string; name: string };
   items: RemissionItem[];
+  paymentStatus: RemissionPaymentStatus;
+  amountPaid: string | null;
 }
 
 export interface Order {
@@ -41,4 +46,6 @@ export interface Order {
   items: OrderItem[];
   remissions: Remission[];
   createdAt: string;
+  productionStartedAt: string | null;
+  warehousedAt: string | null;
 }

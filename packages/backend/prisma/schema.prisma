@@ -307,36 +307,41 @@ model Supplier {
 
 enum OrderStatus {
   PENDIENTE
+  EN_PRODUCCION
+  EN_ALMACEN
   CANCELADO
 }
 
 // Un pedido de venta es la intención del cliente — qué productos, cuánta
-// cantidad, a qué precio — no todavía qué se despachó ni qué se cobró. Esa
-// separación importa: Remission (#52) va a registrar lo efectivamente
-// entregado (puede ser parcial, en varios envíos) y Payment (#72) lo
-// efectivamente cobrado — ninguno de los dos coincide necesariamente con lo
-// pedido, así que no viven como campos aquí. Por eso el status de Order
-// también se queda simple (PENDIENTE/CANCELADO): "despachado" es un hecho
-// de Remission, no de Order — mezclarlos aquí sería adivinar cómo se
-// relacionan antes de que #52 exista.
-// warehouseId: #51 (crear pedido) descuenta stock (StockMovement SALIDA) al
-// crear el pedido, no en un paso de confirmación aparte — un pedido de
-// venta compromete inventario de inmediato, a diferencia de una orden de
-// producción que no mueve nada hasta completarse. Una sola bodega por
-// pedido, mismo patrón que ProductionOrder — no una bodega por línea.
+// cantidad, a qué precio. A diferencia del diseño original (#50/#51), este
+// negocio fabrica sobre pedido: no hay stock de terminado esperando venta,
+// así que crear el pedido NO mueve inventario — el stock del terminado
+// nace cuando de verdad existe. El ciclo real: PENDIENTE (creado, nada se
+// mueve) -> EN_PRODUCCION (bandera manual con timestamp para contar días,
+// sin consumo de materiales por receta — imposible de calcular de forma
+// confiable por la variación entre pedidos y la pérdida de material) ->
+// EN_ALMACEN (el terminado entra al stock de verdad, ENTRADA por línea).
+// El descuento de stock por venta vive en Remission, no aquí — ver su
+// comentario. warehouseId sigue siendo una sola bodega por pedido, mismo
+// patrón que ProductionOrder.
 model Order {
-  id          String      @id @default(uuid())
-  customerId  String
-  customer    Customer    @relation(fields: [customerId], references: [id])
-  warehouseId String
-  warehouse   Warehouse   @relation(fields: [warehouseId], references: [id])
-  userId      String
-  user        User        @relation(fields: [userId], references: [id])
-  status      OrderStatus @default(PENDIENTE)
-  items       OrderItem[]
-  remissions  Remission[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                  String      @id @default(uuid())
+  customerId          String
+  customer            Customer    @relation(fields: [customerId], references: [id])
+  warehouseId         String
+  warehouse           Warehouse   @relation(fields: [warehouseId], references: [id])
+  userId              String
+  user                User        @relation(fields: [userId], references: [id])
+  status              OrderStatus @default(PENDIENTE)
+  // Se fijan al transicionar (mark-production / mark-warehoused), nunca se
+  // recalculan — mismo espíritu que ProductionOrder.completedAt: son la
+  // marca de cuándo ocurrió el hito, no un valor derivable de otra parte.
+  productionStartedAt DateTime?
+  warehousedAt        DateTime?
+  items               OrderItem[]
+  remissions          Remission[]
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   @@index([customerId])
   @@index([warehouseId])
@@ -371,29 +376,42 @@ model OrderItem {
   @@index([productId])
 }
 
+enum RemissionPaymentStatus {
+  PAGADO
+  ABONADO
+  CARTERA
+}
+
 // La remisión es el documento de entrega en sí — crearla ES el hecho de
-// despachar, no un borrador que luego cambia de estado. Por eso no tiene su
-// propio campo de estado: "¿se despachó?" (nota de visión de M5) para un
-// Order se deriva de si existe al menos una Remission asociada, y "cuánto
-// se ha entregado" se deriva de SUM(RemissionItem.quantity) agrupado por
-// orderItemId — un pedido puede despacharse en varios envíos parciales, así
-// que ninguno de los dos es un campo propio aquí, mismo espíritu que
-// Order.status no intenta representar el despacho (ver comentario de Order).
-// No mueve StockMovement: el pedido (#51) ya descontó el inventario al
-// crearse — la remisión es el rastro en papel de la entrega física, no un
-// segundo movimiento de inventario del mismo hecho.
+// despachar. Un pedido puede despacharse en varios envíos parciales;
+// "cuánto se ha entregado" se sigue derivando de SUM(RemissionItem.quantity)
+// agrupado por orderItemId, nunca un campo propio. A diferencia del diseño
+// original (#52/#53), crear la remisión SÍ mueve StockMovement (SALIDA por
+// línea) — el pedido ya no descuenta nada al crearse (ver comentario de
+// Order), así que el descuento real por venta vive aquí, en el momento en
+// que la mercancía de verdad sale del almacén.
+// paymentStatus/amountPaid: el estado de pago se confirma normalmente
+// después del despacho, no necesariamente al momento de crear la remisión
+// — por eso son editables después (PATCH /remissions/:id/payment), no solo
+// capturables una vez. Es dato interno del negocio: el PDF/impresión de la
+// remisión (lo que ve el cliente) nunca lo incluye.
 // number es el consecutivo del documento (numeración de remisiones, uso
 // típico en la práctica comercial) — autoincremental porque un UUID no
 // sirve para un número que un humano necesita leer/citar en papel.
 model Remission {
-  id        String          @id @default(uuid())
-  number    Int             @unique @default(autoincrement())
-  orderId   String
-  order     Order           @relation(fields: [orderId], references: [id])
-  userId    String
-  user      User            @relation(fields: [userId], references: [id])
-  items     RemissionItem[]
-  createdAt DateTime        @default(now())
+  id            String                 @id @default(uuid())
+  number        Int                    @unique @default(autoincrement())
+  orderId       String
+  order         Order                  @relation(fields: [orderId], references: [id])
+  userId        String
+  user          User                   @relation(fields: [userId], references: [id])
+  paymentStatus RemissionPaymentStatus @default(CARTERA)
+  // Solo tiene sentido cuando paymentStatus = ABONADO — cuánto de esta
+  // remisión ya se pagó, no el saldo total del cliente (eso es un cálculo
+  // aparte, fuera de alcance de este modelo).
+  amountPaid    Decimal?               @db.Decimal(14, 4)
+  items         RemissionItem[]
+  createdAt     DateTime               @default(now())
 
   @@index([orderId])
 }

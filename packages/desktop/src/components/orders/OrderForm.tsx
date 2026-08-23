@@ -3,16 +3,16 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, ShoppingCart, X } from 'lucide-react';
 import { z } from 'zod';
+import { CustomerPicker } from '../customers/CustomerPicker';
 import { ProductPicker } from '../inventory/ProductPicker';
 import { Button } from '../ui/Button';
 import { useCreateOrder } from '../../hooks/useCreateOrder';
-import { useCustomers } from '../../hooks/useCustomers';
 import { useWarehouses } from '../../hooks/useWarehouses';
 import { ApiError } from '../../lib/api-client';
+import type { Customer } from '../../types/customer';
 import type { Product } from '../../types/product';
 
 const orderSchema = z.object({
-  customerId: z.string().min(1, 'Selecciona un cliente'),
   warehouseId: z.string().min(1, 'Selecciona una bodega'),
 });
 type OrderFormValues = z.infer<typeof orderSchema>;
@@ -51,8 +51,9 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
   } = useForm<OrderFormValues>({ resolver: zodResolver(orderSchema) });
   const [lines, setLines] = useState<OrderLineDraft[]>([emptyLine()]);
   const [linesError, setLinesError] = useState<string | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [customerError, setCustomerError] = useState<string | null>(null);
 
-  const customersQuery = useCustomers({ page: 1, pageSize: 100 });
   const warehousesQuery = useWarehouses();
   const createOrder = useCreateOrder();
 
@@ -67,6 +68,12 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
   }
 
   function onSubmit(values: OrderFormValues) {
+    if (!customer) {
+      setCustomerError('Selecciona o crea un cliente');
+      return;
+    }
+    setCustomerError(null);
+
     if (lines.length === 0) {
       setLinesError('Agrega al menos un producto');
       return;
@@ -92,7 +99,7 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
     setLinesError(null);
 
     createOrder.mutate(
-      { customerId: values.customerId, warehouseId: values.warehouseId, items },
+      { customerId: customer.id, warehouseId: values.warehouseId, items },
       { onSuccess },
     );
   }
@@ -104,27 +111,10 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <label
-          htmlFor="customerId"
-          className="text-ink-muted text-sm font-medium"
-        >
-          Cliente
-        </label>
-        <select
-          id="customerId"
-          {...register('customerId')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-          aria-invalid={!!errors.customerId}
-        >
-          <option value="">Selecciona un cliente</option>
-          {customersQuery.data?.data.map((customer) => (
-            <option key={customer.id} value={customer.id}>
-              {customer.name}
-            </option>
-          ))}
-        </select>
-        {errors.customerId && (
-          <p className="text-danger text-xs">{errors.customerId.message}</p>
+        <span className="text-ink-muted text-sm font-medium">Cliente</span>
+        <CustomerPicker value={customer} onChange={setCustomer} />
+        {customerError && (
+          <p className="text-danger text-xs">{customerError}</p>
         )}
       </div>
 

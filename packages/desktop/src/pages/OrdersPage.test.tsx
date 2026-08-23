@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import {
   afterEach,
@@ -75,6 +76,8 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
     ],
     remissions: [],
     createdAt: '2026-01-15T10:00:00.000Z',
+    productionStartedAt: null,
+    warehousedAt: null,
     ...overrides,
   };
 }
@@ -104,7 +107,11 @@ describe('OrdersPage', () => {
       await screen.findByText('Muebles del Valle S.A.S.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Bodega principal')).toBeInTheDocument();
-    expect(screen.getByText('Pendiente')).toBeInTheDocument();
+    // "Pendiente" también es el texto del filtro por estado — se busca solo
+    // dentro de la tabla para no ser ambiguo con el pill del filtro.
+    expect(
+      within(screen.getByRole('table')).getByText('Pendiente'),
+    ).toBeInTheDocument();
     // 3 * 25 = 75.00
     expect(screen.getByText('75,00')).toBeInTheDocument();
   });
@@ -155,5 +162,44 @@ describe('OrdersPage', () => {
 
     const link = await screen.findByRole('link', { name: /Ver detalle/ });
     expect(link).toHaveAttribute('href', '/pedidos/order-1');
+  });
+
+  it('refetches with the status query param when a filter pill is clicked', async () => {
+    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    const user = userEvent.setup();
+
+    renderWithClient(<OrdersPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    await user.click(screen.getByRole('button', { name: 'En producción' }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('status=EN_PRODUCCION'),
+      ),
+    );
+  });
+
+  it('shows the "Marcar en producción" row action only for an ADMIN user', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+
+    renderWithClient(<OrdersPage />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Marcar en producción' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides the row status action for a non-ADMIN user', async () => {
+    setAuthToken(fakeJwt(['STAFF']));
+    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+
+    renderWithClient(<OrdersPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    expect(
+      screen.queryByRole('button', { name: 'Marcar en producción' }),
+    ).not.toBeInTheDocument();
   });
 });

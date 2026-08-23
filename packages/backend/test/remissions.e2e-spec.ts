@@ -106,6 +106,7 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
+        paymentStatus: 'CARTERA',
         items: [
           { orderItemId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', quantity: 1 },
         ],
@@ -117,7 +118,11 @@ describe('Remissions (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ orderId, items: [{ orderItemId, quantity: 999 }] })
+      .send({
+        orderId,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId, quantity: 999 }],
+      })
       .expect(400);
     expect((response.body as { overages: unknown[] }).overages).toHaveLength(1);
   });
@@ -126,24 +131,54 @@ describe('Remissions (e2e)', () => {
     const first = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ orderId, items: [{ orderItemId, quantity: 6 }] })
+      .send({
+        orderId,
+        paymentStatus: 'ABONADO',
+        amountPaid: 60,
+        items: [{ orderItemId, quantity: 6 }],
+      })
       .expect(201);
     const firstBody = first.body as { id: string; number: number };
     remissionIds.push(firstBody.id);
     expect(firstBody.number).toBeGreaterThan(0);
 
+    // El pedido ya no descuenta stock al crearse — la remisión es la que
+    // de verdad lo mueve. 10 reales, se despachan 6 -> quedan 4.
+    const stockAfterFirst = await request(app.getHttpServer())
+      .get(`/inventory/${productId}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((stockAfterFirst.body as { stock: string }).stock).toBe('4');
+
+    const paymentUpdate = await request(app.getHttpServer())
+      .patch(`/remissions/${firstBody.id}/payment`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ paymentStatus: 'PAGADO' })
+      .expect(200);
+    expect(
+      (paymentUpdate.body as { paymentStatus: string }).paymentStatus,
+    ).toBe('PAGADO');
+
     // Ya se entregaron 6 de 10 — pedir 5 más debe fallar (solo quedan 4).
     await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ orderId, items: [{ orderItemId, quantity: 5 }] })
+      .send({
+        orderId,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId, quantity: 5 }],
+      })
       .expect(400);
 
     // Pedir exactamente lo que queda (4) sí debe pasar.
     const second = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ orderId, items: [{ orderItemId, quantity: 4 }] })
+      .send({
+        orderId,
+        paymentStatus: 'PAGADO',
+        items: [{ orderItemId, quantity: 4 }],
+      })
       .expect(201);
     remissionIds.push((second.body as { id: string }).id);
 
@@ -164,7 +199,11 @@ describe('Remissions (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ orderId, items: [{ orderItemId, quantity: 0.5 }] })
+      .send({
+        orderId,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId, quantity: 0.5 }],
+      })
       .expect(400); // no queda nada por entregar tras el test anterior
 
     // El pedido ya quedó completamente remisionado por el test anterior —

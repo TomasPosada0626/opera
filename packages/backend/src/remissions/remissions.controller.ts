@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -23,6 +24,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ListQueryDto } from '../common/dto/list-query.dto';
 import { RemissionsService } from './remissions.service';
 import { CreateRemissionDto } from './dto/create-remission.dto';
+import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -38,12 +40,13 @@ export class RemissionsController {
   @ApiOperation({
     summary: 'Crear remisión (ADMIN)',
     description:
-      'Registra un despacho parcial o total de un pedido. No genera StockMovement — el pedido ya descontó el inventario al crearse.',
+      'Registra un despacho parcial o total de un pedido. Descuenta stock de verdad (SALIDA por producto) — el pedido ya no lo hace al crearse.',
   })
   @ApiResponse({ status: 201, description: 'Remisión creada.' })
   @ApiResponse({
     status: 400,
-    description: 'Alguna línea excede lo pendiente por entregar del pedido.',
+    description:
+      'Alguna línea excede lo pendiente por entregar, o el stock del producto es insuficiente para despachar.',
   })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   @ApiResponse({
@@ -69,6 +72,24 @@ export class RemissionsController {
   @ApiResponse({ status: 404, description: 'Remisión no encontrada.' })
   findOne(@Param('id') id: string) {
     return this.remissionsService.findOne(id);
+  }
+
+  @Patch(':id/payment')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Actualizar estado de pago de una remisión (ADMIN)',
+    description:
+      'El pago normalmente se confirma después del despacho, no al crear la remisión.',
+  })
+  @ApiResponse({ status: 200, description: 'Estado de pago actualizado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Remisión no encontrada.' })
+  updatePayment(
+    @Param('id') id: string,
+    @Body() dto: UpdateRemissionPaymentDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.remissionsService.updatePayment(id, dto, req.user.sub);
   }
 
   // @Res() de Express directo (no el flujo normal de retorno de Nest) — el

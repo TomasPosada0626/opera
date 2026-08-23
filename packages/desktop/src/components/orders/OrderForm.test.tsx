@@ -47,8 +47,8 @@ const chair: Product = {
   sku: 'PT-1',
   name: 'Silla de madera',
   type: 'FINISHED_GOOD',
-  category: { id: 'cat-1', name: 'Muebles' },
-  unit: { id: 'unit-1', name: 'Unidad', abbreviation: 'un' },
+  category: { id: 'cat-1', name: 'Muebles', isActive: true },
+  unit: { id: 'unit-1', name: 'Unidad', abbreviation: 'un', isActive: true },
   minStock: null,
   maxStock: null,
   isActive: true,
@@ -103,13 +103,11 @@ function mockHappyPathGets(products: Product[] = [chair, table]) {
 async function selectCustomerAndWarehouse(
   user: ReturnType<typeof userEvent.setup>,
 ) {
-  const customerSelect = await screen.findByLabelText('Cliente');
-  await waitFor(() =>
-    expect(
-      screen.getByRole('option', { name: 'Muebles del Valle S.A.S.' }),
-    ).toBeInTheDocument(),
+  await user.type(
+    screen.getByPlaceholderText('Buscar cliente por nombre…'),
+    'Muebles',
   );
-  await user.selectOptions(customerSelect, 'customer-1');
+  await user.click(await screen.findByText('Muebles del Valle S.A.S.'));
 
   const warehouseSelect = screen.getByLabelText('Bodega');
   await waitFor(() =>
@@ -144,23 +142,38 @@ describe('OrderForm', () => {
     mockedApiFetch.mockReset();
   });
 
-  it('requires customer and warehouse before submitting', async () => {
+  it('requires a warehouse before submitting', async () => {
     mockHappyPathGets();
     const user = userEvent.setup();
     renderWithClient(<OrderForm onSuccess={vi.fn()} />);
 
-    await screen.findByLabelText('Cliente');
+    await screen.findByPlaceholderText('Buscar cliente por nombre…');
     await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
 
-    // { selector: 'p' } porque el placeholder del <select> ("Selecciona un
-    // cliente"/"...bodega") es el mismo texto que el mensaje de error de
-    // Zod a propósito — sin esto, getByText es ambiguo entre la <option> y
-    // el <p> de error.
+    // react-hook-form bloquea el submit hasta que warehouseId (el único
+    // campo validado por zod) sea válido — el chequeo de cliente ni corre.
     expect(
-      await screen.findByText('Selecciona un cliente', { selector: 'p' }),
+      await screen.findByText('Selecciona una bodega', { selector: 'p' }),
     ).toBeInTheDocument();
+  });
+
+  it('requires a customer before submitting', async () => {
+    mockHappyPathGets();
+    const user = userEvent.setup();
+    renderWithClient(<OrderForm onSuccess={vi.fn()} />);
+
+    const warehouseSelect = await screen.findByLabelText('Bodega');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: 'Bodega principal' }),
+      ).toBeInTheDocument(),
+    );
+    await user.selectOptions(warehouseSelect, 'warehouse-1');
+
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+
     expect(
-      screen.getByText('Selecciona una bodega', { selector: 'p' }),
+      await screen.findByText('Selecciona o crea un cliente'),
     ).toBeInTheDocument();
   });
 

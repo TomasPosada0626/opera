@@ -7,21 +7,37 @@ import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderForm } from '../components/orders/OrderForm';
+import { OrderStatusActions } from '../components/orders/OrderStatusActions';
 import { useOrders } from '../hooks/useOrders';
 import { getCurrentUser } from '../lib/current-user';
 import type { Order, OrderStatus } from '../types/order';
 
 const PAGE_SIZE = 20;
 
-const statusBadgeVariant: Record<OrderStatus, 'warning' | 'danger'> = {
+const statusBadgeVariant: Record<
+  OrderStatus,
+  'success' | 'warning' | 'danger'
+> = {
   PENDIENTE: 'warning',
+  EN_PRODUCCION: 'warning',
+  EN_ALMACEN: 'success',
   CANCELADO: 'danger',
 };
 
 const statusLabel: Record<OrderStatus, string> = {
   PENDIENTE: 'Pendiente',
+  EN_PRODUCCION: 'En producción',
+  EN_ALMACEN: 'En almacén',
   CANCELADO: 'Cancelado',
 };
+
+// Todos primero, luego el orden natural del flujo — no alfabético.
+const statusFilters: { value: OrderStatus | undefined; label: string }[] = [
+  { value: undefined, label: 'Todos' },
+  { value: 'PENDIENTE', label: 'Pendiente' },
+  { value: 'EN_PRODUCCION', label: 'En producción' },
+  { value: 'EN_ALMACEN', label: 'En almacén' },
+];
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
@@ -38,11 +54,23 @@ function orderTotal(order: Order): number {
 
 function OrdersPage() {
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
+    undefined,
+  );
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
-  const ordersQuery = useOrders({ page, pageSize: PAGE_SIZE });
+  const ordersQuery = useOrders({
+    page,
+    pageSize: PAGE_SIZE,
+    status: statusFilter,
+  });
   const orders = ordersQuery.data?.data ?? [];
+
+  function selectStatusFilter(status: OrderStatus | undefined) {
+    setStatusFilter(status);
+    setPage(1);
+  }
 
   const columns: DataTableColumn<Order>[] = [
     {
@@ -78,6 +106,16 @@ function OrdersPage() {
           minimumFractionDigits: 2,
         }),
     },
+    ...(isAdmin
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            className: 'text-right',
+            render: (order: Order) => <OrderStatusActions order={order} />,
+          } satisfies DataTableColumn<Order>,
+        ]
+      : []),
     {
       key: 'detail',
       header: '',
@@ -112,6 +150,31 @@ function OrdersPage() {
             Nuevo pedido
           </Button>
         )}
+      </div>
+
+      <div
+        role="group"
+        aria-label="Filtrar por estado"
+        className="flex flex-wrap gap-1.5"
+      >
+        {statusFilters.map((filter) => {
+          const isActive = filter.value === statusFilter;
+          return (
+            <button
+              key={filter.label}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => selectStatusFilter(filter.value)}
+              className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'border-accent bg-accent text-on-accent'
+                  : 'border-line text-ink-muted hover:bg-chrome-strong hover:text-ink'
+              }`}
+            >
+              {filter.label}
+            </button>
+          );
+        })}
       </div>
 
       <DataTable

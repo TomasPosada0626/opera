@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { RemissionForm } from './RemissionForm';
 import { apiFetch, ApiError } from '../../lib/api-client';
-import type { Order } from '../../types/order';
+import type { Order, Remission } from '../../types/order';
 
 vi.mock('../../lib/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../lib/api-client')>();
@@ -53,6 +53,21 @@ function buildOrder(overrides: Partial<Order> = {}): Order {
     ],
     remissions: [],
     createdAt: '2026-01-15T10:00:00.000Z',
+    productionStartedAt: null,
+    warehousedAt: null,
+    ...overrides,
+  };
+}
+
+function buildRemission(overrides: Partial<Remission> = {}): Remission {
+  return {
+    id: 'rem-1',
+    number: 1,
+    createdAt: '2026-01-16T10:00:00.000Z',
+    user: { id: 'user-1', name: 'Admin' },
+    items: [],
+    paymentStatus: 'CARTERA',
+    amountPaid: null,
     ...overrides,
   };
 }
@@ -72,13 +87,9 @@ describe('RemissionForm', () => {
   it('shows the pending quantity per line', () => {
     const order = buildOrder({
       remissions: [
-        {
-          id: 'rem-1',
-          number: 1,
-          createdAt: '2026-01-16T10:00:00.000Z',
-          user: { id: 'user-1', name: 'Admin' },
+        buildRemission({
           items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-        },
+        }),
       ],
     });
     renderWithClient(<RemissionForm order={order} onSuccess={vi.fn()} />);
@@ -129,13 +140,9 @@ describe('RemissionForm', () => {
   it('disables the input once a line has nothing left to deliver', () => {
     const order = buildOrder({
       remissions: [
-        {
-          id: 'rem-1',
-          number: 1,
-          createdAt: '2026-01-16T10:00:00.000Z',
-          user: { id: 'user-1', name: 'Admin' },
+        buildRemission({
           items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '10' }],
-        },
+        }),
       ],
     });
     renderWithClient(<RemissionForm order={order} onSuccess={vi.fn()} />);
@@ -163,6 +170,57 @@ describe('RemissionForm', () => {
     expect(postCall?.[0]).toBe('/remissions');
     expect(JSON.parse(postCall?.[1].body as string)).toEqual({
       orderId: 'order-1',
+      paymentStatus: 'CARTERA',
+      amountPaid: undefined,
+      items: [{ orderItemId: 'item-1', quantity: 6 }],
+    });
+  });
+
+  it('requires an amount when the payment status is "Abonó"', async () => {
+    const order = buildOrder();
+    const user = userEvent.setup();
+    renderWithClient(<RemissionForm order={order} onSuccess={vi.fn()} />);
+
+    await user.type(
+      screen.getByLabelText('Cantidad a entregar de Silla de madera'),
+      '6',
+    );
+    await user.selectOptions(
+      screen.getByLabelText('Estado de pago'),
+      'ABONADO',
+    );
+    await user.click(screen.getByRole('button', { name: 'Crear remisión' }));
+
+    expect(
+      await screen.findByText('Ingresa cuánto abonó (mayor a 0).'),
+    ).toBeInTheDocument();
+    expect(mockedApiFetch).not.toHaveBeenCalled();
+  });
+
+  it('submits the payment status and amount paid', async () => {
+    mockedApiFetch.mockResolvedValue({ id: 'rem-2' });
+    const order = buildOrder();
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    renderWithClient(<RemissionForm order={order} onSuccess={onSuccess} />);
+
+    await user.type(
+      screen.getByLabelText('Cantidad a entregar de Silla de madera'),
+      '6',
+    );
+    await user.selectOptions(
+      screen.getByLabelText('Estado de pago'),
+      'ABONADO',
+    );
+    await user.type(screen.getByLabelText('Cuánto abonó'), '50');
+    await user.click(screen.getByRole('button', { name: 'Crear remisión' }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    const postCall = findPostCall();
+    expect(JSON.parse(postCall?.[1].body as string)).toEqual({
+      orderId: 'order-1',
+      paymentStatus: 'ABONADO',
+      amountPaid: 50,
       items: [{ orderItemId: 'item-1', quantity: 6 }],
     });
   });

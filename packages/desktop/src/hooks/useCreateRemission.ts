@@ -1,9 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../lib/api-client';
-import type { Remission } from '../types/order';
+import type { Remission, RemissionPaymentStatus } from '../types/order';
 
 export interface CreateRemissionInput {
   orderId: string;
+  paymentStatus: RemissionPaymentStatus;
+  amountPaid?: number;
   items: { orderItemId: string; quantity: number }[];
 }
 
@@ -22,6 +24,10 @@ export function useCreateRemission() {
       void queryClient.invalidateQueries({
         queryKey: ['order', variables.orderId],
       });
+      // A diferencia del diseño original, ahora la remisión (despacho) es
+      // el momento en que el stock de verdad sale del almacén — el pedido
+      // ya no lo descuenta al crearse.
+      void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
   });
 }

@@ -1,24 +1,53 @@
 import { useState } from 'react';
-import { ArrowLeft, Download, Plus } from 'lucide-react';
+import { ArrowLeft, Download, Pencil, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
+import { EditRemissionPaymentForm } from '../components/orders/EditRemissionPaymentForm';
+import { OrderStatusActions } from '../components/orders/OrderStatusActions';
 import { RemissionForm } from '../components/orders/RemissionForm';
 import { useOrder } from '../hooks/useOrder';
 import { apiFetchBlob } from '../lib/api-client';
 import { getCurrentUser } from '../lib/current-user';
-import type { Order, OrderStatus } from '../types/order';
+import type {
+  Order,
+  OrderStatus,
+  Remission,
+  RemissionPaymentStatus,
+} from '../types/order';
 
-const statusBadgeVariant: Record<OrderStatus, 'warning' | 'danger'> = {
+const statusBadgeVariant: Record<
+  OrderStatus,
+  'success' | 'warning' | 'danger'
+> = {
   PENDIENTE: 'warning',
+  EN_PRODUCCION: 'warning',
+  EN_ALMACEN: 'success',
   CANCELADO: 'danger',
 };
 
 const statusLabel: Record<OrderStatus, string> = {
   PENDIENTE: 'Pendiente',
+  EN_PRODUCCION: 'En producción',
+  EN_ALMACEN: 'En almacén',
   CANCELADO: 'Cancelado',
+};
+
+const paymentStatusBadgeVariant: Record<
+  RemissionPaymentStatus,
+  'success' | 'warning' | 'danger'
+> = {
+  PAGADO: 'success',
+  ABONADO: 'warning',
+  CARTERA: 'danger',
+};
+
+const paymentStatusLabel: Record<RemissionPaymentStatus, string> = {
+  PAGADO: 'Pagó',
+  ABONADO: 'Abonó',
+  CARTERA: 'Cartera',
 };
 
 function formatDate(value: string): string {
@@ -54,6 +83,8 @@ async function downloadRemissionPdf(remissionId: string, number: number) {
 function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const [isRemissionModalOpen, setIsRemissionModalOpen] = useState(false);
+  const [editingPaymentRemission, setEditingPaymentRemission] =
+    useState<Remission | null>(null);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
   const orderQuery = useOrder(orderId ?? '');
@@ -76,15 +107,18 @@ function OrderDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           Volver a pedidos
         </Link>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-ink text-xl font-medium">
-            {order ? order.customer.name : 'Pedido'}
-          </h1>
-          {order && (
-            <Badge variant={statusBadgeVariant[order.status]}>
-              {statusLabel[order.status]}
-            </Badge>
-          )}
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-ink text-xl font-medium">
+              {order ? order.customer.name : 'Pedido'}
+            </h1>
+            {order && (
+              <Badge variant={statusBadgeVariant[order.status]}>
+                {statusLabel[order.status]}
+              </Badge>
+            )}
+          </div>
+          {order && isAdmin && <OrderStatusActions order={order} />}
         </div>
         {order && (
           <p className="text-ink-muted mt-1 text-sm">
@@ -192,27 +226,48 @@ function OrderDetailPage() {
                     className="border-line bg-surface-raised flex items-center justify-between gap-3 rounded-md border p-3"
                   >
                     <div>
-                      <p className="text-ink text-sm font-medium">
-                        Remisión No. {remission.number}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-ink text-sm font-medium">
+                          Remisión No. {remission.number}
+                        </p>
+                        <Badge
+                          variant={
+                            paymentStatusBadgeVariant[remission.paymentStatus]
+                          }
+                        >
+                          {paymentStatusLabel[remission.paymentStatus]}
+                        </Badge>
+                      </div>
                       <p className="text-ink-muted text-xs">
                         {formatDate(remission.createdAt)} —{' '}
                         {remission.user.name}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        void downloadRemissionPdf(
-                          remission.id,
-                          remission.number,
-                        )
-                      }
-                      className="px-3 py-1.5"
-                    >
-                      <Download className="h-4 w-4" />
-                      Descargar PDF
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setEditingPaymentRemission(remission)}
+                          className="px-3 py-1.5"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          Editar pago
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          void downloadRemissionPdf(
+                            remission.id,
+                            remission.number,
+                          )
+                        }
+                        className="px-3 py-1.5"
+                      >
+                        <Download className="h-4 w-4" />
+                        Descargar PDF
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -227,6 +282,19 @@ function OrderDetailPage() {
               <RemissionForm
                 order={order}
                 onSuccess={() => setIsRemissionModalOpen(false)}
+              />
+            </Modal>
+          )}
+
+          {editingPaymentRemission && (
+            <Modal
+              title="Editar pago"
+              onClose={() => setEditingPaymentRemission(null)}
+            >
+              <EditRemissionPaymentForm
+                orderId={order.id}
+                remission={editingPaymentRemission}
+                onSuccess={() => setEditingPaymentRemission(null)}
               />
             </Modal>
           )}
