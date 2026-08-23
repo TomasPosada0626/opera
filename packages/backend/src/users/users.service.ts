@@ -9,6 +9,18 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 
 const userInclude = { roles: { include: { role: true } } };
 
+// Explícitos, no los defaults implícitos de la librería — un futuro bump de
+// `argon2` podría cambiar sus defaults en cualquier dirección sin que nadie
+// lo note aquí. Valores iguales a los defaults actuales de argon2@0.45 (ver
+// node_modules/argon2/argon2.cjs), así que fijarlos no cambia el hash de
+// ningún usuario existente ni exige rehash.
+const HASH_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 65536,
+  timeCost: 3,
+  parallelism: 4,
+} as const;
+
 function toResponse(user: User & { roles: unknown[] }) {
   const { id, email, name, isActive, createdAt, updatedAt, roles } = user;
   return { id, email, name, isActive, createdAt, updatedAt, roles };
@@ -26,7 +38,7 @@ export class UsersService {
       data: {
         email: dto.email,
         name: dto.name,
-        password: await argon2.hash(dto.password),
+        password: await argon2.hash(dto.password, HASH_OPTIONS),
         roles: dto.roleIds
           ? { create: dto.roleIds.map((roleId) => ({ roleId })) }
           : undefined,
@@ -137,7 +149,7 @@ export class UsersService {
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: { password: await argon2.hash(dto.newPassword) },
+      data: { password: await argon2.hash(dto.newPassword, HASH_OPTIONS) },
       include: userInclude,
     });
 

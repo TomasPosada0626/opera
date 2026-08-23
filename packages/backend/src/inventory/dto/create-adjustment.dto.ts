@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   NotEquals,
 } from 'class-validator';
 
@@ -24,9 +25,11 @@ export class CreateAdjustmentDto {
   // siempre corrige una discrepancia y esa razón debe quedar registrada.
   @IsNotEmpty()
   @IsString()
+  @MaxLength(500)
   reason: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   location?: string;
 }

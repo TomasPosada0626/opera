@@ -15,7 +15,17 @@ const ALLOWED_ORIGINS = ['http://localhost:5173', 'null'];
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // forbidNonWhitelisted (no solo whitelist): un campo desconocido en el body
+  // ahora es un 400 explícito en vez de descartarse en silencio — antes un
+  // bug de cliente (o un probing) que mandara props de más pasaba
+  // inadvertido.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   app.use(helmet());
   app.enableCors({ origin: ALLOWED_ORIGINS });
 
