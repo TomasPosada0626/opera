@@ -1,15 +1,25 @@
 export interface Category {
   id: string;
   name: string;
+  isActive: boolean;
 }
 
 export interface Unit {
   id: string;
   name: string;
   abbreviation: string;
+  isActive: boolean;
 }
 
 export type ProductType = 'FINISHED_GOOD' | 'RAW_MATERIAL' | 'SUPPLY';
+
+// Compartido por InventoryPage, ProductForm y ProductsPage — antes vivía
+// duplicado como const local de InventoryPage.
+export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
+  FINISHED_GOOD: 'Producto terminado',
+  RAW_MATERIAL: 'Materia prima',
+  SUPPLY: 'Insumo',
+};
 
 // Los campos Decimal de Prisma (minStock, maxStock) llegan como string en el
 // JSON — nunca number, para no perder precisión en el redondeo del cliente.

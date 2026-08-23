@@ -1,44 +1,56 @@
 import { useState } from 'react';
-import { Notebook, Plus, Search } from 'lucide-react';
-import { Link } from 'react-router';
+import { Plus, Search } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
 import { Pagination } from '../components/ui/Pagination';
-import { MovementForm } from '../components/inventory/MovementForm';
+import { ProductForm } from '../components/products/ProductForm';
+import { ProductRowActions } from '../components/products/ProductRowActions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useProducts } from '../hooks/useProducts';
-import { useStockSummary } from '../hooks/useStockSummary';
 import { getCurrentUser } from '../lib/current-user';
-import { PRODUCT_TYPE_LABELS } from '../types/product';
-import type { Product } from '../types/product';
+import { PRODUCT_TYPE_LABELS, type Product } from '../types/product';
 
 const PAGE_SIZE = 20;
 
-function InventoryPage() {
+function ProductsPage() {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
-  const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const search = useDebouncedValue(searchInput, 300);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
   const productsQuery = useProducts({ page, pageSize: PAGE_SIZE, search });
   const products = productsQuery.data?.data ?? [];
 
-  const stockQuery = useStockSummary(products.map((product) => product.id));
-  const stockByProduct = new Map(
-    (stockQuery.data ?? []).map((entry) => [entry.productId, entry.stock]),
-  );
-
   function handleSearchChange(value: string) {
     setSearchInput(value);
     setPage(1);
   }
 
+  function openCreateModal() {
+    setEditingProduct(null);
+    setIsFormModalOpen(true);
+  }
+
+  function openEditModal(product: Product) {
+    setEditingProduct(product);
+    setIsFormModalOpen(true);
+  }
+
+  function closeFormModal() {
+    setIsFormModalOpen(false);
+    setEditingProduct(null);
+  }
+
   const columns: DataTableColumn<Product>[] = [
-    { key: 'sku', header: 'SKU', render: (product) => product.sku },
-    { key: 'name', header: 'Nombre', render: (product) => product.name },
+    {
+      key: 'product',
+      header: 'Producto',
+      render: (product) => `${product.sku} — ${product.name}`,
+    },
     {
       key: 'type',
       header: 'Tipo',
@@ -50,58 +62,47 @@ function InventoryPage() {
       render: (product) => product.category.name,
     },
     {
-      key: 'stock',
-      header: 'Stock actual',
-      className: 'text-right tabular-nums',
-      render: (product) => {
-        const stock = stockByProduct.get(product.id);
-        if (stock === undefined) {
-          return <span className="text-ink-faint">—</span>;
-        }
-
-        const label = `${stock} ${product.unit.abbreviation}`;
-        const isLowStock =
-          product.minStock !== null && Number(stock) < Number(product.minStock);
-
-        return isLowStock ? (
-          <Badge variant="warning">{label}</Badge>
-        ) : (
-          <span>{label}</span>
-        );
-      },
+      key: 'unit',
+      header: 'Unidad',
+      render: (product) => product.unit.abbreviation,
     },
     {
-      key: 'kardex',
-      header: '',
-      className: 'text-right',
-      render: (product) => (
-        <Link
-          to={`/inventario/${product.id}/kardex`}
-          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
-        >
-          <Notebook className="h-4 w-4" />
-          Kardex
-        </Link>
-      ),
+      key: 'status',
+      header: 'Estado',
+      render: (product) =>
+        product.isActive ? (
+          <Badge variant="success">Activo</Badge>
+        ) : (
+          <Badge variant="danger">Inactivo</Badge>
+        ),
     },
+    ...(isAdmin
+      ? [
+          {
+            key: 'action',
+            header: '',
+            className: 'text-right',
+            render: (product: Product) => (
+              <ProductRowActions product={product} onEdit={openEditModal} />
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-ink text-xl font-medium">Inventario</h1>
+          <h1 className="text-ink text-xl font-medium">Productos</h1>
           <p className="text-ink-muted mt-1 text-sm">
-            Catálogo de productos y stock actual.
+            Catálogo de productos terminados, materias primas e insumos.
           </p>
         </div>
         {isAdmin && (
-          <Button
-            onClick={() => setIsMovementModalOpen(true)}
-            className="shrink-0"
-          >
+          <Button onClick={openCreateModal} className="shrink-0">
             <Plus className="h-4 w-4" />
-            Nuevo movimiento
+            Nuevo producto
           </Button>
         )}
       </div>
@@ -134,16 +135,19 @@ function InventoryPage() {
         />
       )}
 
-      {isMovementModalOpen && (
+      {isFormModalOpen && (
         <Modal
-          title="Nuevo movimiento de inventario"
-          onClose={() => setIsMovementModalOpen(false)}
+          title={editingProduct ? 'Editar producto' : 'Nuevo producto'}
+          onClose={closeFormModal}
         >
-          <MovementForm onSuccess={() => setIsMovementModalOpen(false)} />
+          <ProductForm
+            product={editingProduct ?? undefined}
+            onSuccess={closeFormModal}
+          />
         </Modal>
       )}
     </div>
   );
 }
 
-export default InventoryPage;
+export default ProductsPage;

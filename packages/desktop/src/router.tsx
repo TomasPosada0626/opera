@@ -5,6 +5,10 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import InventoryPage from './pages/InventoryPage';
 import KardexPage from './pages/KardexPage';
+import ProductsPage from './pages/ProductsPage';
+import CategoriesPage from './pages/CategoriesPage';
+import UnitsPage from './pages/UnitsPage';
+import WarehousesPage from './pages/WarehousesPage';
 import ProductionOrdersPage from './pages/ProductionOrdersPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
@@ -52,6 +56,10 @@ export const router = createHashRouter([
             element: <KardexPage />,
           },
           { path: '/produccion', element: <ProductionOrdersPage /> },
+          { path: '/productos', element: <ProductsPage /> },
+          { path: '/categorias', element: <CategoriesPage /> },
+          { path: '/unidades', element: <UnitsPage /> },
+          { path: '/bodegas', element: <WarehousesPage /> },
           { path: '/pedidos', element: <OrdersPage /> },
           { path: '/pedidos/:orderId', element: <OrderDetailPage /> },
           { path: '/clientes', element: <CustomersPage /> },
