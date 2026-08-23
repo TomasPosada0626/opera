@@ -183,6 +183,15 @@ describe('UsersService', () => {
     );
   });
 
+  it('throws NotFoundException when deactivating a user that does not exist', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.deactivate('missing', 'acting-user'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundException when resetting the password of a user that does not exist', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
 

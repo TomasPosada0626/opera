@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RemissionsService } from './remissions.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -165,6 +169,28 @@ describe('RemissionsService', () => {
       }),
     );
   });
+
+  it.each(['P2034', 'P2028'])(
+    'converts a %s concurrency error into ConflictException',
+    async (code) => {
+      prisma.$transaction.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('conflict', {
+          code,
+          clientVersion: '6.19.3',
+        }),
+      );
+
+      await expect(
+        service.create(
+          {
+            orderId: order.id,
+            items: [{ orderItemId: orderItem.id, quantity: 1 }],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    },
+  );
 
   it('lists remissions paginated, newest first by default', async () => {
     prisma.remission.findMany.mockResolvedValue([baseRemission]);
