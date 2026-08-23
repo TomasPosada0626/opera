@@ -32,6 +32,11 @@ export interface Product {
   unit: Unit;
   minStock: string | null;
   maxStock: string | null;
+  // Texto libre, sin catálogo fijo — distinguen variantes del mismo
+  // producto base (ver schema.prisma).
+  finish: string | null;
+  material: string | null;
+  size: string | null;
   isActive: boolean;
 }
 

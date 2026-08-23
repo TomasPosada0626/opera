@@ -14,6 +14,7 @@ import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import CustomersPage from './pages/CustomersPage';
 import SuppliersPage from './pages/SuppliersPage';
+import SupplierDetailPage from './pages/SupplierDetailPage';
 import ReportsPage from './pages/ReportsPage';
 import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -64,6 +65,10 @@ export const router = createHashRouter([
           { path: '/pedidos/:orderId', element: <OrderDetailPage /> },
           { path: '/clientes', element: <CustomersPage /> },
           { path: '/proveedores', element: <SuppliersPage /> },
+          {
+            path: '/proveedores/:supplierId',
+            element: <SupplierDetailPage />,
+          },
           { path: '/reportes', element: <ReportsPage /> },
           {
             path: '/usuarios',

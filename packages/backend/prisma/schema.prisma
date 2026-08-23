@@ -11,19 +11,20 @@ datasource db {
 }
 
 model User {
-  id               String            @id @default(uuid())
-  email            String            @unique
-  password         String
-  name             String
-  isActive         Boolean           @default(true)
-  roles            UserRole[]
-  auditLogs        AuditLog[]
-  stockMovements   StockMovement[]
-  productionOrders ProductionOrder[]
-  orders           Order[]
-  remissions       Remission[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String
+  name              String
+  isActive          Boolean            @default(true)
+  roles             UserRole[]
+  auditLogs         AuditLog[]
+  stockMovements    StockMovement[]
+  productionOrders  ProductionOrder[]
+  orders            Order[]
+  remissions        Remission[]
+  supplierPurchases SupplierPurchase[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 model Role {
@@ -138,6 +139,12 @@ model Product {
   // Umbrales de alerta (#67); null = sin umbral configurado, no "alertar en 0".
   minStock          Decimal?              @db.Decimal(12, 3)
   maxStock          Decimal?              @db.Decimal(12, 3)
+  // Texto libre, sin catálogo fijo (mismo patrón que Warehouse.location) —
+  // distinguen variantes del mismo producto base (ej. una silla en roble
+  // natural vs. una en pino oscuro) al armar un pedido rápido.
+  finish            String?
+  material          String?
+  size              String?
   isActive          Boolean               @default(true)
   stockMovements    StockMovement[]
   // La receta que ESTE producto produce (type debe ser FINISHED_GOOD,
@@ -149,6 +156,8 @@ model Product {
   usedAsComponentIn BillOfMaterialsItem[] @relation("ProductComponent")
   productionOrders  ProductionOrder[]
   orderItems        OrderItem[]
+  supplierProducts  SupplierProduct[]
+  supplierPurchases SupplierPurchase[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -288,21 +297,61 @@ model Customer {
   updatedAt DateTime @updatedAt
 }
 
-// Precio específico por producto de un proveedor (mencionado en la nota de
-// visión de M5: "editar el precio de un producto que vende un proveedor")
-// queda para cuando #68 (PurchaseOrder) defina si vive en su propia línea
-// de orden o necesita una tabla propia — no se modela aquí para no adivinar
-// esa forma antes de tener el caso de uso real delante.
 model Supplier {
-  id        String   @id @default(uuid())
-  name      String
-  taxId     String?  @unique
-  email     String?
-  phone     String?
-  address   String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String             @id @default(uuid())
+  name             String
+  taxId            String?            @unique
+  email            String?
+  phone            String?
+  address          String?
+  isActive         Boolean            @default(true)
+  supplierProducts SupplierProduct[]
+  purchases        SupplierPurchase[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+}
+
+// Precio vigente de un producto para un proveedor — no versionado/histórico
+// a propósito, se sobreescribe al editar (mismo espíritu que BillOfMaterials
+// no versiona recetas: lo que importa es "cuánto cuesta hoy", no un
+// histórico de precios). Desconectado de PurchaseOrder (#68, todavía sin
+// construir): es la lista de precios de referencia del proveedor, no una
+// cotización ligada a una compra puntual.
+model SupplierProduct {
+  id         String   @id @default(uuid())
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  price      Decimal  @db.Decimal(14, 4)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([supplierId, productId])
+}
+
+// Bitácora manual de compras — "qué se pidió, a quién, cuándo, qué costó",
+// para seguimiento de gasto por proveedor. Desconectada de StockMovement a
+// propósito (decisión del negocio, no una limitación técnica): la entrada
+// real de materia prima al almacén sigue siendo un movimiento manual de
+// Inventario aparte, así que nada aquí reconcilia automáticamente "lo
+// pedido a un proveedor" contra "lo que de verdad entró al stock" — es una
+// limitación conocida y aceptada, no un hueco a cerrar en esta fase.
+model SupplierPurchase {
+  id          String   @id @default(uuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Decimal  @db.Decimal(12, 3)
+  unitCost    Decimal  @db.Decimal(14, 4)
+  purchasedAt DateTime @default(now())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([supplierId])
+  @@index([productId])
 }
 
 enum OrderStatus {

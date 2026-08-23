@@ -2,6 +2,7 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
+  IsString,
   IsUUID,
   MaxLength,
   MinLength,
@@ -38,4 +39,19 @@ export class UpdateProductDto {
   @IsOptional()
   @IsNumber()
   maxStock?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  finish?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  material?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  size?: string;
 }

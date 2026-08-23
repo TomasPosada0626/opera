@@ -35,6 +35,9 @@ function buildProduct(overrides: Partial<Product> = {}): Product {
     unit: { id: 'unit-1', name: 'Unidad', abbreviation: 'un', isActive: true },
     minStock: null,
     maxStock: null,
+    finish: null,
+    material: null,
+    size: null,
     isActive: true,
     ...overrides,
   };

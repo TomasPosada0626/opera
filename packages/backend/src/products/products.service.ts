@@ -47,6 +47,9 @@ export class ProductsService {
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
             { sku: { contains: search, mode: 'insensitive' } },
+            { finish: { contains: search, mode: 'insensitive' } },
+            { material: { contains: search, mode: 'insensitive' } },
+            { size: { contains: search, mode: 'insensitive' } },
           ],
         }
       : {};

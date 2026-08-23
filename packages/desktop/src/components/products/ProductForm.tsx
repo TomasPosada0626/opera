@@ -34,6 +34,9 @@ const productSchema = z.object({
   unitId: z.string().min(1, 'Selecciona una unidad'),
   minStock: optionalNonNegativeString,
   maxStock: optionalNonNegativeString,
+  finish: z.string().optional(),
+  material: z.string().optional(),
+  size: z.string().optional(),
 });
 type ProductFormValues = z.infer<typeof productSchema>;
 
@@ -57,6 +60,9 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
       unitId: product?.unit.id ?? '',
       minStock: product?.minStock ?? '',
       maxStock: product?.maxStock ?? '',
+      finish: product?.finish ?? '',
+      material: product?.material ?? '',
+      size: product?.size ?? '',
     },
   });
 
@@ -78,6 +84,9 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
       unitId: values.unitId,
       minStock: values.minStock ? Number(values.minStock) : undefined,
       maxStock: values.maxStock ? Number(values.maxStock) : undefined,
+      finish: values.finish || undefined,
+      material: values.material || undefined,
+      size: values.size || undefined,
     };
 
     if (product) {
@@ -213,6 +222,24 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
             <p className="text-danger text-xs">{errors.maxStock.message}</p>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <TextField
+          label="Acabado (opcional)"
+          registration={register('finish')}
+          error={errors.finish}
+        />
+        <TextField
+          label="Material (opcional)"
+          registration={register('material')}
+          error={errors.material}
+        />
+        <TextField
+          label="Tamaño (opcional)"
+          registration={register('size')}
+          error={errors.size}
+        />
       </div>
 
       {mutation.isError && (

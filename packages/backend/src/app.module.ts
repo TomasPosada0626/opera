@@ -16,6 +16,8 @@ import { InventoryModule } from './inventory/inventory.module';
 import { ProductionOrdersModule } from './production/production-orders.module';
 import { CustomersModule } from './customers/customers.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { SupplierProductsModule } from './supplier-products/supplier-products.module';
+import { SupplierPurchasesModule } from './supplier-purchases/supplier-purchases.module';
 import { OrdersModule } from './orders/orders.module';
 import { RemissionsModule } from './remissions/remissions.module';
 import { ReportsModule } from './reports/reports.module';
@@ -45,6 +47,8 @@ import { ReportsModule } from './reports/reports.module';
     ProductionOrdersModule,
     CustomersModule,
     SuppliersModule,
+    SupplierProductsModule,
+    SupplierPurchasesModule,
     OrdersModule,
     RemissionsModule,
     ReportsModule,

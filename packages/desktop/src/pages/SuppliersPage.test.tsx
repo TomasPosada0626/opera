@@ -89,6 +89,15 @@ describe('SuppliersPage', () => {
     expect(screen.getByText('Activo')).toBeInTheDocument();
   });
 
+  it('links each row to its detail page', async () => {
+    mockedApiFetch.mockResolvedValue(suppliersResponse([buildSupplier()]));
+
+    renderWithClient(<SuppliersPage />);
+
+    const link = await screen.findByRole('link', { name: /Ver detalle/ });
+    expect(link).toHaveAttribute('href', '/proveedores/supplier-1');
+  });
+
   it('shows the empty message when there are no suppliers', async () => {
     mockedApiFetch.mockResolvedValue(suppliersResponse([]));
 

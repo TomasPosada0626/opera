@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
-import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 
 @Injectable()

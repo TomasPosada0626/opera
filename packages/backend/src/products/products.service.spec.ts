@@ -88,7 +88,7 @@ describe('ProductsService', () => {
     );
   });
 
-  it('searches products by name or sku', async () => {
+  it('searches products by name, sku, finish, material, or size', async () => {
     prisma.product.findMany.mockResolvedValue([baseProduct]);
     prisma.product.count.mockResolvedValue(1);
 
@@ -100,6 +100,9 @@ describe('ProductsService', () => {
           OR: [
             { name: { contains: 'SKU-001', mode: 'insensitive' } },
             { sku: { contains: 'SKU-001', mode: 'insensitive' } },
+            { finish: { contains: 'SKU-001', mode: 'insensitive' } },
+            { material: { contains: 'SKU-001', mode: 'insensitive' } },
+            { size: { contains: 'SKU-001', mode: 'insensitive' } },
           ],
         },
       }),

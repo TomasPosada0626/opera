@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Eye, Plus, Search } from 'lucide-react';
+import { Link } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
@@ -84,6 +85,20 @@ function SuppliersPage() {
           },
         ]
       : []),
+    {
+      key: 'detail',
+      header: '',
+      className: 'text-right',
+      render: (supplier) => (
+        <Link
+          to={`/proveedores/${supplier.id}`}
+          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
+        >
+          <Eye className="h-4 w-4" />
+          Ver detalle
+        </Link>
+      ),
+    },
   ];
 
   return (

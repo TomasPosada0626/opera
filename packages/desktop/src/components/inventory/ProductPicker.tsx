@@ -10,6 +10,16 @@ interface ProductPickerProps {
   error?: string;
 }
 
+// "(Roble, Natural, Grande)" — solo los atributos que el producto tiene,
+// para distinguir variantes del mismo nombre base (ej. dos sillas, una en
+// roble y otra en pino) al armar un pedido rápido.
+function attributesLabel(product: Product): string {
+  const attributes = [product.finish, product.material, product.size].filter(
+    (value): value is string => !!value,
+  );
+  return attributes.length > 0 ? ` (${attributes.join(', ')})` : '';
+}
+
 // Buscador simple en vez de un <select> con todo el catálogo: con más de
 // unas pocas decenas de productos un <select> plano deja de ser usable.
 export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
@@ -28,6 +38,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
         <span className="text-ink flex items-center gap-2">
           <Package className="text-ink-faint h-4 w-4 shrink-0" />
           {value.sku} — {value.name}
+          {attributesLabel(value)}
         </span>
         <button
           type="button"
@@ -70,6 +81,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
                   className="hover:bg-chrome text-ink w-full px-3 py-2 text-left text-sm"
                 >
                   {product.sku} — {product.name}
+                  {attributesLabel(product)}
                 </button>
               </li>
             ))

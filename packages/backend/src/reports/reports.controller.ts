@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { ReportsService } from './reports.service';
-import { DateRangeQueryDto } from './dto/date-range-query.dto';
+import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 
 @ApiTags('reports')

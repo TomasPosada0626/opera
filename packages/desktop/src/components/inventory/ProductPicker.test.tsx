@@ -32,6 +32,9 @@ function buildProduct(overrides: Partial<Product> = {}): Product {
     unit: { id: 'unit-1', name: 'Unidad', abbreviation: 'un', isActive: true },
     minStock: null,
     maxStock: null,
+    finish: null,
+    material: null,
+    size: null,
     isActive: true,
     ...overrides,
   };
@@ -100,6 +103,41 @@ describe('ProductPicker', () => {
     await user.click(screen.getByRole('button', { name: 'Cambiar' }));
 
     expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it('shows the descriptive attributes next to the selected product', () => {
+    renderWithClient(
+      <ProductPicker
+        value={buildProduct({
+          finish: 'Natural',
+          material: 'Roble',
+          size: 'Grande',
+        })}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('SKU-1 — Tornillo 1/4 (Natural, Roble, Grande)'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows only the attributes that are set, in search results', async () => {
+    mockedApiFetch.mockResolvedValue(
+      productsResponse([buildProduct({ material: 'Roble' })]),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<ProductPicker value={null} onChange={vi.fn()} />);
+
+    await user.type(
+      screen.getByPlaceholderText('Buscar producto por nombre o SKU…'),
+      'tornillo',
+    );
+
+    expect(
+      await screen.findByText('SKU-1 — Tornillo 1/4 (Roble)'),
+    ).toBeInTheDocument();
   });
 
   it('shows an inline error message when provided', () => {

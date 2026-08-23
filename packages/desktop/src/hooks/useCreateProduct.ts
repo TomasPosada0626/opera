@@ -10,6 +10,9 @@ export interface ProductInput {
   unitId: string;
   minStock?: number;
   maxStock?: number;
+  finish?: string;
+  material?: string;
+  size?: string;
 }
 
 export function useCreateProduct() {

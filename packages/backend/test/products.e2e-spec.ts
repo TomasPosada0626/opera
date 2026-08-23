@@ -114,6 +114,43 @@ describe('Products (e2e)', () => {
     expect(byName.data.map((product) => product.id)).toContain(created.id);
   });
 
+  it('creates a product with descriptive attributes and finds it by searching them', async () => {
+    const unique = Date.now();
+
+    const createResponse = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sku: `E2E-ATTR-${unique}`,
+        name: `Silla E2E ${unique}`,
+        type: 'FINISHED_GOOD',
+        categoryId,
+        unitId,
+        finish: `Roble natural ${unique}`,
+        material: `Madera maciza ${unique}`,
+        size: `Grande ${unique}`,
+      })
+      .expect(201);
+    const created = createResponse.body as {
+      id: string;
+      finish: string;
+      material: string;
+      size: string;
+    };
+    createdIds.push(created.id);
+    expect(created.finish).toBe(`Roble natural ${unique}`);
+    expect(created.material).toBe(`Madera maciza ${unique}`);
+    expect(created.size).toBe(`Grande ${unique}`);
+
+    const byFinishResponse = await request(app.getHttpServer())
+      .get('/products')
+      .query({ search: `Roble natural ${unique}` })
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(200);
+    const byFinish = byFinishResponse.body as { data: { id: string }[] };
+    expect(byFinish.data.map((product) => product.id)).toContain(created.id);
+  });
+
   it('returns 404 for a product that does not exist', async () => {
     await request(app.getHttpServer())
       .get('/products/00000000-0000-0000-0000-000000000000')

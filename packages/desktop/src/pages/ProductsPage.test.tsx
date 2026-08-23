@@ -68,6 +68,9 @@ function buildProduct(overrides: Partial<Product> = {}): Product {
     unit,
     minStock: null,
     maxStock: null,
+    finish: null,
+    material: null,
+    size: null,
     isActive: true,
     ...overrides,
   };
@@ -198,7 +201,70 @@ describe('ProductsPage', () => {
         unitId: 'unit-1',
         minStock: undefined,
         maxStock: undefined,
+        finish: undefined,
+        material: undefined,
+        size: undefined,
       });
+    });
+  });
+
+  it('submits the descriptive attributes when filled', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    const user = userEvent.setup();
+    mockHappyPathGets([]);
+
+    renderWithClient(<ProductsPage />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Nuevo producto' }),
+    );
+    await user.type(screen.getByLabelText('SKU'), 'PT-3');
+    await user.type(screen.getByLabelText('Nombre'), 'Silla en roble');
+
+    const categorySelect = await screen.findByLabelText('Categoría');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: 'Muebles' }),
+      ).toBeInTheDocument(),
+    );
+    await user.selectOptions(categorySelect, 'cat-1');
+    const unitSelect = screen.getByLabelText('Unidad');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('option', { name: 'Unidad (un)' }),
+      ).toBeInTheDocument(),
+    );
+    await user.selectOptions(unitSelect, 'unit-1');
+
+    await user.type(screen.getByLabelText('Acabado (opcional)'), 'Natural');
+    await user.type(screen.getByLabelText('Material (opcional)'), 'Roble');
+    await user.type(screen.getByLabelText('Tamaño (opcional)'), 'Grande');
+
+    mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+      if (options?.method === 'POST')
+        return Promise.resolve({ id: 'product-3' });
+      if (path.startsWith('/products')) return Promise.resolve(paginated([]));
+      if (path.startsWith('/categories'))
+        return Promise.resolve(paginated([category]));
+      if (path.startsWith('/units')) return Promise.resolve(paginated([unit]));
+      return Promise.reject(new Error(`Unexpected: ${path}`));
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }));
+
+    await waitFor(() => {
+      const postCall = mockedApiFetch.mock.calls.find(
+        (call: unknown[]) =>
+          (call[1] as RequestInit | undefined)?.method === 'POST',
+      ) as [string, RequestInit] | undefined;
+      const body = JSON.parse(postCall?.[1].body as string) as {
+        finish: string;
+        material: string;
+        size: string;
+      };
+      expect(body.finish).toBe('Natural');
+      expect(body.material).toBe('Roble');
+      expect(body.size).toBe('Grande');
     });
   });
 

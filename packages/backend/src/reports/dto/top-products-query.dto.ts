@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
-import { DateRangeQueryDto } from './date-range-query.dto';
+import { DateRangeQueryDto } from '../../common/dto/date-range-query.dto';
 
 export class TopProductsQueryDto extends DateRangeQueryDto {
   // 'desc' (default) = más vendidos, 'asc' = menos vendidos — el mismo
