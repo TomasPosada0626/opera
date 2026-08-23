@@ -11,7 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -33,11 +38,17 @@ export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('alertas/bajo-stock')
+  @ApiOperation({
+    summary: 'Productos activos por debajo de su minStock configurado',
+  })
   getLowStockProducts() {
     return this.inventoryService.getLowStockProducts();
   }
 
   @Get('stock')
+  @ApiOperation({
+    summary: 'Stock de N productos en un solo groupBy (no N requests)',
+  })
   getStockSummary(@Query() query: StockSummaryQueryDto) {
     return this.inventoryService.getStockForProducts(
       query.productIds,
@@ -46,6 +57,10 @@ export class InventoryController {
   }
 
   @Get(':productId/stock')
+  @ApiOperation({
+    summary: 'Stock actual de un producto (global y por bodega)',
+  })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
   async getStock(@Param('productId') productId: string) {
     await this.inventoryService.assertProductExists(productId);
 
@@ -58,6 +73,10 @@ export class InventoryController {
   }
 
   @Get(':productId/kardex')
+  @ApiOperation({
+    summary: 'Historial de movimientos de un producto (paginado)',
+  })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
   async getKardex(
     @Param('productId') productId: string,
     @Query() query: KardexQueryDto,
@@ -75,6 +94,10 @@ export class InventoryController {
   @Post('entradas')
   @HttpCode(HttpStatus.CREATED)
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Registrar entrada de inventario (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Movimiento registrado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Producto o bodega no encontrada.' })
   createEntry(@Body() dto: CreateEntryDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createEntry(dto, req.user.sub);
   }
@@ -82,6 +105,15 @@ export class InventoryController {
   @Post('salidas')
   @HttpCode(HttpStatus.CREATED)
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Registrar salida de inventario (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Movimiento registrado.' })
+  @ApiResponse({ status: 400, description: 'Stock insuficiente.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Producto o bodega no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
   createExit(@Body() dto: CreateExitDto, @Req() req: AuthenticatedRequest) {
     return this.inventoryService.createExit(dto, req.user.sub);
   }
@@ -89,6 +121,18 @@ export class InventoryController {
   @Post('ajustes')
   @HttpCode(HttpStatus.CREATED)
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Registrar ajuste de inventario (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Movimiento registrado.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Stock insuficiente, o el ajuste dejaría el stock igual (0).',
+  })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Producto o bodega no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
   createAdjustment(
     @Body() dto: CreateAdjustmentDto,
     @Req() req: AuthenticatedRequest,

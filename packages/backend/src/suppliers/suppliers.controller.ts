@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,22 +36,30 @@ export class SuppliersController {
 
   @Post()
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear proveedor (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Proveedor creado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(@Body() dto: CreateSupplierDto, @Req() req: AuthenticatedRequest) {
     return this.suppliersService.create(dto, req.user.sub);
   }
 
   @Get()
+  @ApiOperation({ summary: 'Listar proveedores (paginado/buscable)' })
   findAll(@Query() query: ListQueryDto) {
     return this.suppliersService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Obtener un proveedor' })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
   findOne(@Param('id') id: string) {
     return this.suppliersService.findOne(id);
   }
 
   @Patch(':id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Editar proveedor (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateSupplierDto,
@@ -57,6 +70,8 @@ export class SuppliersController {
 
   @Patch(':id/deactivate')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Desactivar proveedor (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.suppliersService.deactivate(id, req.user.sub);
   }

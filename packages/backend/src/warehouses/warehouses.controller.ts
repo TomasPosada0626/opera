@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,22 +36,30 @@ export class WarehousesController {
 
   @Post()
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear bodega (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Bodega creada.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(@Body() dto: CreateWarehouseDto, @Req() req: AuthenticatedRequest) {
     return this.warehousesService.create(dto, req.user.sub);
   }
 
   @Get()
+  @ApiOperation({ summary: 'Listar bodegas (paginado/buscable)' })
   findAll(@Query() query: ListQueryDto) {
     return this.warehousesService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Obtener una bodega' })
+  @ApiResponse({ status: 404, description: 'Bodega no encontrada.' })
   findOne(@Param('id') id: string) {
     return this.warehousesService.findOne(id);
   }
 
   @Patch(':id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Editar bodega (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Bodega no encontrada.' })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateWarehouseDto,
@@ -57,6 +70,8 @@ export class WarehousesController {
 
   @Patch(':id/deactivate')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Desactivar bodega (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Bodega no encontrada.' })
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.warehousesService.deactivate(id, req.user.sub);
   }

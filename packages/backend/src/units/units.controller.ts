@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,22 +36,30 @@ export class UnitsController {
 
   @Post()
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear unidad de medida (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Unidad creada.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(@Body() dto: CreateUnitDto, @Req() req: AuthenticatedRequest) {
     return this.unitsService.create(dto, req.user.sub);
   }
 
   @Get()
+  @ApiOperation({ summary: 'Listar unidades (paginado/buscable)' })
   findAll(@Query() query: ListQueryDto) {
     return this.unitsService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Obtener una unidad' })
+  @ApiResponse({ status: 404, description: 'Unidad no encontrada.' })
   findOne(@Param('id') id: string) {
     return this.unitsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Editar unidad (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Unidad no encontrada.' })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUnitDto,
@@ -57,6 +70,8 @@ export class UnitsController {
 
   @Patch(':id/deactivate')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Desactivar unidad (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Unidad no encontrada.' })
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.unitsService.deactivate(id, req.user.sub);
   }

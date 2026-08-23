@@ -11,7 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -32,11 +37,14 @@ export class ProductionOrdersController {
   ) {}
 
   @Get()
+  @ApiOperation({ summary: 'Listar órdenes de producción (paginado)' })
   findAll(@Query() query: ListQueryDto) {
     return this.productionOrdersService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Obtener una orden de producción' })
+  @ApiResponse({ status: 404, description: 'Orden no encontrada.' })
   findOne(@Param('id') id: string) {
     return this.productionOrdersService.findOne(id);
   }
@@ -47,6 +55,14 @@ export class ProductionOrdersController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear orden de producción (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Orden creada.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Producto no es FINISHED_GOOD, sin receta activa, o sin stock suficiente de algún componente.',
+  })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(
     @Body() dto: CreateProductionOrderDto,
     @Req() req: AuthenticatedRequest,
@@ -56,6 +72,17 @@ export class ProductionOrdersController {
 
   @Post(':id/complete')
   @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Completar orden de producción (ADMIN)',
+    description:
+      'Consume la receta vigente, genera los StockMovement de componentes/terminado y calcula el costo — todo atómico bajo Serializable.',
+  })
+  @ApiResponse({ status: 400, description: 'Stock insuficiente al revalidar.' })
+  @ApiResponse({ status: 404, description: 'Orden no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
   complete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.productionOrdersService.complete(id, req.user.sub);
   }

@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -15,6 +15,13 @@ export class AuthController {
   // login es la única puerta de entrada, así que necesita su propio techo
   // bajo para hacer fuerza bruta impráctica sin bloquear el uso normal.
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({
+    summary: 'Login',
+    description: 'Limitado a 5 intentos/min por IP (ver @Throttle).',
+  })
+  @ApiResponse({ status: 200, description: 'JWT emitido.' })
+  @ApiResponse({ status: 401, description: 'Credenciales inválidas.' })
+  @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
   }

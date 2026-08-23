@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -31,22 +36,32 @@ export class ProductsController {
 
   @Post()
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Crear producto (ADMIN)' })
+  @ApiResponse({ status: 201, description: 'Producto creado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(@Body() dto: CreateProductDto, @Req() req: AuthenticatedRequest) {
     return this.productsService.create(dto, req.user.sub);
   }
 
   @Get()
+  @ApiOperation({
+    summary: 'Listar productos (paginado, buscable por nombre o SKU)',
+  })
   findAll(@Query() query: ListQueryDto) {
     return this.productsService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Obtener un producto' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Editar producto (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
   update(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
@@ -57,6 +72,8 @@ export class ProductsController {
 
   @Patch(':id/deactivate')
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Desactivar producto (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.productsService.deactivate(id, req.user.sub);
   }
