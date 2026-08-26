@@ -140,7 +140,7 @@ opera/
 
 ## Roadmap
 
-El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 88/94 issues cerradas (~94%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
+El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 89/94 issues cerradas (~95%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
 
 | Milestone                                                                                        | Alcance                                                                                                                       | Estado   |
 | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -150,7 +150,7 @@ El trabajo está organizado en milestones, cada uno con sus issues de seguimient
 | [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                          | BOM, órdenes de producción, costeo                                                                                            | ✅ 8/8   |
 | [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)                   | Cliente de escritorio, pantallas de inventario y producción                                                                   | ✅ 18/18 |
 | [M5 - Ventas/Compras/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Ventas, compras, clientes, proveedores, saldos pendientes, reportes (PDF/Excel), dashboard, búsqueda global                   | ✅ 26/26 |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 1/7   |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 2/7   |
 
 ## Puesta en marcha
 
@@ -301,6 +301,8 @@ Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda al día con todo lo pla
 
 **Retirar `EN_PROCESO` muerto, cancelar orden de producción (#98).** La issue pedía decidir entre implementar una transición real a `EN_PROCESO` o retirar el valor muerto del enum — ningún código lo asignaba nunca, la orden saltaba directo `PENDIENTE` → `COMPLETADA`. Se retira: a diferencia de `Order.EN_PRODUCCION` (una bandera manual que existe para contar días reales que un pedido pasa en el taller), acá no hay ningún consumo parcial que trackear ni un hito intermedio distinto de "se declaró la intención" (`create`) y "se consumió y produjo" (`complete`) — agregar un estado intermedio inventaría un paso que nadie dispara. `CANCELADA` reemplaza el valor retirado. `PATCH /production-orders/:id/cancel` (ADMIN) no revierte stock — crear la orden nunca escribió `StockMovement` (solo lo valida como informativo) — y solo aplica mientras siga `PENDIENTE`, mismo espíritu que `OrdersService.cancel` con el Kardex append-only: una orden `COMPLETADA` ya consumió materiales reales que no se deshacen. La migración se generó a mano (`prisma migrate dev` es interactivo, no soportado en este entorno) vía `prisma migrate diff` + `migrate deploy`, verificando primero que cero filas usaran `EN_PROCESO` en la base real. En el frontend, un botón "Cancelar" aparece junto a "Completar" en cada orden `PENDIENTE`.
 
+**ADR: NestJS + Prisma sobre otras alternativas de backend (#60).** [0004](docs/adr/0004-nestjs-prisma-sobre-alternativas.md) documenta por qué NestJS y no Express/Fastify/AdonisJS, y por qué Prisma y no TypeORM/Drizzle/SQL crudo — decisión tomada en M1 pero nunca escrita hasta ahora. El eje real de la comparación no es rendimiento en el vacío, sino qué tan bien cada opción sostiene las invariantes ya documentadas en los ADRs 0001/0002 (transacciones `Serializable` explícitas para el Kardex y el costeo) y el ritmo de un solo desarrollador agregando módulos nuevos sin renegociar la estructura en cada uno.
+
 **Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda completo salvo #99** (corrección/anulación de remisiones), el último issue del milestone.
 
 ## Seguimiento del trabajo
@@ -318,8 +320,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0001 — Kardex como ledger append-only](docs/adr/0001-kardex-append-only.md)
 - [0002 — Costeo de producción por promedio ponderado](docs/adr/0002-costeo-promedio-ponderado.md)
 - [0003 — Cliente de escritorio Electron sobre una SPA servida](docs/adr/0003-electron-sobre-spa-servida.md)
-
-Pendiente: por qué NestJS + Prisma sobre otras alternativas de backend (M6, #60).
+- [0004 — NestJS + Prisma sobre otras alternativas de backend](docs/adr/0004-nestjs-prisma-sobre-alternativas.md)
 
 ## Licencia
 
