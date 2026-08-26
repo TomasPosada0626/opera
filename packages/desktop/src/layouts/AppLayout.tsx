@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { GlobalSearch } from '../components/search/GlobalSearch';
 import { Logo } from '../components/ui/Logo';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { UserMenu } from '../components/ui/UserMenu';
@@ -204,9 +205,12 @@ function AppLayout() {
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="border-line bg-chrome flex items-center justify-end gap-4 border-b px-6 py-3">
-          <ThemeToggle />
-          <UserMenu user={user} onLogout={handleLogout} />
+        <header className="border-line bg-chrome flex items-center justify-between gap-4 border-b px-6 py-3">
+          <GlobalSearch />
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <UserMenu user={user} onLogout={handleLogout} />
+          </div>
         </header>
         <main className="flex-1 p-8">
           <div className="mx-auto max-w-6xl">

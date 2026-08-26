@@ -22,6 +22,7 @@ import { OrdersModule } from './orders/orders.module';
 import { RemissionsModule } from './remissions/remissions.module';
 import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     RemissionsModule,
     ReportsModule,
     DashboardModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],

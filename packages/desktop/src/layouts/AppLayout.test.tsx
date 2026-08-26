@@ -1,8 +1,13 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AppLayout from './AppLayout';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
+
+vi.mock('../lib/api-client', () => ({
+  apiFetch: vi.fn(),
+}));
 
 function fakeJwt(roles: string[]): string {
   const payload = {
@@ -15,15 +20,20 @@ function fakeJwt(roles: string[]): string {
 }
 
 function renderAt(initialPath: string) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <MemoryRouter initialEntries={[initialPath]}>
-      <Routes>
-        <Route element={<AppLayout />}>
-          <Route path="/" element={<div>Dashboard content</div>} />
-          <Route path="/productos" element={<div>Products content</div>} />
-        </Route>
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<div>Dashboard content</div>} />
+            <Route path="/productos" element={<div>Products content</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
