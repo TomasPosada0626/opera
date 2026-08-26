@@ -123,9 +123,33 @@ describe('OrderStatusActions', () => {
     );
   });
 
-  it('shows a dash for an EN_ALMACEN order', () => {
+  it('shows "Cancelar pedido" for an EN_ALMACEN order without remissions', () => {
     renderWithClient(
       <OrderStatusActions order={buildOrder({ status: 'EN_ALMACEN' })} />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Cancelar pedido' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a dash for an EN_ALMACEN order that already has a remission', () => {
+    renderWithClient(
+      <OrderStatusActions
+        order={buildOrder({
+          status: 'EN_ALMACEN',
+          remissions: [
+            {
+              id: 'remission-1',
+              number: 1,
+              createdAt: '2026-01-16T10:00:00.000Z',
+              user: { id: 'user-1', name: 'Admin' },
+              items: [],
+              paymentStatus: 'CARTERA',
+              amountPaid: null,
+            },
+          ],
+        })}
+      />,
     );
     expect(screen.getByText('—')).toBeInTheDocument();
   });
@@ -135,6 +159,21 @@ describe('OrderStatusActions', () => {
       <OrderStatusActions order={buildOrder({ status: 'CANCELADO' })} />,
     );
     expect(screen.getByText('—')).toBeInTheDocument();
+  });
+
+  it('calls PATCH cancel when "Cancelar pedido" is clicked', async () => {
+    mockedApiFetch.mockResolvedValue(buildOrder({ status: 'CANCELADO' }));
+    const user = userEvent.setup();
+    renderWithClient(<OrderStatusActions order={buildOrder()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/orders/order-1/cancel',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
   });
 
   it('shows an inline error when marking production fails', async () => {

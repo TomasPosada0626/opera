@@ -21,6 +21,7 @@ describe('OrdersService', () => {
     items: [
       { id: 'item-1', productId: product.id, quantity: '2', unitPrice: '50' },
     ],
+    remissions: [],
   };
 
   let prisma: {
@@ -367,6 +368,96 @@ describe('OrdersService', () => {
       await expect(
         service.markWarehoused('order-1', 'acting-user'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('cancel', () => {
+    it('throws NotFoundException when the order does not exist', async () => {
+      prisma.order.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.cancel('missing', 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the order is already CANCELADO', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'CANCELADO',
+      });
+
+      await expect(
+        service.cancel('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the order already has remissions', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'EN_ALMACEN',
+        remissions: [{ id: 'remission-1' }],
+      });
+
+      await expect(
+        service.cancel('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the guarded update matches no rows (lost the race)', async () => {
+      prisma.order.findUnique.mockResolvedValue(baseOrder);
+      prisma.order.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.cancel('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('cancels a PENDIENTE order without touching stock and logs the transition', async () => {
+      prisma.order.findUnique
+        .mockResolvedValueOnce(baseOrder)
+        .mockResolvedValueOnce({ ...baseOrder, status: 'CANCELADO' });
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.cancel('order-1', 'acting-user');
+
+      const updateManyCalls = prisma.order.updateMany.mock.calls as [
+        [
+          {
+            where: {
+              id: string;
+              status: unknown;
+              remissions: { none: object };
+            };
+            data: { status: string };
+          },
+        ],
+      ];
+      expect(updateManyCalls[0][0].where).toEqual({
+        id: 'order-1',
+        status: { not: 'CANCELADO' },
+        remissions: { none: {} },
+      });
+      expect(updateManyCalls[0][0].data).toEqual({ status: 'CANCELADO' });
+      expect(result.status).toBe('CANCELADO');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'CANCEL' }),
+      );
+    });
+
+    it('cancels an EN_ALMACEN order without reversing the entrada already recorded', async () => {
+      prisma.order.findUnique
+        .mockResolvedValueOnce({ ...baseOrder, status: 'EN_ALMACEN' })
+        .mockResolvedValueOnce({ ...baseOrder, status: 'CANCELADO' });
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.cancel('order-1', 'acting-user');
+
+      expect(result.status).toBe('CANCELADO');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 });

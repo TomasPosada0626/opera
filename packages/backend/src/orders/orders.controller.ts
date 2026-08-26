@@ -110,4 +110,28 @@ export class OrdersController {
   markWarehoused(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.ordersService.markWarehoused(id, req.user.sub);
   }
+
+  @Patch(':id/cancel')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Cancelar pedido (ADMIN)',
+    description:
+      'No revierte stock — este negocio no descuenta inventario al crear el pedido, ' +
+      'y si ya está EN_ALMACEN ese terminado es un movimiento real del Kardex, no algo ' +
+      'que deshacer. Rechaza si ya tiene remisiones (mercancía ya despachada).',
+  })
+  @ApiResponse({ status: 200, description: 'Pedido cancelado.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Ya está CANCELADO o ya tiene remisiones.',
+  })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
+  cancel(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.ordersService.cancel(id, req.user.sub);
+  }
 }

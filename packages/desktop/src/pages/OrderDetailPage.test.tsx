@@ -283,4 +283,60 @@ describe('OrderDetailPage', () => {
       screen.queryByRole('button', { name: 'Marcar en producción' }),
     ).not.toBeInTheDocument();
   });
+
+  it('shows "Cancelar pedido" alongside the status action for PENDIENTE and EN_PRODUCCION', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        status: 'EN_PRODUCCION',
+        productionStartedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    );
+
+    renderWithClient(<OrderDetailPage />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Marcar enviado a almacén' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Cancelar pedido' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows "Cancelar pedido" for an EN_ALMACEN order without remissions', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(buildOrder({ status: 'EN_ALMACEN' }));
+
+    renderWithClient(<OrderDetailPage />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Cancelar pedido' }),
+    ).toBeInTheDocument();
+  });
+
+  it('hides "Cancelar pedido" once the order has a remission', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
+    );
+
+    renderWithClient(<OrderDetailPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    expect(
+      screen.queryByRole('button', { name: 'Cancelar pedido' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides "Cancelar pedido" for an already CANCELADO order', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(buildOrder({ status: 'CANCELADO' }));
+
+    renderWithClient(<OrderDetailPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    expect(
+      screen.queryByRole('button', { name: 'Cancelar pedido' }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -1,5 +1,6 @@
-import { Factory, PackageCheck } from 'lucide-react';
+import { Ban, Factory, PackageCheck } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useCancelOrder } from '../../hooks/useCancelOrder';
 import { useMarkOrderProduction } from '../../hooks/useMarkOrderProduction';
 import { useMarkOrderWarehoused } from '../../hooks/useMarkOrderWarehoused';
 import { ApiError } from '../../lib/api-client';
@@ -28,26 +29,58 @@ function daysInProduction(productionStartedAt: string): number {
 export function OrderStatusActions({ order }: OrderStatusActionsProps) {
   const markProduction = useMarkOrderProduction();
   const markWarehoused = useMarkOrderWarehoused();
+  const cancelOrder = useCancelOrder();
+
+  // "Cancelar" se oculta si ya hay remisiones (#97) — el backend ya lo
+  // rechaza con 400, esto solo evita el viaje redondo para un caso que
+  // nunca debería intentarse desde la UI (mismo criterio que
+  // UserRowActions ocultando "Desactivar" para la propia cuenta).
+  const canCancel =
+    order.status !== 'CANCELADO' && order.remissions.length === 0;
+
+  const cancelButton = canCancel && (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        variant="ghost"
+        onClick={() => cancelOrder.mutate(order.id)}
+        disabled={cancelOrder.isPending}
+        className="px-3 py-1.5"
+      >
+        <Ban className="h-4 w-4" />
+        {cancelOrder.isPending ? 'Cancelando…' : 'Cancelar pedido'}
+      </Button>
+      {cancelOrder.isError && (
+        <p className="text-danger max-w-48 text-right text-xs">
+          {cancelOrder.error instanceof ApiError
+            ? cancelOrder.error.message
+            : 'No se pudo cancelar el pedido.'}
+        </p>
+      )}
+    </div>
+  );
 
   if (order.status === 'PENDIENTE') {
     return (
-      <div className="flex flex-col items-end gap-1">
-        <Button
-          variant="secondary"
-          onClick={() => markProduction.mutate(order.id)}
-          disabled={markProduction.isPending}
-          className="px-3 py-1.5"
-        >
-          <Factory className="h-4 w-4" />
-          {markProduction.isPending ? 'Marcando…' : 'Marcar en producción'}
-        </Button>
-        {markProduction.isError && (
-          <p className="text-danger max-w-48 text-right text-xs">
-            {markProduction.error instanceof ApiError
-              ? markProduction.error.message
-              : 'No se pudo marcar en producción.'}
-          </p>
-        )}
+      <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            variant="secondary"
+            onClick={() => markProduction.mutate(order.id)}
+            disabled={markProduction.isPending}
+            className="px-3 py-1.5"
+          >
+            <Factory className="h-4 w-4" />
+            {markProduction.isPending ? 'Marcando…' : 'Marcar en producción'}
+          </Button>
+          {markProduction.isError && (
+            <p className="text-danger max-w-48 text-right text-xs">
+              {markProduction.error instanceof ApiError
+                ? markProduction.error.message
+                : 'No se pudo marcar en producción.'}
+            </p>
+          )}
+        </div>
+        {cancelButton}
       </div>
     );
   }
@@ -57,28 +90,37 @@ export function OrderStatusActions({ order }: OrderStatusActionsProps) {
       ? daysInProduction(order.productionStartedAt)
       : 0;
     return (
-      <div className="flex flex-col items-end gap-1">
-        <p className="text-ink-muted text-xs">
-          {days === 1 ? '1 día en producción' : `${days} días en producción`}
-        </p>
-        <Button
-          variant="secondary"
-          onClick={() => markWarehoused.mutate(order.id)}
-          disabled={markWarehoused.isPending}
-          className="px-3 py-1.5"
-        >
-          <PackageCheck className="h-4 w-4" />
-          {markWarehoused.isPending ? 'Marcando…' : 'Marcar enviado a almacén'}
-        </Button>
-        {markWarehoused.isError && (
-          <p className="text-danger max-w-48 text-right text-xs">
-            {markWarehoused.error instanceof ApiError
-              ? markWarehoused.error.message
-              : 'No se pudo marcar enviado a almacén.'}
+      <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-end gap-1">
+          <p className="text-ink-muted text-xs">
+            {days === 1 ? '1 día en producción' : `${days} días en producción`}
           </p>
-        )}
+          <Button
+            variant="secondary"
+            onClick={() => markWarehoused.mutate(order.id)}
+            disabled={markWarehoused.isPending}
+            className="px-3 py-1.5"
+          >
+            <PackageCheck className="h-4 w-4" />
+            {markWarehoused.isPending
+              ? 'Marcando…'
+              : 'Marcar enviado a almacén'}
+          </Button>
+          {markWarehoused.isError && (
+            <p className="text-danger max-w-48 text-right text-xs">
+              {markWarehoused.error instanceof ApiError
+                ? markWarehoused.error.message
+                : 'No se pudo marcar enviado a almacén.'}
+            </p>
+          )}
+        </div>
+        {cancelButton}
       </div>
     );
+  }
+
+  if (canCancel) {
+    return <div className="flex flex-col items-end gap-2">{cancelButton}</div>;
   }
 
   return <span className="text-ink-faint">—</span>;

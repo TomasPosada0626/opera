@@ -265,4 +265,54 @@ export class OrdersService {
       throw error;
     }
   }
+
+  // #97 se filtró antes del pivote de fabricación sobre pedido (#68-73) y
+  // asumía que crear un pedido descontaba stock de inmediato (diseño
+  // original #50/#51) — ya no es así (ver comentario de Order en
+  // schema.prisma), así que cancelar no necesita revertir ningún
+  // movimiento: PENDIENTE/EN_PRODUCCION nunca tocaron stock, y si ya está
+  // EN_ALMACEN, el terminado que entró (ENTRADA, ver markWarehoused) es un
+  // hecho real del ledger append-only (ADR 0001) — reescribirlo sería
+  // falsificar el Kardex, no revertir una venta. El stock ya producido
+  // sigue siendo inventario válido, solo deja de estar atado a este pedido.
+  // Lo único que sí bloquea cancelar es que ya exista una Remission: en ese
+  // punto la mercancía físicamente salió del almacén hacia el cliente
+  // (SALIDA real, ver RemissionsService.create), y cancelar el pedido no
+  // puede deshacer eso. `remissions: { none: {} }` en el where hace ese
+  // chequeo atómico junto con el de estado, mismo espíritu que
+  // markProduction: un solo `updateMany`, sin Serializable porque no hay
+  // ningún StockMovement que escribir acá.
+  async cancel(id: string, actingUserId: string) {
+    const before = await this.findOne(id);
+    if (before.status === 'CANCELADO') {
+      throw new BadRequestException('El pedido ya está cancelado');
+    }
+    if (before.remissions.length > 0) {
+      throw new BadRequestException(
+        'No se puede cancelar un pedido que ya tiene remisiones (mercancía despachada)',
+      );
+    }
+
+    const result = await this.prisma.order.updateMany({
+      where: { id, status: { not: 'CANCELADO' }, remissions: { none: {} } },
+      data: { status: 'CANCELADO' },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'El pedido cambió de estado antes de poder cancelarlo, intenta de nuevo',
+      );
+    }
+
+    const order = await this.findOne(id);
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'Order',
+      entityId: order.id,
+      action: 'CANCEL',
+      before: { status: before.status },
+      after: { status: order.status },
+    });
+
+    return order;
+  }
 }

@@ -37,6 +37,7 @@ const statusFilters: { value: OrderStatus | undefined; label: string }[] = [
   { value: 'PENDIENTE', label: 'Pendiente' },
   { value: 'EN_PRODUCCION', label: 'En producción' },
   { value: 'EN_ALMACEN', label: 'En almacén' },
+  { value: 'CANCELADO', label: 'Cancelado' },
 ];
 
 function formatDate(value: string): string {

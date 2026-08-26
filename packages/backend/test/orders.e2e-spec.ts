@@ -23,6 +23,10 @@ describe('Orders (e2e)', () => {
   let customerId: string;
   let productId: string;
   const orderIds: string[] = [];
+  // Productos ad-hoc de los tests de cancelar (dejan stock real sin
+  // revertir a propósito) — limpiados aparte del `productId` compartido
+  // para no contaminar el stock que el test de ciclo de vida asume en 0.
+  const extraProductIds: string[] = [];
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -72,6 +76,12 @@ describe('Orders (e2e)', () => {
     await prisma.customer.delete({ where: { id: customerId } });
     await prisma.stockMovement.deleteMany({ where: { productId } });
     await prisma.product.delete({ where: { id: productId } });
+    await prisma.stockMovement.deleteMany({
+      where: { productId: { in: extraProductIds } },
+    });
+    await prisma.product.deleteMany({
+      where: { id: { in: extraProductIds } },
+    });
     await deleteCatalogFixtures(prisma, { categoryId, unitId, warehouseId });
     await deleteUsers(prisma, [adminUserId]);
     await app.close();
@@ -213,6 +223,141 @@ describe('Orders (e2e)', () => {
       .patch(`/orders/${orderId}/mark-production`)
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(400);
+  });
+
+  it('cancels a PENDIENTE order without touching stock', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId, quantity: 1, unitPrice: 10 }],
+      })
+      .expect(201);
+    const orderId = (created.body as { id: string }).id;
+    orderIds.push(orderId);
+
+    const cancelled = await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((cancelled.body as { status: string }).status).toBe('CANCELADO');
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
+  // Producto propio (no el `productId` compartido del describe) — este
+  // test deja stock real sin revertir a propósito (ver comentario de
+  // OrdersService.cancel), y el test de ciclo de vida más abajo asume que
+  // `productId` arranca en 0 stock; compartirlo aquí lo rompería.
+  it('cancels an EN_ALMACEN order without reversing the stock already entered', async () => {
+    const unique = Date.now();
+    const product = await prisma.product.create({
+      data: {
+        sku: `ORD-CANCEL-${unique}`,
+        name: 'Producto para cancelar en almacén',
+        type: ProductType.FINISHED_GOOD,
+        categoryId,
+        unitId,
+      },
+    });
+    extraProductIds.push(product.id);
+
+    const created = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId: product.id, quantity: 2, unitPrice: 10 }],
+      })
+      .expect(201);
+    const orderId = (created.body as { id: string }).id;
+    orderIds.push(orderId);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/mark-production`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/orders/${orderId}/mark-warehoused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    const stockBefore = await request(app.getHttpServer())
+      .get(`/inventory/${product.id}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    const stockAfter = await request(app.getHttpServer())
+      .get(`/inventory/${product.id}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((stockAfter.body as { stock: string }).stock).toBe(
+      (stockBefore.body as { stock: string }).stock,
+    );
+  });
+
+  // Producto propio, mismo motivo que el test anterior.
+  it('rejects cancelling an order that already has a remission', async () => {
+    const unique = Date.now();
+    const product = await prisma.product.create({
+      data: {
+        sku: `ORD-REM-${unique}`,
+        name: 'Producto para pedido con remisión',
+        type: ProductType.FINISHED_GOOD,
+        categoryId,
+        unitId,
+      },
+    });
+    extraProductIds.push(product.id);
+
+    const created = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId: product.id, quantity: 2, unitPrice: 10 }],
+      })
+      .expect(201);
+    const order = created.body as { id: string; items: { id: string }[] };
+    orderIds.push(order.id);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${order.id}/mark-production`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/orders/${order.id}/mark-warehoused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/remissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        orderId: order.id,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId: order.items[0].id, quantity: 1 }],
+      })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .patch(`/orders/${order.id}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    expect((response.body as { message: string }).message).toContain(
+      'remisiones',
+    );
   });
 
   it('runs the full lifecycle: producción -> almacén -> despacho, moviendo stock solo cuando corresponde', async () => {
