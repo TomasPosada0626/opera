@@ -59,34 +59,51 @@ Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend co
 
 ## Arquitectura
 
+### Diagrama de contexto (C4 nivel 1)
+
+Opera es un sistema cerrado: un solo tipo de usuario (el Administrador del
+taller) opera todo el ERP, y no hay integraciones con sistemas externos —
+sin pasarela de pagos, sin proveedor de correo, sin ERP externo del que
+importar/exportar datos. Esa ausencia es deliberada, no un hueco: cada
+dato que el negocio necesita (clientes, proveedores, inventario, ventas) se
+gestiona dentro del propio sistema.
+
 ```mermaid
-flowchart LR
-    subgraph Cliente["Desktop (Electron)"]
-        UI["React + TypeScript + Tailwind"]
+flowchart TB
+    Admin(["Administrador<br/>(persona)"])
+
+    subgraph Opera["Opera (sistema)"]
+        Sistema["ERP de escritorio para inventario,<br/>producción, compras y ventas"]
     end
 
-    subgraph Servidor["Backend (NestJS)"]
-        API["REST API"]
-        Auth["Auth + RBAC"]
-        Inv["Inventario / Kardex"]
-        Prod["Producción"]
-        Ventas["Ventas / Clientes / Proveedores"]
-    end
-
-    DB[("PostgreSQL")]
-
-    UI -- "HTTPS / JSON" --> API
-    API --> Auth
-    API --> Inv
-    API --> Prod
-    API --> Ventas
-    Auth --> DB
-    Inv --> DB
-    Prod --> DB
-    Ventas --> DB
+    Admin -- "Gestiona inventario, producción,<br/>pedidos, clientes y proveedores" --> Sistema
 ```
 
-Un diagrama C4 completo (contexto + contenedores) se agregará en la fase de cierre del proyecto ([M6](#roadmap)).
+### Diagrama de contenedores (C4 nivel 2)
+
+```mermaid
+flowchart LR
+    Admin(["Administrador"])
+
+    subgraph Opera["Opera (system boundary)"]
+        Desktop["Cliente de escritorio<br/>[Electron + React + TypeScript]<br/><br/>Pantallas de inventario, producción,<br/>ventas, clientes, proveedores y reportes"]
+        API["API REST<br/>[NestJS + TypeScript]<br/><br/>Auth + RBAC, reglas de negocio,<br/>transacciones, auditoría"]
+        DB[("Base de datos<br/>[PostgreSQL 16]<br/><br/>Catálogo, Kardex,<br/>pedidos, auditoría")]
+    end
+
+    Admin -- "Usa" --> Desktop
+    Desktop -- "HTTPS / JSON<br/>JWT en cada request" --> API
+    API -- "SQL vía Prisma<br/>(transacciones Serializable<br/>en operaciones críticas)" --> DB
+```
+
+Dentro del contenedor **API REST**, el backend se organiza en módulos de Nest
+por dominio (Auth, Inventario, Producción, Ventas/Clientes/Proveedores,
+Reportes/Dashboard) — ver el detalle a nivel de componente en
+[Estructura del monorepo](#estructura-del-monorepo) y el desglose de módulos en
+la tabla de [Stack tecnológico](#stack-tecnológico); no se duplica aquí un
+tercer diagrama (C4 nivel 3) porque la lista de módulos en
+`packages/backend/src/app.module.ts` ya cumple ese rol sin necesitar
+mantenerse en dos lugares a la vez.
 
 ## Principios de diseño
 
@@ -140,7 +157,7 @@ opera/
 
 ## Roadmap
 
-El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 89/94 issues cerradas (~95%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
+El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 90/94 issues cerradas (~96%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
 
 | Milestone                                                                                        | Alcance                                                                                                                       | Estado   |
 | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -150,7 +167,7 @@ El trabajo está organizado en milestones, cada uno con sus issues de seguimient
 | [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                          | BOM, órdenes de producción, costeo                                                                                            | ✅ 8/8   |
 | [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)                   | Cliente de escritorio, pantallas de inventario y producción                                                                   | ✅ 18/18 |
 | [M5 - Ventas/Compras/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Ventas, compras, clientes, proveedores, saldos pendientes, reportes (PDF/Excel), dashboard, búsqueda global                   | ✅ 26/26 |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 2/7   |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 3/7   |
 
 ## Puesta en marcha
 
@@ -302,6 +319,8 @@ Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda al día con todo lo pla
 **Retirar `EN_PROCESO` muerto, cancelar orden de producción (#98).** La issue pedía decidir entre implementar una transición real a `EN_PROCESO` o retirar el valor muerto del enum — ningún código lo asignaba nunca, la orden saltaba directo `PENDIENTE` → `COMPLETADA`. Se retira: a diferencia de `Order.EN_PRODUCCION` (una bandera manual que existe para contar días reales que un pedido pasa en el taller), acá no hay ningún consumo parcial que trackear ni un hito intermedio distinto de "se declaró la intención" (`create`) y "se consumió y produjo" (`complete`) — agregar un estado intermedio inventaría un paso que nadie dispara. `CANCELADA` reemplaza el valor retirado. `PATCH /production-orders/:id/cancel` (ADMIN) no revierte stock — crear la orden nunca escribió `StockMovement` (solo lo valida como informativo) — y solo aplica mientras siga `PENDIENTE`, mismo espíritu que `OrdersService.cancel` con el Kardex append-only: una orden `COMPLETADA` ya consumió materiales reales que no se deshacen. La migración se generó a mano (`prisma migrate dev` es interactivo, no soportado en este entorno) vía `prisma migrate diff` + `migrate deploy`, verificando primero que cero filas usaran `EN_PROCESO` en la base real. En el frontend, un botón "Cancelar" aparece junto a "Completar" en cada orden `PENDIENTE`.
 
 **ADR: NestJS + Prisma sobre otras alternativas de backend (#60).** [0004](docs/adr/0004-nestjs-prisma-sobre-alternativas.md) documenta por qué NestJS y no Express/Fastify/AdonisJS, y por qué Prisma y no TypeORM/Drizzle/SQL crudo — decisión tomada en M1 pero nunca escrita hasta ahora. El eje real de la comparación no es rendimiento en el vacío, sino qué tan bien cada opción sostiene las invariantes ya documentadas en los ADRs 0001/0002 (transacciones `Serializable` explícitas para el Kardex y el costeo) y el ritmo de un solo desarrollador agregando módulos nuevos sin renegociar la estructura en cada uno.
+
+**Diagrama C4 de contexto y contenedores (#61).** Reemplaza el diagrama único de [Arquitectura](#arquitectura) por dos niveles reales de C4: contexto (el Administrador como único actor, sin sistemas externos — Opera no integra pasarela de pagos, correo ni otro ERP, ausencia deliberada, no un hueco) y contenedores (Cliente de escritorio / API REST / PostgreSQL, con los protocolos reales entre ellos: HTTPS+JWT del cliente a la API, transacciones `Serializable` de la API a Postgres vía Prisma). Se decidió no agregar un tercer diagrama de componentes (C4 nivel 3) porque duplicaría en Mermaid lo que `app.module.ts` y la tabla de Stack tecnológico ya listan — mantenerlo sincronizado en dos lugares es una fuente de desactualización, no una ganancia real de claridad.
 
 **Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda completo salvo #99** (corrección/anulación de remisiones), el último issue del milestone.
 
