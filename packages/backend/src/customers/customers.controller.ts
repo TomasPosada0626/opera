@@ -56,6 +56,17 @@ export class CustomersController {
     return this.customersService.findOne(id);
   }
 
+  @Get(':id/balance')
+  @ApiOperation({
+    summary: 'Saldo pendiente de un cliente',
+    description:
+      'Se deriva de lo remisionado (no de lo pedido) menos lo pagado por remisión — nunca un campo propio.',
+  })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado.' })
+  getBalance(@Param('id') id: string) {
+    return this.customersService.getBalance(id);
+  }
+
   @Patch(':id')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Editar cliente (ADMIN)' })

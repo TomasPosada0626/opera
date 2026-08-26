@@ -89,6 +89,15 @@ describe('CustomersPage', () => {
     expect(screen.getByText('Activo')).toBeInTheDocument();
   });
 
+  it('links each row to its detail page', async () => {
+    mockedApiFetch.mockResolvedValue(customersResponse([buildCustomer()]));
+
+    renderWithClient(<CustomersPage />);
+
+    const link = await screen.findByRole('link', { name: /Ver detalle/ });
+    expect(link).toHaveAttribute('href', '/clientes/customer-1');
+  });
+
   it('shows the empty message when there are no customers', async () => {
     mockedApiFetch.mockResolvedValue(customersResponse([]));
 

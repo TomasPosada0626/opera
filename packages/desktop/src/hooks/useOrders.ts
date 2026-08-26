@@ -7,11 +7,17 @@ interface UseOrdersParams {
   page: number;
   pageSize: number;
   status?: OrderStatus;
+  customerId?: string;
 }
 
-export function useOrders({ page, pageSize, status }: UseOrdersParams) {
+export function useOrders({
+  page,
+  pageSize,
+  status,
+  customerId,
+}: UseOrdersParams) {
   return useQuery({
-    queryKey: ['orders', { page, pageSize, status }],
+    queryKey: ['orders', { page, pageSize, status, customerId }],
     queryFn: () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -19,6 +25,9 @@ export function useOrders({ page, pageSize, status }: UseOrdersParams) {
       });
       if (status) {
         params.set('status', status);
+      }
+      if (customerId) {
+        params.set('customerId', customerId);
       }
       return apiFetch<PaginatedResult<Order>>(`/orders?${params.toString()}`);
     },

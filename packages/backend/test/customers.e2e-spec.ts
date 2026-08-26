@@ -1,8 +1,14 @@
 import { INestApplication } from '@nestjs/common';
+import { ProductType } from '@prisma/client';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
-import { createUserAndLogin, deleteUsers } from './support/fixtures';
+import {
+  createUserAndLogin,
+  createCatalogFixtures,
+  deleteCatalogFixtures,
+  deleteUsers,
+} from './support/fixtures';
 
 describe('Customers (e2e)', () => {
   jest.setTimeout(30_000);
@@ -137,6 +143,164 @@ describe('Customers (e2e)', () => {
         .query({ page: 0 })
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(400);
+    });
+  });
+
+  describe('balance', () => {
+    let categoryId: string;
+    let unitId: string;
+    let warehouseId: string;
+    let productId: string;
+    let customerId: string;
+    const orderIds: string[] = [];
+
+    beforeAll(async () => {
+      const unique = Date.now();
+      const fixtures = await createCatalogFixtures(prisma, `bal-${unique}`);
+      categoryId = fixtures.category.id;
+      unitId = fixtures.unit.id;
+      warehouseId = fixtures.warehouse.id;
+
+      const product = await prisma.product.create({
+        data: {
+          sku: `BAL-${unique}`,
+          name: 'Silla de balance',
+          type: ProductType.FINISHED_GOOD,
+          categoryId,
+          unitId,
+        },
+      });
+      productId = product.id;
+
+      const customer = await prisma.customer.create({
+        data: { name: `Cliente de balance ${unique}` },
+      });
+      customerId = customer.id;
+    });
+
+    afterAll(async () => {
+      await prisma.remissionItem.deleteMany({
+        where: { remission: { order: { id: { in: orderIds } } } },
+      });
+      await prisma.remission.deleteMany({
+        where: { order: { id: { in: orderIds } } },
+      });
+      await prisma.orderItem.deleteMany({
+        where: { order: { id: { in: orderIds } } },
+      });
+      await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
+      await prisma.customer.delete({ where: { id: customerId } });
+      await prisma.stockMovement.deleteMany({ where: { productId } });
+      await prisma.product.delete({ where: { id: productId } });
+      await deleteCatalogFixtures(prisma, { categoryId, unitId, warehouseId });
+    });
+
+    async function createAndWarehouseOrder(
+      quantity: number,
+      unitPrice: number,
+    ) {
+      const created = await request(app.getHttpServer())
+        .post('/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          customerId,
+          warehouseId,
+          items: [{ productId, quantity, unitPrice }],
+        })
+        .expect(201);
+      const order = created.body as { id: string; items: { id: string }[] };
+      orderIds.push(order.id);
+
+      await request(app.getHttpServer())
+        .patch(`/orders/${order.id}/mark-production`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/orders/${order.id}/mark-warehoused`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(201);
+
+      return { orderId: order.id, orderItemId: order.items[0].id };
+    }
+
+    it('is zero for a customer with no remissions yet', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/customers/${customerId}/balance`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(response.body).toEqual({
+        totalBilled: '0',
+        totalPaid: '0',
+        balance: '0',
+      });
+    });
+
+    it('derives the balance from remisiones with mixed payment statuses, filterable by customerId on /orders', async () => {
+      // Pedido 1: 4 x 25 = 100, se despacha completo y se paga -> saldo 0.
+      const order1 = await createAndWarehouseOrder(4, 25);
+      await request(app.getHttpServer())
+        .post('/remissions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          orderId: order1.orderId,
+          paymentStatus: 'PAGADO',
+          items: [{ orderItemId: order1.orderItemId, quantity: 4 }],
+        })
+        .expect(201);
+
+      // Pedido 2: 2 x 50 = 100, se despacha completo y solo se abonan 30.
+      const order2 = await createAndWarehouseOrder(2, 50);
+      await request(app.getHttpServer())
+        .post('/remissions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          orderId: order2.orderId,
+          paymentStatus: 'ABONADO',
+          amountPaid: 30,
+          items: [{ orderItemId: order2.orderItemId, quantity: 2 }],
+        })
+        .expect(201);
+
+      // Pedido 3: 3 x 10 = 30, se despacha completo y queda en cartera.
+      const order3 = await createAndWarehouseOrder(3, 10);
+      await request(app.getHttpServer())
+        .post('/remissions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          orderId: order3.orderId,
+          paymentStatus: 'CARTERA',
+          items: [{ orderItemId: order3.orderItemId, quantity: 3 }],
+        })
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .get(`/customers/${customerId}/balance`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      // Facturado: 100 + 100 + 30 = 230. Pagado: 100 + 30 = 130. Saldo: 100.
+      expect(response.body).toEqual({
+        totalBilled: '230',
+        totalPaid: '130',
+        balance: '100',
+      });
+
+      const ordersResponse = await request(app.getHttpServer())
+        .get('/orders')
+        .query({ customerId })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      const ordersBody = ordersResponse.body as { data: { id: string }[] };
+      const returnedIds = ordersBody.data.map((order) => order.id);
+      expect(returnedIds).toEqual(
+        expect.arrayContaining([
+          order1.orderId,
+          order2.orderId,
+          order3.orderId,
+        ]),
+      );
+      expect(ordersBody.data).toHaveLength(3);
     });
   });
 });

@@ -54,7 +54,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Listar pedidos (paginado)',
     description:
-      'Filtra por estado con ?status=PENDIENTE|EN_PRODUCCION|EN_ALMACEN|CANCELADO.',
+      'Filtra por estado con ?status=PENDIENTE|EN_PRODUCCION|EN_ALMACEN|CANCELADO y/o por cliente con ?customerId=.',
   })
   findAll(@Query() query: ListOrdersDto) {
     return this.ordersService.findAll(query);

@@ -98,4 +98,44 @@ export class CustomersService {
 
     return customer;
   }
+
+  // Saldo pendiente = lo remisionado (lo que de verdad se despachó, no lo
+  // pedido — un pedido sin despachar todavía no es un cobro pendiente)
+  // menos lo pagado. "Lo pagado" por remisión sale de paymentStatus:
+  // PAGADO = el valor completo de esa remisión, ABONADO = amountPaid,
+  // CARTERA = nada — nunca un campo propio, se deriva en cada consulta
+  // (mismo espíritu que el stock del Kardex).
+  async getBalance(customerId: string) {
+    await this.findOne(customerId);
+
+    const remissions = await this.prisma.remission.findMany({
+      where: { order: { customerId } },
+      include: { items: { include: { orderItem: true } } },
+    });
+
+    let totalBilled = new Prisma.Decimal(0);
+    let totalPaid = new Prisma.Decimal(0);
+
+    for (const remission of remissions) {
+      const value = remission.items.reduce(
+        (sum, item) => sum.plus(item.quantity.times(item.orderItem.unitPrice)),
+        new Prisma.Decimal(0),
+      );
+      totalBilled = totalBilled.plus(value);
+
+      if (remission.paymentStatus === 'PAGADO') {
+        totalPaid = totalPaid.plus(value);
+      } else if (remission.paymentStatus === 'ABONADO') {
+        totalPaid = totalPaid.plus(
+          remission.amountPaid ?? new Prisma.Decimal(0),
+        );
+      }
+    }
+
+    return {
+      totalBilled: totalBilled.toString(),
+      totalPaid: totalPaid.toString(),
+      balance: totalBilled.minus(totalPaid).toString(),
+    };
+  }
 }

@@ -47,6 +47,7 @@ export class OrdersService {
       sortBy,
       sortOrder = 'desc',
       status,
+      customerId,
     } = query;
     const orderBy = resolveOrderBy(
       sortBy,
@@ -54,7 +55,10 @@ export class OrdersService {
       sortableFields,
       'createdAt',
     );
-    const where = status ? { status } : undefined;
+    const where: Prisma.OrderWhereInput = {
+      ...(status ? { status } : {}),
+      ...(customerId ? { customerId } : {}),
+    };
 
     return paginate(
       () => this.prisma.order.count({ where }),

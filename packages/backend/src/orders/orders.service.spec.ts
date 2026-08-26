@@ -211,7 +211,32 @@ describe('OrdersService', () => {
 
       await service.findAll({});
 
-      expect(prisma.order.count).toHaveBeenCalledWith({ where: undefined });
+      expect(prisma.order.count).toHaveBeenCalledWith({ where: {} });
+    });
+
+    it('filters by customerId when provided', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      prisma.order.count.mockResolvedValue(0);
+
+      await service.findAll({ customerId: customer.id });
+
+      expect(prisma.order.count).toHaveBeenCalledWith({
+        where: { customerId: customer.id },
+      });
+    });
+
+    it('combines status and customerId filters when both are provided', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      prisma.order.count.mockResolvedValue(0);
+
+      await service.findAll({
+        status: 'EN_ALMACEN',
+        customerId: customer.id,
+      });
+
+      expect(prisma.order.count).toHaveBeenCalledWith({
+        where: { status: 'EN_ALMACEN', customerId: customer.id },
+      });
     });
   });
 
