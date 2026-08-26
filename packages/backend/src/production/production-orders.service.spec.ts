@@ -49,6 +49,7 @@ describe('ProductionOrdersService', () => {
       findUnique: jest.Mock;
       create: jest.Mock;
       count: jest.Mock;
+      updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -71,6 +72,7 @@ describe('ProductionOrdersService', () => {
         findUnique: jest.fn(),
         create: jest.fn(),
         count: jest.fn(),
+        updateMany: jest.fn(),
       },
       $transaction: jest.fn((callback: (tx: unknown) => unknown) =>
         callback(txClient),
@@ -390,6 +392,63 @@ describe('ProductionOrdersService', () => {
       await expect(
         service.complete('order-1', 'acting-user'),
       ).rejects.toBeInstanceOf(ConflictException);
+    });
+  });
+
+  describe('cancel', () => {
+    it('throws NotFoundException when the order does not exist', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.cancel('missing', 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.productionOrder.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the order is not PENDIENTE', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        status: 'COMPLETADA',
+      });
+
+      await expect(
+        service.cancel('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.productionOrder.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the guarded update matches no rows (lost the race)', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue({
+        id: 'order-1',
+        status: 'PENDIENTE',
+      });
+      prisma.productionOrder.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.cancel('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('cancels a PENDIENTE order without touching stock and logs the transition', async () => {
+      prisma.productionOrder.findUnique
+        .mockResolvedValueOnce({ id: 'order-1', status: 'PENDIENTE' })
+        .mockResolvedValueOnce({ id: 'order-1', status: 'CANCELADA' });
+      prisma.productionOrder.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.cancel('order-1', 'acting-user');
+
+      expect(prisma.productionOrder.updateMany).toHaveBeenCalledWith({
+        where: { id: 'order-1', status: 'PENDIENTE' },
+        data: { status: 'CANCELADA' },
+      });
+      expect(result.status).toBe('CANCELADA');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'CANCEL',
+          entity: 'ProductionOrder',
+        }),
+      );
     });
   });
 });

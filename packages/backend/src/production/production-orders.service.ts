@@ -299,4 +299,43 @@ export class ProductionOrdersService {
       throw error;
     }
   }
+
+  // #98: crear la orden nunca escribió StockMovement (solo lo valida como
+  // informativo, ver create()) — cancelar no tiene nada que revertir, solo
+  // un campo de estado, y únicamente mientras siga PENDIENTE (una orden
+  // COMPLETADA ya consumió materiales reales, y esos StockMovement no se
+  // deshacen — mismo espíritu que OrdersService.cancel con el Kardex
+  // append-only). `updateMany` con el guard de estado en el `where` hace la
+  // transición atómica sin necesitar Serializable, mismo patrón que
+  // OrdersService.markProduction/cancel.
+  async cancel(id: string, actingUserId: string) {
+    const before = await this.findOne(id);
+    if (before.status !== 'PENDIENTE') {
+      throw new BadRequestException(
+        `La orden está en estado ${before.status}, no se puede cancelar`,
+      );
+    }
+
+    const result = await this.prisma.productionOrder.updateMany({
+      where: { id, status: 'PENDIENTE' },
+      data: { status: 'CANCELADA' },
+    });
+    if (result.count === 0) {
+      throw new ConflictException(
+        'La orden cambió de estado antes de poder cancelarla, intenta de nuevo',
+      );
+    }
+
+    const order = await this.findOne(id);
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'ProductionOrder',
+      entityId: order.id,
+      action: 'CANCEL',
+      before: { status: before.status },
+      after: { status: order.status },
+    });
+
+    return order;
+  }
 }

@@ -428,4 +428,117 @@ describe('Production orders (e2e)', () => {
       ]);
     });
   });
+
+  describe('cancel', () => {
+    it('rejects cancellation by a non-ADMIN user', async () => {
+      const finishedGoodId = await createProduct(
+        `PO-CANCEL-RBAC-${Date.now()}`,
+        'Producto para cancelar (RBAC)',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-CANCEL-RBAC-COMP-${Date.now()}`,
+        'Componente',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 1 }]);
+      await stockUp(componentId, 10);
+      const created = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (created.body as { id: string }).id;
+
+      await request(app.getHttpServer())
+        .patch(`/production-orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(403);
+    });
+
+    it('cancels a PENDIENTE order without touching stock', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-CANCEL-FG-${unique}`,
+        'Terminado a cancelar',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-CANCEL-COMP-${unique}`,
+        'Componente a cancelar',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 2 }]);
+      await stockUp(componentId, 10);
+      const created = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (created.body as { id: string }).id;
+
+      const stockBefore = await request(app.getHttpServer())
+        .get(`/inventory/${componentId}/stock`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const cancelled = await request(app.getHttpServer())
+        .patch(`/production-orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect((cancelled.body as { status: string }).status).toBe('CANCELADA');
+
+      const stockAfter = await request(app.getHttpServer())
+        .get(`/inventory/${componentId}/stock`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect((stockAfter.body as { stock: string }).stock).toBe(
+        (stockBefore.body as { stock: string }).stock,
+      );
+
+      // Ya cancelada — no se puede cancelar ni completar de nuevo.
+      await request(app.getHttpServer())
+        .patch(`/production-orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
+
+    it('rejects cancelling an order that is already COMPLETADA', async () => {
+      const unique = Date.now();
+      const finishedGoodId = await createProduct(
+        `PO-CANCEL-DONE-FG-${unique}`,
+        'Terminado ya completado',
+        'FINISHED_GOOD',
+      );
+      const componentId = await createProduct(
+        `PO-CANCEL-DONE-COMP-${unique}`,
+        'Componente ya consumido',
+        'RAW_MATERIAL',
+      );
+      await createRecipe(finishedGoodId, [{ componentId, quantity: 1 }]);
+      await stockUp(componentId, 10);
+      const created = await request(app.getHttpServer())
+        .post('/production-orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ productId: finishedGoodId, warehouseId, quantity: 1 })
+        .expect(201);
+      const orderId = (created.body as { id: string }).id;
+      await request(app.getHttpServer())
+        .post(`/production-orders/${orderId}/complete`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(201);
+
+      const response = await request(app.getHttpServer())
+        .patch(`/production-orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+      expect((response.body as { message: string }).message).toContain(
+        'COMPLETADA',
+      );
+    });
+  });
 });

@@ -16,17 +16,19 @@ import type {
 
 const PAGE_SIZE = 20;
 
-const statusBadgeVariant: Record<ProductionOrderStatus, 'success' | 'warning'> =
-  {
-    PENDIENTE: 'warning',
-    EN_PROCESO: 'warning',
-    COMPLETADA: 'success',
-  };
+const statusBadgeVariant: Record<
+  ProductionOrderStatus,
+  'success' | 'warning' | 'danger'
+> = {
+  PENDIENTE: 'warning',
+  COMPLETADA: 'success',
+  CANCELADA: 'danger',
+};
 
 const statusLabel: Record<ProductionOrderStatus, string> = {
   PENDIENTE: 'Pendiente',
-  EN_PROCESO: 'En proceso',
   COMPLETADA: 'Completada',
+  CANCELADA: 'Cancelada',
 };
 
 function formatDate(value: string): string {

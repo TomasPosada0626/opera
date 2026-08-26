@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -85,5 +86,22 @@ export class ProductionOrdersController {
   })
   complete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.productionOrdersService.complete(id, req.user.sub);
+  }
+
+  @Patch(':id/cancel')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Cancelar orden de producción (ADMIN)',
+    description:
+      'No revierte stock — crear la orden nunca lo movió. Solo mientras siga PENDIENTE.',
+  })
+  @ApiResponse({ status: 400, description: 'La orden ya no está PENDIENTE.' })
+  @ApiResponse({ status: 404, description: 'Orden no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
+  cancel(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.productionOrdersService.cancel(id, req.user.sub);
   }
 }

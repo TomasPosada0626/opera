@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import {
   afterEach,
   beforeEach,
@@ -103,7 +103,7 @@ describe('ProductionOrdersPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('hides "Nueva orden" and the complete action for a non-ADMIN user', async () => {
+  it('hides "Nueva orden" and the complete/cancel actions for a non-ADMIN user', async () => {
     setAuthToken(fakeJwt(['STAFF']));
     mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
 
@@ -116,9 +116,12 @@ describe('ProductionOrdersPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Completar' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Cancelar' }),
+    ).not.toBeInTheDocument();
   });
 
-  it('shows "Nueva orden" and the complete action for an ADMIN user', async () => {
+  it('shows "Nueva orden" and the complete/cancel actions for an ADMIN user', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
     mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
 
@@ -130,6 +133,50 @@ describe('ProductionOrdersPage', () => {
     expect(
       await screen.findByRole('button', { name: 'Completar' }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Cancelar' }),
+    ).toBeInTheDocument();
+  });
+
+  it('calls PATCH cancel when "Cancelar" is clicked', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockImplementation(
+      (_path: string, options?: RequestInit) => {
+        if (options?.method === 'PATCH') {
+          return Promise.resolve(buildOrder({ status: 'CANCELADA' }));
+        }
+        return Promise.resolve(ordersResponse([buildOrder()]));
+      },
+    );
+
+    renderWithClient(<ProductionOrdersPage />);
+
+    const button = await screen.findByRole('button', { name: 'Cancelar' });
+    button.click();
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/production-orders/order-1/cancel',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+  });
+
+  it('shows a dash for a CANCELADA order (no actions left)', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      ordersResponse([buildOrder({ status: 'CANCELADA' })]),
+    );
+
+    renderWithClient(<ProductionOrdersPage />);
+
+    await screen.findByText('Cancelada');
+    expect(
+      screen.queryByRole('button', { name: 'Completar' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Cancelar' }),
+    ).not.toBeInTheDocument();
   });
 
   it('opens the creation modal when "Nueva orden" is clicked', async () => {

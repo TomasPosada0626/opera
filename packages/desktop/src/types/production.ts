@@ -1,6 +1,6 @@
 import type { Warehouse } from './inventory';
 
-export type ProductionOrderStatus = 'PENDIENTE' | 'EN_PROCESO' | 'COMPLETADA';
+export type ProductionOrderStatus = 'PENDIENTE' | 'COMPLETADA' | 'CANCELADA';
 
 // El backend incluye el Product completo pero sin category/unit anidados
 // (orderInclude = { product: true, warehouse: true }, no un include

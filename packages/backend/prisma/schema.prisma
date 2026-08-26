@@ -235,10 +235,19 @@ model BillOfMaterialsItem {
   @@unique([billOfMaterialsId, componentId])
 }
 
+// EN_PROCESO existió en el enum original sin que ningún código lo
+// asignara (#98, auditoría de huecos 2026-08-22) — la orden salta directo
+// de PENDIENTE a COMPLETADA porque no hay un punto real del negocio que
+// marque "empezó a procesarse": a diferencia de Order.EN_PRODUCCION (una
+// bandera manual para contar días reales que un pedido pasa en el taller),
+// acá no hay consumo parcial que trackear ni un hito intermedio distinto
+// de "se declaró la intención" (create) y "se consumió y produjo"
+// (complete) — agregar un estado intermedio sería inventar un paso que
+// nadie dispara. Retirado; CANCELADA reemplaza el valor muerto para #98.
 enum ProductionOrderStatus {
   PENDIENTE
-  EN_PROCESO
   COMPLETADA
+  CANCELADA
 }
 
 // Una orden declara "quiero producir N unidades de este producto terminado"
@@ -247,6 +256,9 @@ enum ProductionOrderStatus {
 // reales (SALIDA por cada componente consumido, ENTRADA del terminado) — la
 // orden en sí es solo la intención + su estado, StockMovement sigue siendo
 // la única fuente de verdad de qué se movió (igual que con BillOfMaterials).
+// Cancelarla (#98) no revierte nada — crear la orden nunca escribió
+// StockMovement (solo lo valida como informativo), así que solo hay un
+// campo de estado que cambiar, y únicamente mientras siga PENDIENTE.
 model ProductionOrder {
   id          String                @id @default(uuid())
   productId   String
