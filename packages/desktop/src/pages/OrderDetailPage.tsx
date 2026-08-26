@@ -9,7 +9,7 @@ import { EditRemissionPaymentForm } from '../components/orders/EditRemissionPaym
 import { OrderStatusActions } from '../components/orders/OrderStatusActions';
 import { RemissionForm } from '../components/orders/RemissionForm';
 import { useOrder } from '../hooks/useOrder';
-import { apiFetchBlob } from '../lib/api-client';
+import { downloadFile } from '../lib/download-file';
 import { getCurrentUser } from '../lib/current-user';
 import type {
   Order,
@@ -65,19 +65,11 @@ function deliveredFor(order: Order, orderItemId: string): number {
   );
 }
 
-// El navegador no manda el header Authorization en un <a href> directo — la
-// descarga del PDF pasa por apiFetchBlob (mismo auth que el resto de la
-// app) y se dispara con un <a download> programático, no abriendo una
-// ventana nueva (window.open cae en el manejador por defecto de Electron,
-// que la bloquea sin un setWindowOpenHandler explícito).
 async function downloadRemissionPdf(remissionId: string, number: number) {
-  const blob = await apiFetchBlob(`/remissions/${remissionId}/pdf`);
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `remision-${number}.pdf`;
-  link.click();
-  URL.revokeObjectURL(url);
+  await downloadFile(
+    `/remissions/${remissionId}/pdf`,
+    `remision-${number}.pdf`,
+  );
 }
 
 function OrderDetailPage() {

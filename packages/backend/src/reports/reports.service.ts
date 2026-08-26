@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Workbook } from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
@@ -163,5 +164,83 @@ export class ReportsService {
       );
 
     return ranked.slice(0, query.limit ?? 10);
+  }
+
+  // Los tres exports reusan el mismo cálculo que su reporte en JSON (nunca
+  // reimplementan la consulta) — la hoja de Excel es solo otra
+  // presentación de los mismos números, no una fuente de verdad aparte.
+  async getInventoryExcel(): Promise<Buffer> {
+    const rows = await this.getInventoryReport();
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Inventario');
+    sheet.columns = [
+      { header: 'SKU', key: 'sku', width: 15 },
+      { header: 'Nombre', key: 'name', width: 30 },
+      { header: 'Categoría', key: 'category', width: 20 },
+      { header: 'Unidad', key: 'unit', width: 12 },
+      { header: 'Stock', key: 'stock', width: 12 },
+      { header: 'Costo promedio', key: 'averageCost', width: 16 },
+      { header: 'Valor en stock', key: 'stockValue', width: 16 },
+    ];
+    sheet.addRows(
+      rows.map((row) => ({
+        sku: row.sku,
+        name: row.name,
+        category: row.category,
+        unit: row.unit,
+        stock: row.stock.toNumber(),
+        averageCost: row.averageCost.toNumber(),
+        stockValue: row.stockValue.toNumber(),
+      })),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async getSalesExcel(query: DateRangeQueryDto): Promise<Buffer> {
+    const report = await this.getSalesReport(query);
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Ventas');
+    sheet.columns = [
+      { header: 'Desde', key: 'from', width: 14 },
+      { header: 'Hasta', key: 'to', width: 14 },
+      { header: 'Pedidos', key: 'orderCount', width: 12 },
+      { header: 'Cantidad total', key: 'totalQuantity', width: 16 },
+      { header: 'Ingresos totales', key: 'totalRevenue', width: 18 },
+    ];
+    sheet.addRow({
+      from: report.from ?? '',
+      to: report.to ?? '',
+      orderCount: report.orderCount,
+      totalQuantity: report.totalQuantity.toNumber(),
+      totalRevenue: report.totalRevenue.toNumber(),
+    });
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async getTopProductsExcel(query: TopProductsQueryDto): Promise<Buffer> {
+    const rows = await this.getTopProducts(query);
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Productos más vendidos');
+    sheet.columns = [
+      { header: 'SKU', key: 'sku', width: 15 },
+      { header: 'Nombre', key: 'name', width: 30 },
+      { header: 'Cantidad vendida', key: 'quantitySold', width: 18 },
+      { header: 'Ingresos', key: 'revenue', width: 16 },
+    ];
+    sheet.addRows(
+      rows.map((row) => ({
+        sku: row.sku,
+        name: row.name,
+        quantitySold: row.quantitySold.toNumber(),
+        revenue: row.revenue.toNumber(),
+      })),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 }

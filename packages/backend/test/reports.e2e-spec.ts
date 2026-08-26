@@ -10,6 +10,21 @@ import {
   deleteUsers,
 } from './support/fixtures';
 
+// superagent no bufferiza a Buffer por defecto el content-type de .xlsx —
+// sin este parser explícito, response.body llega como {} en vez de bytes.
+// Patrón estándar de supertest/superagent para respuestas binarias.
+function binaryParser(
+  res: NodeJS.EventEmitter & { setEncoding: (encoding: string) => void },
+  callback: (err: Error | null, body: Buffer) => void,
+): void {
+  res.setEncoding('binary');
+  let data = '';
+  res.on('data', (chunk: string) => {
+    data += chunk;
+  });
+  res.on('end', () => callback(null, Buffer.from(data, 'binary')));
+}
+
 // Los tres endpoints solo tenían cobertura unitaria (Prisma mockeado) —
 // nunca se probaron sobre HTTP/Postgres real (encontrado en la auditoría de
 // cobertura de pruebas, 2026-08-22).
@@ -131,6 +146,19 @@ describe('Reports (e2e)', () => {
     expect(row?.stockValue).toBe('30');
   });
 
+  it('GET /reports/inventario/excel returns an .xlsx file', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/reports/inventario/excel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(binaryParser)
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('spreadsheetml');
+    // Todo archivo .xlsx es un zip — empieza con la firma "PK".
+    expect((response.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+  });
+
   it('GET /reports/ventas totals the order just created', async () => {
     const response = await request(app.getHttpServer())
       .get('/reports/ventas')
@@ -145,6 +173,18 @@ describe('Reports (e2e)', () => {
     expect(body.orderCount).toBeGreaterThanOrEqual(1);
     expect(Number(body.totalQuantity)).toBeGreaterThanOrEqual(4);
     expect(Number(body.totalRevenue)).toBeGreaterThanOrEqual(100);
+  });
+
+  it('GET /reports/ventas/excel returns an .xlsx file', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/reports/ventas/excel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(binaryParser)
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('spreadsheetml');
+    expect((response.body as Buffer).subarray(0, 2).toString()).toBe('PK');
   });
 
   it('GET /reports/ventas excludes everything outside the given date range', async () => {
@@ -182,5 +222,17 @@ describe('Reports (e2e)', () => {
     expect(row).toBeDefined();
     expect(row?.quantitySold).toBe('4');
     expect(row?.revenue).toBe('100');
+  });
+
+  it('GET /reports/productos-mas-vendidos/excel returns an .xlsx file', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/reports/productos-mas-vendidos/excel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(binaryParser)
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('spreadsheetml');
+    expect((response.body as Buffer).subarray(0, 2).toString()).toBe('PK');
   });
 });

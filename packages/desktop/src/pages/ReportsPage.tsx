@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { useInventoryReport } from '../hooks/useInventoryReport';
-import { useSalesReport } from '../hooks/useSalesReport';
+import { dateRangeSearchParams, useSalesReport } from '../hooks/useSalesReport';
 import { useTopProducts } from '../hooks/useTopProducts';
+import { downloadFile } from '../lib/download-file';
 import type { InventoryReportRow, TopProductRow } from '../types/report';
 
 function formatMoney(value: number): string {
@@ -45,6 +47,29 @@ function ReportsPage() {
     sortOrder: rankOrder,
   });
   const inventoryQuery = useInventoryReport();
+
+  // Cada export manda los mismos filtros que su reporte en pantalla — la
+  // hoja de Excel es solo otra presentación de los mismos números.
+  function exportSalesExcel() {
+    const query = dateRangeSearchParams(dateParams).toString();
+    void downloadFile(
+      `/reports/ventas/excel${query ? `?${query}` : ''}`,
+      'ventas.xlsx',
+    );
+  }
+
+  function exportTopProductsExcel() {
+    const search = dateRangeSearchParams(dateParams);
+    search.set('sortOrder', rankOrder);
+    void downloadFile(
+      `/reports/productos-mas-vendidos/excel?${search.toString()}`,
+      'productos-mas-vendidos.xlsx',
+    );
+  }
+
+  function exportInventoryExcel() {
+    void downloadFile('/reports/inventario/excel', 'inventario.xlsx');
+  }
 
   const rankedProducts: RankedProductRow[] = (topProductsQuery.data ?? []).map(
     (row, index) => ({ ...row, rank: index + 1 }),
@@ -136,6 +161,10 @@ function ReportsPage() {
                 className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-1.5 text-sm outline-none focus:ring-2"
               />
             </label>
+            <Button variant="secondary" onClick={exportSalesExcel}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar a Excel
+            </Button>
           </div>
         </div>
 
@@ -185,6 +214,10 @@ function ReportsPage() {
             >
               Menos vendidos
             </Button>
+            <Button variant="secondary" onClick={exportTopProductsExcel}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar a Excel
+            </Button>
           </div>
         </div>
         <DataTable
@@ -199,9 +232,15 @@ function ReportsPage() {
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h2 className="text-ink text-lg font-medium">Inventario actual</h2>
-          <p className="text-ink-muted text-sm">
-            Valor total: {formatMoney(totalInventoryValue)}
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="text-ink-muted text-sm">
+              Valor total: {formatMoney(totalInventoryValue)}
+            </p>
+            <Button variant="secondary" onClick={exportInventoryExcel}>
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar a Excel
+            </Button>
+          </div>
         </div>
         <DataTable
           columns={inventoryColumns}

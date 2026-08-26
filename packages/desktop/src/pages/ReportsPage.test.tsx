@@ -13,6 +13,7 @@ import {
 } from 'vitest';
 import ReportsPage from './ReportsPage';
 import { apiFetch } from '../lib/api-client';
+import { downloadFile } from '../lib/download-file';
 import type {
   InventoryReportRow,
   SalesReport,
@@ -24,7 +25,12 @@ vi.mock('../lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
+vi.mock('../lib/download-file', () => ({
+  downloadFile: vi.fn(),
+}));
+
 const mockedApiFetch = apiFetch as unknown as Mock;
+const mockedDownloadFile = downloadFile as unknown as Mock;
 
 function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -105,6 +111,7 @@ function statTileValue(label: string): string | null | undefined {
 describe('ReportsPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    mockedDownloadFile.mockReset();
   });
 
   afterEach(() => {
@@ -157,5 +164,63 @@ describe('ReportsPage', () => {
     expect(await screen.findByText('Valor total: 300,00')).toBeInTheDocument();
     expect(screen.getByText('Muebles')).toBeInTheDocument();
     expect(screen.getByText('20,00')).toBeInTheDocument();
+  });
+
+  it('downloads the sales report as .xlsx with the current date filters', async () => {
+    mockReportEndpoints();
+
+    renderWithClient(<ReportsPage />);
+    await screen.findByText('600,00');
+
+    const [salesExportButton] = screen.getAllByRole('button', {
+      name: 'Exportar a Excel',
+    });
+    salesExportButton.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/reports/ventas/excel',
+      'ventas.xlsx',
+    );
+  });
+
+  it('downloads the top-products report as .xlsx honoring the current sort order', async () => {
+    mockReportEndpoints();
+
+    renderWithClient(<ReportsPage />);
+    await screen.findByText(/Mesa de centro/);
+
+    screen.getByRole('button', { name: 'Menos vendidos' }).click();
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('sortOrder=asc'),
+      );
+    });
+
+    const [, topProductsExportButton] = screen.getAllByRole('button', {
+      name: 'Exportar a Excel',
+    });
+    topProductsExportButton.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/reports/productos-mas-vendidos/excel?sortOrder=asc',
+      'productos-mas-vendidos.xlsx',
+    );
+  });
+
+  it('downloads the inventory report as .xlsx', async () => {
+    mockReportEndpoints();
+
+    renderWithClient(<ReportsPage />);
+    await screen.findByText('Valor total: 300,00');
+
+    const [, , inventoryExportButton] = screen.getAllByRole('button', {
+      name: 'Exportar a Excel',
+    });
+    inventoryExportButton.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/reports/inventario/excel',
+      'inventario.xlsx',
+    );
   });
 });

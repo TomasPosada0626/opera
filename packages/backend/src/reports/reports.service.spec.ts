@@ -1,7 +1,21 @@
 import { Prisma } from '@prisma/client';
+import { Workbook } from 'exceljs';
 import { ReportsService } from './reports.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
+
+async function readSheet(buffer: Buffer, sheetName: string) {
+  const workbook = new Workbook();
+  // exceljs declara su propio `Buffer extends ArrayBuffer` ambiental, que no
+  // coincide estructuralmente con el Buffer real de Node (subtipo de
+  // Uint8Array) — el mismo objeto funciona en runtime, solo el tipeo choca.
+  await workbook.xlsx.load(buffer as never);
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  return sheet;
+}
 
 describe('ReportsService', () => {
   let prisma: {
@@ -222,6 +236,77 @@ describe('ReportsService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('getInventoryExcel', () => {
+    it('writes a row per product with the same numbers as the JSON report', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'product-1',
+          sku: 'SKU-1',
+          name: 'Silla',
+          category: { name: 'Muebles' },
+          unit: { name: 'Unidad' },
+        },
+      ]);
+      prisma.stockMovement.groupBy.mockResolvedValue([
+        { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(8) } },
+      ]);
+      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(10));
+
+      const buffer = await service.getInventoryExcel();
+
+      const sheet = await readSheet(buffer, 'Inventario');
+      expect(sheet.getRow(1).getCell(1).value).toBe('SKU');
+      expect(sheet.getRow(2).getCell(1).value).toBe('SKU-1');
+      expect(sheet.getRow(2).getCell(5).value).toBe(8);
+      expect(sheet.getRow(2).getCell(6).value).toBe(10);
+      expect(sheet.getRow(2).getCell(7).value).toBe(80);
+    });
+  });
+
+  describe('getSalesExcel', () => {
+    it('writes a single summary row with the same totals as the JSON report', async () => {
+      prisma.order.findMany.mockResolvedValue([
+        {
+          items: [
+            {
+              quantity: new Prisma.Decimal(2),
+              unitPrice: new Prisma.Decimal(50),
+            },
+          ],
+        },
+      ]);
+
+      const buffer = await service.getSalesExcel({});
+
+      const sheet = await readSheet(buffer, 'Ventas');
+      expect(sheet.getRow(1).getCell(3).value).toBe('Pedidos');
+      expect(sheet.getRow(2).getCell(3).value).toBe(1);
+      expect(sheet.getRow(2).getCell(4).value).toBe(2);
+      expect(sheet.getRow(2).getCell(5).value).toBe(100);
+    });
+  });
+
+  describe('getTopProductsExcel', () => {
+    it('writes a row per ranked product with the same numbers as the JSON report', async () => {
+      prisma.orderItem.findMany.mockResolvedValue([
+        {
+          productId: 'product-1',
+          product: { id: 'product-1', sku: 'SKU-1', name: 'Silla' },
+          quantity: new Prisma.Decimal(5),
+          unitPrice: new Prisma.Decimal(10),
+        },
+      ]);
+
+      const buffer = await service.getTopProductsExcel({});
+
+      const sheet = await readSheet(buffer, 'Productos más vendidos');
+      expect(sheet.getRow(1).getCell(1).value).toBe('SKU');
+      expect(sheet.getRow(2).getCell(1).value).toBe('SKU-1');
+      expect(sheet.getRow(2).getCell(3).value).toBe(5);
+      expect(sheet.getRow(2).getCell(4).value).toBe(50);
     });
   });
 });
