@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -114,7 +118,16 @@ export class UsersService {
     return toResponse(user);
   }
 
+  // ADMIN es el único rol que existe hoy (ver PRODUCT.md) — desactivar la
+  // propia cuenta puede dejar la app sin nadie que pueda revertirlo desde
+  // la UI (todo /users está detrás de @Roles('ADMIN')). Bloqueado acá, no
+  // solo ocultado en el frontend, porque el frontend no es la autoridad de
+  // seguridad real (mismo criterio que el resto del RBAC del proyecto).
   async deactivate(id: string, actingUserId: string) {
+    if (id === actingUserId) {
+      throw new BadRequestException('No puedes desactivar tu propia cuenta');
+    }
+
     const before = await this.prisma.user.findUnique({
       where: { id },
       include: userInclude,

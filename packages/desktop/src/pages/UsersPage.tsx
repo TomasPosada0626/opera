@@ -1,25 +1,139 @@
-import { Users } from 'lucide-react';
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
+import { Modal } from '../components/ui/Modal';
+import { ResetPasswordForm } from '../components/users/ResetPasswordForm';
+import { UserForm } from '../components/users/UserForm';
+import { UserRowActions } from '../components/users/UserRowActions';
+import { useUsers } from '../hooks/useUsers';
+import { getCurrentUser } from '../lib/current-user';
+import type { User } from '../types/user';
 
-// Placeholder — sin issue dedicada todavía. Existe para demostrar que la
-// navegación por rol (#41) filtra correctamente: solo ADMIN ve este ítem
-// en el sidebar, y el propio backend (GET/POST /users) ya es ADMIN-only
-// desde M1 (#13) — falta la pantalla real que lo consuma. Mismo lenguaje
-// visual que el vacío de Dashboard/DataTable (círculo + ícono + texto
-// tenue), no el bloque de texto plano alineado a la izquierda de antes —
-// una pantalla sin construir debe leerse igual de cuidada que una vacía.
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
+}
+
 function UsersPage() {
+  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const currentUserId = getCurrentUser()?.sub;
+
+  const usersQuery = useUsers();
+  const users = usersQuery.data ?? [];
+
+  function openCreateModal() {
+    setEditingUser(null);
+    setIsFormModalOpen(true);
+  }
+
+  function openEditModal(user: User) {
+    setEditingUser(user);
+    setIsFormModalOpen(true);
+  }
+
+  function closeFormModal() {
+    setIsFormModalOpen(false);
+    setEditingUser(null);
+  }
+
+  const columns: DataTableColumn<User>[] = [
+    { key: 'name', header: 'Nombre', render: (user) => user.name },
+    { key: 'email', header: 'Correo', render: (user) => user.email },
+    {
+      key: 'roles',
+      header: 'Roles',
+      render: (user) =>
+        user.roles.length === 0 ? (
+          '—'
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {user.roles.map(({ role }) => (
+              <Badge key={role.id} variant="success">
+                {role.name}
+              </Badge>
+            ))}
+          </div>
+        ),
+    },
+    {
+      key: 'status',
+      header: 'Estado',
+      render: (user) =>
+        user.isActive ? (
+          <Badge variant="success">Activo</Badge>
+        ) : (
+          <Badge variant="danger">Inactivo</Badge>
+        ),
+    },
+    {
+      key: 'createdAt',
+      header: 'Creado',
+      render: (user) => formatDate(user.createdAt),
+    },
+    {
+      key: 'action',
+      header: '',
+      className: 'text-right',
+      render: (user) => (
+        <UserRowActions
+          user={user}
+          isSelf={user.id === currentUserId}
+          onEdit={openEditModal}
+          onResetPassword={setResettingUser}
+        />
+      ),
+    },
+  ];
+
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
-      <div className="bg-chrome-strong text-ink-faint flex h-12 w-12 items-center justify-center rounded-full">
-        <Users className="h-6 w-6" />
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-ink text-xl font-medium">Usuarios</h1>
+          <p className="text-ink-muted mt-1 text-sm">
+            Cuentas con acceso a Opera y sus roles.
+          </p>
+        </div>
+        <Button onClick={openCreateModal} className="shrink-0">
+          <Plus className="h-4 w-4" />
+          Nuevo usuario
+        </Button>
       </div>
-      <div>
-        <h1 className="text-ink text-lg font-medium">Usuarios</h1>
-        <p className="text-ink-muted mt-1 text-sm">
-          Aún no disponible — el backend ya soporta CRUD de usuarios, falta la
-          pantalla.
-        </p>
-      </div>
+
+      <DataTable
+        columns={columns}
+        rows={users}
+        rowKey={(user) => user.id}
+        isLoading={usersQuery.isLoading}
+        emptyMessage="No hay usuarios registrados."
+      />
+
+      {isFormModalOpen && (
+        <Modal
+          title={editingUser ? 'Editar usuario' : 'Nuevo usuario'}
+          onClose={closeFormModal}
+        >
+          <UserForm
+            user={editingUser ?? undefined}
+            onSuccess={closeFormModal}
+          />
+        </Modal>
+      )}
+
+      {resettingUser && (
+        <Modal
+          title={`Resetear contraseña — ${resettingUser.name}`}
+          onClose={() => setResettingUser(null)}
+        >
+          <ResetPasswordForm
+            userId={resettingUser.id}
+            onSuccess={() => setResettingUser(null)}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

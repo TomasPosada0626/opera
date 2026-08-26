@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -181,6 +181,14 @@ describe('UsersService', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
+  });
+
+  it('refuses to let a user deactivate their own account', async () => {
+    await expect(
+      service.deactivate('acting-user', 'acting-user'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundException when deactivating a user that does not exist', async () => {

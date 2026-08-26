@@ -8,6 +8,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
+import { RolesModule } from './roles/roles.module';
 import { WarehousesModule } from './warehouses/warehouses.module';
 import { CategoriesModule } from './categories/categories.module';
 import { UnitsModule } from './units/units.module';
@@ -41,6 +42,7 @@ import { SearchModule } from './search/search.module';
     AuditModule,
     AuthModule,
     UsersModule,
+    RolesModule,
     WarehousesModule,
     CategoriesModule,
     UnitsModule,
