@@ -25,6 +25,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    // e2e/ son specs de Playwright (#57), no de Vitest — tienen su propio
+    // runner (playwright.config.ts) y su propio `test.beforeAll`.
+    exclude: ['e2e/**', 'node_modules/**'],
     // Node 22+ trae su propio `localStorage` global experimental (detrás de
     // --localstorage-file, si no queda `undefined`) que tapa el de jsdom en
     // vez de dejarlo pasar — auth-token.ts necesita el de jsdom para

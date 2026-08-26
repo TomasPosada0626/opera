@@ -1,0 +1,28 @@
+import { defineConfig, devices } from '@playwright/test';
+
+// Corre contra Chromium propio (no Electron): el proceso de Electron en
+// este entorno se lanza con ELECTRON_RUN_AS_NODE=1 forzado por la shell,
+// lo que rompe `require('electron')` antes de crear ninguna ventana (ver
+// memoria "Electron GUI verification"). El renderer es una SPA normal
+// servida por Vite (ADR 0003) — probarla en Chromium real ejercita el
+// mismo código React/TanStack Query que corre dentro de Electron, solo
+// que sin el proceso principal (que la app ya degrada con gracia, ver
+// lib/auth-token.ts). La ventana de Electron en sí se verifica a mano.
+export default defineConfig({
+  testDir: './e2e',
+  timeout: 30_000,
+  fullyParallel: false,
+  retries: 0,
+  reporter: 'list',
+  use: {
+    baseURL: 'http://localhost:5173',
+    trace: 'retain-on-failure',
+  },
+  webServer: {
+    command: 'npx vite --port 5173',
+    url: 'http://localhost:5173',
+    reuseExistingServer: true,
+    timeout: 60_000,
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+});

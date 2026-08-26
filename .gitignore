@@ -20,6 +20,11 @@ coverage/
 .env.local
 .env.*.local
 
+# Playwright (#57)
+playwright-report/
+test-results/
+packages/backend/e2e-fixtures/.state.json
+
 # Logs
 *.log
 npm-debug.log*
