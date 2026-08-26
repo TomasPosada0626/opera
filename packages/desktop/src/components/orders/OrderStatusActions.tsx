@@ -31,12 +31,14 @@ export function OrderStatusActions({ order }: OrderStatusActionsProps) {
   const markWarehoused = useMarkOrderWarehoused();
   const cancelOrder = useCancelOrder();
 
-  // "Cancelar" se oculta si ya hay remisiones (#97) — el backend ya lo
-  // rechaza con 400, esto solo evita el viaje redondo para un caso que
-  // nunca debería intentarse desde la UI (mismo criterio que
+  // "Cancelar" se oculta si hay alguna remisión activa (#97) — una
+  // remisión anulada (#99) ya corrigió el stock, así que no cuenta. El
+  // backend ya rechaza esto con 400, esto solo evita el viaje redondo para
+  // un caso que nunca debería intentarse desde la UI (mismo criterio que
   // UserRowActions ocultando "Desactivar" para la propia cuenta).
   const canCancel =
-    order.status !== 'CANCELADO' && order.remissions.length === 0;
+    order.status !== 'CANCELADO' &&
+    order.remissions.every((remission) => remission.voidedAt);
 
   const cancelButton = canCancel && (
     <div className="flex flex-col items-end gap-1">

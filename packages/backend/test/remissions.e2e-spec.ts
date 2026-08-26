@@ -17,6 +17,8 @@ describe('Remissions (e2e)', () => {
   let prisma: PrismaService;
   let adminToken: string;
   let adminUserId: string;
+  let staffToken: string;
+  let staffUserId: string;
   let categoryId: string;
   let unitId: string;
   let warehouseId: string;
@@ -36,6 +38,12 @@ describe('Remissions (e2e)', () => {
     });
     adminUserId = admin.id;
     adminToken = admin.token;
+
+    const staff = await createUserAndLogin(app, prisma, {
+      emailPrefix: 'remissions-staff',
+    });
+    staffUserId = staff.id;
+    staffToken = staff.token;
 
     const unique = Date.now();
     const fixtures = await createCatalogFixtures(prisma, `rem-${unique}`);
@@ -93,7 +101,7 @@ describe('Remissions (e2e)', () => {
     await prisma.stockMovement.deleteMany({ where: { productId } });
     await prisma.product.delete({ where: { id: productId } });
     await deleteCatalogFixtures(prisma, { categoryId, unitId, warehouseId });
-    await deleteUsers(prisma, [adminUserId]);
+    await deleteUsers(prisma, [adminUserId, staffUserId]);
     await app.close();
   });
 
@@ -217,6 +225,63 @@ describe('Remissions (e2e)', () => {
       .expect(200);
     expect(pdfResponse.headers['content-type']).toContain('application/pdf');
     expect((pdfResponse.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  it('rejects voiding a remission by a non-ADMIN user', async () => {
+    await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[1]}/void`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ reason: 'Cantidad equivocada' })
+      .expect(403);
+  });
+
+  it('voids a remission, reverses the stock, and frees the delivered quantity for a new dispatch', async () => {
+    // El pedido quedó completamente remisionado (6 + 4 = 10) por el test de
+    // despacho parcial — anular la segunda remisión (4) debe devolver esas
+    // 4 unidades al stock real y a lo que el pedido admite despachar.
+    const stockBefore = await request(app.getHttpServer())
+      .get(`/inventory/${productId}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+
+    const voided = await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[1]}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Cantidad equivocada' })
+      .expect(200);
+    expect(
+      (voided.body as { voidedAt: string | null }).voidedAt,
+    ).not.toBeNull();
+
+    const stockAfter = await request(app.getHttpServer())
+      .get(`/inventory/${productId}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(Number((stockAfter.body as { stock: string }).stock)).toBe(
+      Number((stockBefore.body as { stock: string }).stock) + 4,
+    );
+
+    // La cantidad anulada ya no cuenta como "entregada" — el pedido vuelve
+    // a admitir un despacho de esas 4 unidades.
+    const redispatch = await request(app.getHttpServer())
+      .post('/remissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        orderId,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId, quantity: 4 }],
+      })
+      .expect(201);
+    remissionIds.push((redispatch.body as { id: string }).id);
+  });
+
+  it('rejects voiding an already-voided remission', async () => {
+    const response = await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[1]}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Otro intento' })
+      .expect(400);
+    expect((response.body as { message: string }).message).toContain('anulada');
   });
 
   it('returns 404 for a remission that does not exist', async () => {

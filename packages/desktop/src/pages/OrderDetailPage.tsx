@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Download, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, Ban, Download, Pencil, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal';
 import { EditRemissionPaymentForm } from '../components/orders/EditRemissionPaymentForm';
 import { OrderStatusActions } from '../components/orders/OrderStatusActions';
 import { RemissionForm } from '../components/orders/RemissionForm';
+import { VoidRemissionForm } from '../components/orders/VoidRemissionForm';
 import { useOrder } from '../hooks/useOrder';
 import { downloadFile } from '../lib/download-file';
 import { getCurrentUser } from '../lib/current-user';
@@ -54,15 +55,19 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
 }
 
+// Excluye remisiones anuladas (#99) — su ENTRADA de reverso ya corrigió el
+// stock, así que esa cantidad deja de contar como entregada.
 function deliveredFor(order: Order, orderItemId: string): number {
-  return order.remissions.reduce(
-    (sum, remission) =>
-      sum +
-      remission.items
-        .filter((item) => item.orderItemId === orderItemId)
-        .reduce((lineSum, item) => lineSum + Number(item.quantity), 0),
-    0,
-  );
+  return order.remissions
+    .filter((remission) => !remission.voidedAt)
+    .reduce(
+      (sum, remission) =>
+        sum +
+        remission.items
+          .filter((item) => item.orderItemId === orderItemId)
+          .reduce((lineSum, item) => lineSum + Number(item.quantity), 0),
+      0,
+    );
 }
 
 async function downloadRemissionPdf(remissionId: string, number: number) {
@@ -77,6 +82,9 @@ function OrderDetailPage() {
   const [isRemissionModalOpen, setIsRemissionModalOpen] = useState(false);
   const [editingPaymentRemission, setEditingPaymentRemission] =
     useState<Remission | null>(null);
+  const [voidingRemission, setVoidingRemission] = useState<Remission | null>(
+    null,
+  );
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
   const orderQuery = useOrder(orderId ?? '');
@@ -222,21 +230,30 @@ function OrderDetailPage() {
                         <p className="text-ink text-sm font-medium">
                           Remisión No. {remission.number}
                         </p>
-                        <Badge
-                          variant={
-                            paymentStatusBadgeVariant[remission.paymentStatus]
-                          }
-                        >
-                          {paymentStatusLabel[remission.paymentStatus]}
-                        </Badge>
+                        {remission.voidedAt ? (
+                          <Badge variant="danger">Anulada</Badge>
+                        ) : (
+                          <Badge
+                            variant={
+                              paymentStatusBadgeVariant[remission.paymentStatus]
+                            }
+                          >
+                            {paymentStatusLabel[remission.paymentStatus]}
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-ink-muted text-xs">
                         {formatDate(remission.createdAt)} —{' '}
                         {remission.user.name}
                       </p>
+                      {remission.voidedAt && (
+                        <p className="text-ink-muted mt-0.5 text-xs italic">
+                          Motivo: {remission.voidReason}
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
-                      {isAdmin && (
+                      {isAdmin && !remission.voidedAt && (
                         <Button
                           variant="ghost"
                           onClick={() => setEditingPaymentRemission(remission)}
@@ -244,6 +261,16 @@ function OrderDetailPage() {
                         >
                           <Pencil className="h-4 w-4" />
                           Editar pago
+                        </Button>
+                      )}
+                      {isAdmin && !remission.voidedAt && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => setVoidingRemission(remission)}
+                          className="px-3 py-1.5"
+                        >
+                          <Ban className="h-4 w-4" />
+                          Anular
                         </Button>
                       )}
                       <Button
@@ -287,6 +314,19 @@ function OrderDetailPage() {
                 orderId={order.id}
                 remission={editingPaymentRemission}
                 onSuccess={() => setEditingPaymentRemission(null)}
+              />
+            </Modal>
+          )}
+
+          {voidingRemission && (
+            <Modal
+              title={`Anular remisión No. ${voidingRemission.number}`}
+              onClose={() => setVoidingRemission(null)}
+            >
+              <VoidRemissionForm
+                orderId={order.id}
+                remission={voidingRemission}
+                onSuccess={() => setVoidingRemission(null)}
               />
             </Modal>
           )}

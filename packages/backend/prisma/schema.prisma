@@ -471,6 +471,16 @@ model Remission {
   // remisión ya se pagó, no el saldo total del cliente (eso es un cálculo
   // aparte, fuera de alcance de este modelo).
   amountPaid    Decimal?               @db.Decimal(14, 4)
+  // Corregir una remisión con cantidad equivocada (#99) no edita ni borra
+  // la fila (ni ella ni el StockMovement que generó son editables — mismo
+  // espíritu append-only que el Kardex, ADR 0001): se "anula", la fila
+  // queda con el motivo, y se escribe una ENTRADA de reverso por cada
+  // línea para corregir el stock. "Cuánto se ha entregado"
+  // (SUM(RemissionItem.quantity), ver RemissionsService.create) excluye
+  // remisiones anuladas, así que el pedido vuelve a admitir un despacho
+  // correcto por esa cantidad.
+  voidedAt      DateTime?
+  voidReason    String?
   items         RemissionItem[]
   createdAt     DateTime               @default(now())
 

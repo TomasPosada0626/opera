@@ -68,6 +68,8 @@ function buildRemission(overrides: Partial<Remission> = {}): Remission {
     items: [],
     paymentStatus: 'CARTERA',
     amountPaid: null,
+    voidedAt: null,
+    voidReason: null,
     ...overrides,
   };
 }

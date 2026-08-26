@@ -25,6 +25,7 @@ import { ListQueryDto } from '../common/dto/list-query.dto';
 import { RemissionsService } from './remissions.service';
 import { CreateRemissionDto } from './dto/create-remission.dto';
 import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
+import { VoidRemissionDto } from './dto/void-remission.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -90,6 +91,30 @@ export class RemissionsController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.remissionsService.updatePayment(id, dto, req.user.sub);
+  }
+
+  @Patch(':id/void')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Anular remisión (ADMIN)',
+    description:
+      'No borra ni edita la fila (append-only) — la marca anulada con el motivo y ' +
+      'escribe una ENTRADA de reverso por producto para corregir el stock.',
+  })
+  @ApiResponse({ status: 200, description: 'Remisión anulada.' })
+  @ApiResponse({ status: 400, description: 'La remisión ya está anulada.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Remisión no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
+  voidRemission(
+    @Param('id') id: string,
+    @Body() dto: VoidRemissionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.remissionsService.voidRemission(id, dto, req.user.sub);
   }
 
   // @Res() de Express directo (no el flujo normal de retorno de Nest) — el

@@ -13,6 +13,7 @@ import { ListQueryDto } from '../common/dto/list-query.dto';
 import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateRemissionDto } from './dto/create-remission.dto';
 import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
+import { VoidRemissionDto } from './dto/void-remission.dto';
 
 type TransactionClient = Prisma.TransactionClient;
 const remissionInclude = {
@@ -115,8 +116,15 @@ export class RemissionsService {
           const overages: Overage[] = [];
           for (const item of dto.items) {
             const orderItem = orderItemById.get(item.orderItemId)!;
+            // remission.voidedAt: null excluye remisiones anuladas (#99)
+            // — una vez anulada, su cantidad deja de contar como
+            // "entregado" y el pedido vuelve a admitir un despacho
+            // correcto por esa cantidad.
             const delivered = await tx.remissionItem.aggregate({
-              where: { orderItemId: item.orderItemId },
+              where: {
+                orderItemId: item.orderItemId,
+                remission: { voidedAt: null },
+              },
               _sum: { quantity: true },
             });
             const alreadyDelivered =
@@ -268,6 +276,74 @@ export class RemissionsService {
     });
 
     return updated;
+  }
+
+  // #99: corregir una remisión con cantidad equivocada no edita ni borra
+  // la fila ni el StockMovement que generó (ambos append-only, ver ADR
+  // 0001) — se anula. La fila queda con el motivo, y se escribe una
+  // ENTRADA de reverso por producto (agrupado igual que create(), un
+  // mismo producto puede repetirse en varias líneas) para corregir el
+  // stock. Guard atómico (`updateMany` con `voidedAt: null` en el where)
+  // para que dos anulaciones concurrentes de la misma remisión no generen
+  // dos reversos — mismo patrón que OrdersService.markProduction. Sin
+  // Serializable: escribir una ENTRADA nunca falla por sobregiro (a
+  // diferencia de una SALIDA), así que no hay una decisión de stock que
+  // proteger, solo el guard de "no anular dos veces".
+  async voidRemission(id: string, dto: VoidRemissionDto, actingUserId: string) {
+    const remission = await this.findOne(id);
+    if (remission.voidedAt) {
+      throw new BadRequestException('La remisión ya está anulada');
+    }
+
+    const voided = await this.prisma.$transaction(
+      async (tx: TransactionClient) => {
+        const result = await tx.remission.updateMany({
+          where: { id, voidedAt: null },
+          data: { voidedAt: new Date(), voidReason: dto.reason },
+        });
+        if (result.count === 0) {
+          throw new ConflictException(
+            'La remisión ya fue anulada, intenta de nuevo',
+          );
+        }
+
+        const quantityByProduct = new Map<string, Prisma.Decimal>();
+        for (const item of remission.items) {
+          const { productId } = item.orderItem;
+          const current =
+            quantityByProduct.get(productId) ?? new Prisma.Decimal(0);
+          quantityByProduct.set(productId, current.plus(item.quantity));
+        }
+        for (const [productId, quantity] of quantityByProduct) {
+          await tx.stockMovement.create({
+            data: {
+              productId,
+              warehouseId: remission.order.warehouseId,
+              type: 'ENTRADA',
+              quantity,
+              reason: `Anulación de remisión No. ${remission.number}: ${dto.reason}`,
+              userId: actingUserId,
+            },
+          });
+        }
+
+        return tx.remission.findUniqueOrThrow({
+          where: { id },
+          include: remissionInclude,
+        });
+      },
+    );
+
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'Remission',
+      entityId: voided.id,
+      action: 'VOID',
+      before: { voidedAt: null },
+      after: { voidedAt: voided.voidedAt, voidReason: voided.voidReason },
+    });
+
+    return voided;
   }
 
   // pdfkit arma el PDF como un stream de chunks en vez de un archivo en

@@ -393,17 +393,32 @@ describe('OrdersService', () => {
       expect(prisma.order.updateMany).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when the order already has remissions', async () => {
+    it('throws BadRequestException when the order already has a non-voided remission', async () => {
       prisma.order.findUnique.mockResolvedValue({
         ...baseOrder,
         status: 'EN_ALMACEN',
-        remissions: [{ id: 'remission-1' }],
+        remissions: [{ id: 'remission-1', voidedAt: null }],
       });
 
       await expect(
         service.cancel('order-1', 'acting-user'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('allows cancelling when every remission on the order has been voided', async () => {
+      prisma.order.findUnique
+        .mockResolvedValueOnce({
+          ...baseOrder,
+          status: 'EN_ALMACEN',
+          remissions: [{ id: 'remission-1', voidedAt: new Date('2026-01-02') }],
+        })
+        .mockResolvedValueOnce({ ...baseOrder, status: 'CANCELADO' });
+      prisma.order.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.cancel('order-1', 'acting-user');
+
+      expect(result.status).toBe('CANCELADO');
     });
 
     it('throws ConflictException when the guarded update matches no rows (lost the race)', async () => {
@@ -438,7 +453,7 @@ describe('OrdersService', () => {
       expect(updateManyCalls[0][0].where).toEqual({
         id: 'order-1',
         status: { not: 'CANCELADO' },
-        remissions: { none: {} },
+        remissions: { none: { voidedAt: null } },
       });
       expect(updateManyCalls[0][0].data).toEqual({ status: 'CANCELADO' });
       expect(result.status).toBe('CANCELADO');

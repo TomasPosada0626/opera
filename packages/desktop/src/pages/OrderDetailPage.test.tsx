@@ -95,6 +95,8 @@ function buildRemission(overrides: Partial<Remission> = {}): Remission {
     items: [],
     paymentStatus: 'CARTERA',
     amountPaid: null,
+    voidedAt: null,
+    voidReason: null,
     ...overrides,
   };
 }
@@ -337,6 +339,57 @@ describe('OrderDetailPage', () => {
     await screen.findByText('Muebles del Valle S.A.S.');
     expect(
       screen.queryByRole('button', { name: 'Cancelar pedido' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows "Anular" for an active remission and opens the void modal', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    const button = await screen.findByRole('button', { name: 'Anular' });
+    await user.click(button);
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Anular remisión No. 1' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows "Anulada" with its reason, and excludes it from delivered/actions, for a voided remission', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+            voidedAt: '2026-01-17T10:00:00.000Z',
+            voidReason: 'Cantidad equivocada',
+          }),
+        ],
+      }),
+    );
+
+    renderWithClient(<OrderDetailPage />);
+
+    expect(await screen.findByText('Anulada')).toBeInTheDocument();
+    expect(screen.getByText('Motivo: Cantidad equivocada')).toBeInTheDocument();
+    // Anulada -> no cuenta como entregado (0), y sin acciones de edición.
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Editar pago' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Anular' }),
     ).not.toBeInTheDocument();
   });
 });

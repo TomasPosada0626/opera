@@ -275,26 +275,32 @@ export class OrdersService {
   // hecho real del ledger append-only (ADR 0001) — reescribirlo sería
   // falsificar el Kardex, no revertir una venta. El stock ya producido
   // sigue siendo inventario válido, solo deja de estar atado a este pedido.
-  // Lo único que sí bloquea cancelar es que ya exista una Remission: en ese
-  // punto la mercancía físicamente salió del almacén hacia el cliente
-  // (SALIDA real, ver RemissionsService.create), y cancelar el pedido no
-  // puede deshacer eso. `remissions: { none: {} }` en el where hace ese
-  // chequeo atómico junto con el de estado, mismo espíritu que
-  // markProduction: un solo `updateMany`, sin Serializable porque no hay
-  // ningún StockMovement que escribir acá.
+  // Lo único que sí bloquea cancelar es que ya exista una Remission activa
+  // (no anulada, ver #99): en ese punto la mercancía físicamente salió del
+  // almacén hacia el cliente (SALIDA real, ver RemissionsService.create),
+  // y cancelar el pedido no puede deshacer eso — pero si esa remisión
+  // después se anula, su reverso ya corrigió el stock, y el pedido debe
+  // volver a poder cancelarse. `remissions: { none: { voidedAt: null } }`
+  // en el where hace ese chequeo atómico junto con el de estado, mismo
+  // espíritu que markProduction: un solo `updateMany`, sin Serializable
+  // porque no hay ningún StockMovement que escribir acá.
   async cancel(id: string, actingUserId: string) {
     const before = await this.findOne(id);
     if (before.status === 'CANCELADO') {
       throw new BadRequestException('El pedido ya está cancelado');
     }
-    if (before.remissions.length > 0) {
+    if (before.remissions.some((remission) => !remission.voidedAt)) {
       throw new BadRequestException(
         'No se puede cancelar un pedido que ya tiene remisiones (mercancía despachada)',
       );
     }
 
     const result = await this.prisma.order.updateMany({
-      where: { id, status: { not: 'CANCELADO' }, remissions: { none: {} } },
+      where: {
+        id,
+        status: { not: 'CANCELADO' },
+        remissions: { none: { voidedAt: null } },
+      },
       data: { status: 'CANCELADO' },
     });
     if (result.count === 0) {

@@ -30,16 +30,22 @@ describe('RemissionsService', () => {
     amountPaid: null,
     createdAt: new Date('2026-01-01'),
     order: {
+      warehouseId: order.warehouseId,
       customer: { name: 'Cliente de prueba' },
       warehouse: { name: 'Bodega principal' },
     },
     user: { id: 'acting-user', name: 'Admin' },
+    voidedAt: null,
+    voidReason: null,
     items: [
       {
         id: 'remission-item-1',
         orderItemId: orderItem.id,
         quantity: new Prisma.Decimal(4),
-        orderItem: { product: orderItem.product },
+        orderItem: {
+          productId: orderItem.productId,
+          product: orderItem.product,
+        },
       },
     ],
   };
@@ -51,6 +57,7 @@ describe('RemissionsService', () => {
       findMany: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -89,6 +96,7 @@ describe('RemissionsService', () => {
         findMany: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       $transaction: jest.fn(),
     };
@@ -354,5 +362,147 @@ describe('RemissionsService', () => {
 
     expect(number).toBe(1);
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
+  describe('voidRemission', () => {
+    function voidTxStub(overrides: {
+      updateManyCount?: number;
+      findUniqueOrThrow?: unknown;
+      movementCreate?: jest.Mock;
+    }) {
+      return {
+        remission: {
+          updateMany: jest
+            .fn()
+            .mockResolvedValue({ count: overrides.updateManyCount ?? 1 }),
+          findUniqueOrThrow: jest
+            .fn()
+            .mockResolvedValue(overrides.findUniqueOrThrow),
+        },
+        stockMovement: { create: overrides.movementCreate ?? jest.fn() },
+      };
+    }
+
+    it('throws NotFoundException when the remission does not exist', async () => {
+      prisma.remission.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.voidRemission(
+          'missing',
+          { reason: 'Error de cantidad' },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the remission is already voided', async () => {
+      prisma.remission.findUnique.mockResolvedValue({
+        ...baseRemission,
+        voidedAt: new Date('2026-01-02'),
+      });
+
+      await expect(
+        service.voidRemission(
+          'remission-1',
+          { reason: 'Duplicada' },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException when the guarded update matches no rows (lost the race)', async () => {
+      prisma.remission.findUnique.mockResolvedValue(baseRemission);
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) =>
+          callback(voidTxStub({ updateManyCount: 0 })),
+      );
+
+      await expect(
+        service.voidRemission(
+          'remission-1',
+          { reason: 'Error de cantidad' },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('writes one reversing ENTRADA per product and marks the remission voided', async () => {
+      prisma.remission.findUnique.mockResolvedValue(baseRemission);
+      const movementCreate = jest.fn();
+      const voidedRemission = {
+        ...baseRemission,
+        voidedAt: new Date('2026-01-02'),
+        voidReason: 'Error de cantidad',
+      };
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: unknown) => unknown) =>
+          callback(
+            voidTxStub({ movementCreate, findUniqueOrThrow: voidedRemission }),
+          ),
+      );
+
+      const result = await service.voidRemission(
+        'remission-1',
+        { reason: 'Error de cantidad' },
+        'acting-user',
+      );
+
+      const movementCalls = movementCreate.mock.calls as [
+        [
+          {
+            data: { productId: string; type: string; quantity: Prisma.Decimal };
+          },
+        ],
+      ];
+      expect(movementCalls[0][0].data).toEqual(
+        expect.objectContaining({
+          productId: orderItem.productId,
+          warehouseId: order.warehouseId,
+          type: 'ENTRADA',
+          quantity: new Prisma.Decimal(4),
+        }),
+      );
+      expect(result.voidedAt).not.toBeNull();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'VOID', entity: 'Remission' }),
+      );
+    });
+
+    it('excludes voided remissions from "already delivered" when creating a new one', async () => {
+      const remissionCreate = jest
+        .fn()
+        .mockResolvedValue({ id: 'remission-2' });
+      const aggregate = jest
+        .fn()
+        .mockResolvedValue({ _sum: { quantity: null } });
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => unknown) =>
+          callback({
+            remissionItem: { aggregate },
+            stockMovement: { create: jest.fn() },
+            remission: { create: remissionCreate },
+          }),
+      );
+
+      await service.create(
+        {
+          orderId: order.id,
+          paymentStatus: 'CARTERA',
+          items: [{ orderItemId: orderItem.id, quantity: 4 }],
+        },
+        'acting-user',
+      );
+
+      expect(aggregate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            orderItemId: orderItem.id,
+            remission: { voidedAt: null },
+          },
+        }),
+      );
+    });
   });
 });

@@ -36,6 +36,8 @@ export interface Remission {
   items: RemissionItem[];
   paymentStatus: RemissionPaymentStatus;
   amountPaid: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
 }
 
 export interface Order {

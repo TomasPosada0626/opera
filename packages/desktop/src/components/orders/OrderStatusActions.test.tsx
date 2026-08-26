@@ -146,6 +146,8 @@ describe('OrderStatusActions', () => {
               items: [],
               paymentStatus: 'CARTERA',
               amountPaid: null,
+              voidedAt: null,
+              voidReason: null,
             },
           ],
         })}

@@ -18,15 +18,19 @@ const paymentStatusLabel: Record<RemissionPaymentStatus, string> = {
 
 // Cuánto se ha entregado por línea se deriva de las remisiones ya incluidas
 // en el pedido (ver orders.service.ts) — no hay un campo propio que leer.
+// Excluye remisiones anuladas (#99): su ENTRADA de reverso ya corrigió el
+// stock, así que esa cantidad vuelve a estar disponible para despachar.
 function deliveredFor(order: Order, orderItemId: string): number {
-  return order.remissions.reduce(
-    (sum, remission) =>
-      sum +
-      remission.items
-        .filter((item) => item.orderItemId === orderItemId)
-        .reduce((lineSum, item) => lineSum + Number(item.quantity), 0),
-    0,
-  );
+  return order.remissions
+    .filter((remission) => !remission.voidedAt)
+    .reduce(
+      (sum, remission) =>
+        sum +
+        remission.items
+          .filter((item) => item.orderItemId === orderItemId)
+          .reduce((lineSum, item) => lineSum + Number(item.quantity), 0),
+      0,
+    );
 }
 
 export function RemissionForm({ order, onSuccess }: RemissionFormProps) {

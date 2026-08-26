@@ -360,6 +360,69 @@ describe('Orders (e2e)', () => {
     );
   });
 
+  it('allows cancelling an order once its only remission has been voided (#99)', async () => {
+    const unique = Date.now();
+    const product = await prisma.product.create({
+      data: {
+        sku: `ORD-REM-VOID-${unique}`,
+        name: 'Producto para pedido con remisión anulada',
+        type: ProductType.FINISHED_GOOD,
+        categoryId,
+        unitId,
+      },
+    });
+    extraProductIds.push(product.id);
+
+    const created = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId: product.id, quantity: 2, unitPrice: 10 }],
+      })
+      .expect(201);
+    const order = created.body as { id: string; items: { id: string }[] };
+    orderIds.push(order.id);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${order.id}/mark-production`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/orders/${order.id}/mark-warehoused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    const remission = await request(app.getHttpServer())
+      .post('/remissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        orderId: order.id,
+        paymentStatus: 'CARTERA',
+        items: [{ orderItemId: order.items[0].id, quantity: 1 }],
+      })
+      .expect(201);
+    const remissionId = (remission.body as { id: string }).id;
+
+    // Con la remisión activa, cancelar sigue rechazado.
+    await request(app.getHttpServer())
+      .patch(`/orders/${order.id}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .patch(`/remissions/${remissionId}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Pedido cancelado por el cliente' })
+      .expect(200);
+
+    const cancelled = await request(app.getHttpServer())
+      .patch(`/orders/${order.id}/cancel`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((cancelled.body as { status: string }).status).toBe('CANCELADO');
+  });
+
   it('runs the full lifecycle: producción -> almacén -> despacho, moviendo stock solo cuando corresponde', async () => {
     const created = await request(app.getHttpServer())
       .post('/orders')
