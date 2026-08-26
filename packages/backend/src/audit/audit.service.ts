@@ -36,4 +36,23 @@ export class AuditService {
       },
     });
   }
+
+  // Consumido por el dashboard (#75) para la sección de "actividad
+  // reciente" — sin before/after (el dashboard solo necesita el qué/quién/
+  // cuándo, no los snapshots completos que sí importan al auditar un caso
+  // puntual).
+  getRecent(limit: number) {
+    return this.prisma.auditLog.findMany({
+      take: limit,
+      orderBy: { timestamp: 'desc' },
+      select: {
+        id: true,
+        entity: true,
+        entityId: true,
+        action: true,
+        timestamp: true,
+        user: { select: { id: true, name: true } },
+      },
+    });
+  }
 }
