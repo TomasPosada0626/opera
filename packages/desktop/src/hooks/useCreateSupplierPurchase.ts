@@ -5,6 +5,7 @@ import type { SupplierPurchase } from '../types/supplier';
 export interface CreateSupplierPurchaseInput {
   supplierId: string;
   productId: string;
+  warehouseId: string;
   quantity: number;
   unitCost: number;
   purchasedAt?: string;

@@ -1,57 +1,66 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { ShoppingBag } from 'lucide-react';
+import { z } from 'zod';
 import { ProductPicker } from '../inventory/ProductPicker';
+import { WarehouseSelect } from '../form/WarehouseSelect';
 import { Button } from '../ui/Button';
 import { useCreateSupplierPurchase } from '../../hooks/useCreateSupplierPurchase';
 import { ApiError } from '../../lib/api-client';
 import type { Product } from '../../types/product';
+
+const purchaseSchema = z.object({
+  warehouseId: z.string().min(1, 'Selecciona una bodega'),
+  quantity: z
+    .number({ message: 'Ingresa una cantidad' })
+    .positive('Debe ser mayor a 0'),
+  unitCost: z
+    .number({ message: 'Ingresa un costo unitario' })
+    .positive('Debe ser mayor a 0'),
+  purchasedAt: z.string().optional(),
+});
+type PurchaseFormValues = z.infer<typeof purchaseSchema>;
 
 interface SupplierPurchaseFormProps {
   supplierId: string;
   onSuccess: () => void;
 }
 
-// Bitácora manual — no mueve stock (ver supplier-purchases.service.ts), es
-// solo seguimiento de gasto. La fecha es opcional: si no se indica, el
-// backend la marca "ahora" — útil para registrar una compra pasada.
+// Bitácora manual — registrar la compra no mueve stock por sí sola (ver
+// supplier-purchases.service.ts); mover stock real es un paso aparte,
+// explícito, vía "Marcar como recibida" (#104-purchases). La fecha es
+// opcional: si no se indica, el backend la marca "ahora" — útil para
+// registrar una compra pasada.
 export function SupplierPurchaseForm({
   supplierId,
   onSuccess,
 }: SupplierPurchaseFormProps) {
   const [product, setProduct] = useState<Product | null>(null);
-  const [quantity, setQuantity] = useState('');
-  const [unitCost, setUnitCost] = useState('');
-  const [purchasedAt, setPurchasedAt] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
+  const [productError, setProductError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = useForm<PurchaseFormValues>({ resolver: zodResolver(purchaseSchema) });
   const createSupplierPurchase = useCreateSupplierPurchase();
 
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-
+  function onSubmit(values: PurchaseFormValues) {
     if (!product) {
-      setFormError('Selecciona un producto');
+      setProductError('Selecciona un producto');
       return;
     }
-    const quantityValue = Number(quantity);
-    if (!quantityValue || quantityValue <= 0) {
-      setFormError('Ingresa una cantidad mayor a 0');
-      return;
-    }
-    const unitCostValue = Number(unitCost);
-    if (!unitCostValue || unitCostValue <= 0) {
-      setFormError('Ingresa un costo unitario mayor a 0');
-      return;
-    }
-    setFormError(null);
 
     createSupplierPurchase.mutate(
       {
         supplierId,
         productId: product.id,
-        quantity: quantityValue,
-        unitCost: unitCostValue,
-        purchasedAt: purchasedAt
-          ? new Date(purchasedAt).toISOString()
+        warehouseId: values.warehouseId,
+        quantity: values.quantity,
+        unitCost: values.unitCost,
+        purchasedAt: values.purchasedAt
+          ? new Date(values.purchasedAt).toISOString()
           : undefined,
       },
       { onSuccess },
@@ -59,11 +68,30 @@ export function SupplierPurchaseForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form
+      onSubmit={(event) => void handleSubmit(onSubmit)(event)}
+      noValidate
+      className="flex flex-col gap-4"
+    >
       <div className="flex flex-col gap-1">
         <span className="text-ink-muted text-sm font-medium">Producto</span>
-        <ProductPicker value={product} onChange={setProduct} />
+        <ProductPicker
+          value={product}
+          onChange={(next) => {
+            setProduct(next);
+            if (next) {
+              setProductError(null);
+            }
+          }}
+          error={productError ?? undefined}
+        />
       </div>
+
+      <WarehouseSelect
+        registration={register('warehouseId')}
+        error={errors.warehouseId}
+        onAutoSelect={(id) => setValue('warehouseId', id)}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
@@ -79,10 +107,12 @@ export function SupplierPurchaseForm({
             step="any"
             min="0"
             placeholder="0"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
+            {...register('quantity', { valueAsNumber: true })}
             className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           />
+          {errors.quantity && (
+            <p className="text-danger text-xs">{errors.quantity.message}</p>
+          )}
         </div>
         <div className="flex flex-col gap-1">
           <label
@@ -97,10 +127,12 @@ export function SupplierPurchaseForm({
             step="any"
             min="0"
             placeholder="0"
-            value={unitCost}
-            onChange={(event) => setUnitCost(event.target.value)}
+            {...register('unitCost', { valueAsNumber: true })}
             className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
           />
+          {errors.unitCost && (
+            <p className="text-danger text-xs">{errors.unitCost.message}</p>
+          )}
         </div>
       </div>
 
@@ -114,17 +146,11 @@ export function SupplierPurchaseForm({
         <input
           id="purchasedAt"
           type="date"
-          value={purchasedAt}
-          onChange={(event) => setPurchasedAt(event.target.value)}
+          {...register('purchasedAt')}
           className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
         />
       </div>
 
-      {formError && (
-        <p role="alert" className="text-danger text-xs">
-          {formError}
-        </p>
-      )}
       {createSupplierPurchase.isError && (
         <p
           role="alert"

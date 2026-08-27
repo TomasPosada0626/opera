@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
+import { ReceivePurchaseAction } from '../components/suppliers/ReceivePurchaseAction';
 import { SupplierProductForm } from '../components/suppliers/SupplierProductForm';
 import { SupplierPurchaseForm } from '../components/suppliers/SupplierPurchaseForm';
 import { useSupplier } from '../hooks/useSupplier';
@@ -154,6 +155,10 @@ function SupplierDetailPage() {
                       <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
                         Registrado por
                       </th>
+                      <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
+                        Estado
+                      </th>
+                      {isAdmin && <th className="px-4 py-3" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -177,6 +182,20 @@ function SupplierDetailPage() {
                         <td className="text-ink-muted px-4 py-3">
                           {purchase.user.name}
                         </td>
+                        <td className="px-4 py-3">
+                          {purchase.receivedAt ? (
+                            <Badge variant="success">Recibida</Badge>
+                          ) : (
+                            <Badge variant="warning">Pendiente</Badge>
+                          )}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right">
+                            {!purchase.receivedAt && purchase.warehouse && (
+                              <ReceivePurchaseAction purchaseId={purchase.id} />
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

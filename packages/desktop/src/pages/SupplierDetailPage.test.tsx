@@ -147,6 +147,9 @@ describe('SupplierDetailPage', () => {
           purchasedAt: '2026-01-05T00:00:00.000Z',
           product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
           user: { id: 'user-1', name: 'Admin' },
+          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
+          receivedAt: null,
+          stockMovementId: null,
         },
       ],
     );
@@ -159,6 +162,60 @@ describe('SupplierDetailPage', () => {
     expect(screen.getByText('15.000,00')).toBeInTheDocument();
     expect(screen.getByText('4.500,00')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
+  });
+
+  it('shows a received badge and no action for an already-received purchase', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockDetailGets(
+      [],
+      [
+        {
+          id: 'purchase-1',
+          quantity: '10',
+          unitCost: '4500',
+          purchasedAt: '2026-01-05T00:00:00.000Z',
+          product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
+          user: { id: 'user-1', name: 'Admin' },
+          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
+          receivedAt: '2026-01-06T00:00:00.000Z',
+          stockMovementId: 'movement-1',
+        },
+      ],
+    );
+
+    renderWithClient(<SupplierDetailPage />);
+
+    expect(await screen.findByText('Recibida')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Marcar recibida' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows a pending badge and "Marcar recibida" for an ADMIN user', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockDetailGets(
+      [],
+      [
+        {
+          id: 'purchase-1',
+          quantity: '10',
+          unitCost: '4500',
+          purchasedAt: '2026-01-05T00:00:00.000Z',
+          product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
+          user: { id: 'user-1', name: 'Admin' },
+          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
+          receivedAt: null,
+          stockMovementId: null,
+        },
+      ],
+    );
+
+    renderWithClient(<SupplierDetailPage />);
+
+    expect(await screen.findByText('Pendiente')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Marcar recibida' }),
+    ).toBeInTheDocument();
   });
 
   it('hides "Agregar precio" and "Registrar compra" for a non-ADMIN user', async () => {
