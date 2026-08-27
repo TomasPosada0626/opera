@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 // Únicos dos orígenes reales desde los que el cliente de escritorio llama a
@@ -14,7 +15,23 @@ import { AppModule } from './app.module';
 const ALLOWED_ORIGINS = ['http://localhost:5173', 'null'];
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // bufferLogs: nada se pierde entre que Nest arranca y LoggerModule queda
+  // listo — sin esto, cualquier log de un módulo que se instancia temprano
+  // (ej. PrismaService.onModuleInit) se perdería en silencio.
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
+
+  // Nada capturaba esto antes — un fallo fuera del ciclo normal de
+  // request/response (una promesa sin `await`, un error asíncrono suelto)
+  // se perdía sin dejar rastro. Ahora al menos queda en el log rotado.
+  const logger = app.get(Logger);
+  process.on('uncaughtException', (error) => {
+    logger.error(error, 'uncaughtException');
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error(reason, 'unhandledRejection');
+  });
+
   // forbidNonWhitelisted (no solo whitelist): un campo desconocido en el body
   // ahora es un 400 explícito en vez de descartarse en silencio — antes un
   // bug de cliente (o un probing) que mandara props de más pasaba

@@ -26,6 +26,7 @@ test-results/
 packages/backend/e2e-fixtures/.state.json
 
 # Logs
+packages/backend/logs/
 *.log
 npm-debug.log*
 pnpm-debug.log*
