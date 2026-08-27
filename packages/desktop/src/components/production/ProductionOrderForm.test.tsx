@@ -46,6 +46,15 @@ const warehouse: Warehouse = {
   isActive: true,
 };
 
+// Dos bodegas, no una: con exactamente una, WarehouseSelect se
+// autoselecciona y queda oculto — este archivo ejercita el select real.
+const warehouse2: Warehouse = {
+  id: 'warehouse-2',
+  name: 'Bodega secundaria',
+  location: null,
+  isActive: true,
+};
+
 function productsResponse(data: Product[]): PaginatedResult<Product> {
   return {
     data,
@@ -66,7 +75,7 @@ function mockHappyPathGets() {
       return Promise.resolve(productsResponse([product]));
     }
     if (!options?.method && path.startsWith('/warehouses')) {
-      return Promise.resolve(warehousesResponse([warehouse]));
+      return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
     }
     return Promise.reject(new Error(`Unexpected GET: ${path}`));
   });
@@ -144,7 +153,7 @@ describe('ProductionOrderForm', () => {
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([product]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 
@@ -180,7 +189,7 @@ describe('ProductionOrderForm', () => {
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([product]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 

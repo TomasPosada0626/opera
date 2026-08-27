@@ -46,6 +46,17 @@ const warehouse: Warehouse = {
   isActive: true,
 };
 
+// Dos bodegas, no una: con exactamente una, WarehouseSelect se
+// autoselecciona y queda oculto (ver WarehouseSelect.test.tsx para ese
+// caso) — estos tests ejercitan el select real, así que necesitan poder
+// elegir entre más de una opción.
+const warehouse2: Warehouse = {
+  id: 'warehouse-2',
+  name: 'Bodega secundaria',
+  location: null,
+  isActive: true,
+};
+
 function productsResponse(data: Product[]): PaginatedResult<Product> {
   return {
     data,
@@ -66,7 +77,7 @@ function mockHappyPathGets() {
       return Promise.resolve(productsResponse([product]));
     }
     if (!options?.method && path.startsWith('/warehouses')) {
-      return Promise.resolve(warehousesResponse([warehouse]));
+      return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
     }
     return Promise.reject(new Error(`Unexpected GET: ${path}`));
   });
@@ -184,7 +195,7 @@ describe('MovementForm', () => {
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([product]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 
@@ -227,7 +238,7 @@ describe('MovementForm', () => {
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([product]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 
@@ -262,7 +273,7 @@ describe('MovementForm', () => {
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([product]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 

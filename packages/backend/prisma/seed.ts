@@ -34,7 +34,22 @@ async function main() {
     create: { userId: admin.id, roleId: adminRole.id },
   });
 
+  // Sin esto, una instalación nueva queda con cero bodegas — y como
+  // warehouseId es obligatorio en movimientos de inventario, pedidos y
+  // órdenes de producción, el Administrador no puede crear nada hasta
+  // que entre a Bodegas a crear una primero, sin ninguna pista de que
+  // ese es el problema (los selects de bodega no explican por qué están
+  // vacíos). La mayoría de negocios que usan Opera operan desde un solo
+  // lugar (ver PRODUCT.md) — dejar una bodega lista de una vez cubre ese
+  // caso común sin renunciar a soportar varias bodegas más adelante.
+  await prisma.warehouse.upsert({
+    where: { name: 'Bodega principal' },
+    update: {},
+    create: { name: 'Bodega principal' },
+  });
+
   console.log(`Rol ADMIN y usuario administrador (${email}) listos.`);
+  console.log('Bodega principal lista.');
 }
 
 main()

@@ -5,9 +5,9 @@ import { Plus, ShoppingCart, X } from 'lucide-react';
 import { z } from 'zod';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { ProductPicker } from '../inventory/ProductPicker';
+import { WarehouseSelect } from '../form/WarehouseSelect';
 import { Button } from '../ui/Button';
 import { useCreateOrder } from '../../hooks/useCreateOrder';
-import { useWarehouses } from '../../hooks/useWarehouses';
 import { ApiError } from '../../lib/api-client';
 import type { Customer } from '../../types/customer';
 import type { Product } from '../../types/product';
@@ -47,6 +47,7 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<OrderFormValues>({ resolver: zodResolver(orderSchema) });
   const [lines, setLines] = useState<OrderLineDraft[]>([emptyLine()]);
@@ -54,7 +55,6 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
 
-  const warehousesQuery = useWarehouses();
   const createOrder = useCreateOrder();
 
   function updateLine(key: string, patch: Partial<OrderLineDraft>) {
@@ -118,30 +118,11 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
         )}
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label
-          htmlFor="warehouseId"
-          className="text-ink-muted text-sm font-medium"
-        >
-          Bodega
-        </label>
-        <select
-          id="warehouseId"
-          {...register('warehouseId')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-          aria-invalid={!!errors.warehouseId}
-        >
-          <option value="">Selecciona una bodega</option>
-          {warehousesQuery.data?.data.map((warehouse) => (
-            <option key={warehouse.id} value={warehouse.id}>
-              {warehouse.name}
-            </option>
-          ))}
-        </select>
-        {errors.warehouseId && (
-          <p className="text-danger text-xs">{errors.warehouseId.message}</p>
-        )}
-      </div>
+      <WarehouseSelect
+        registration={register('warehouseId')}
+        error={errors.warehouseId}
+        onAutoSelect={(id) => setValue('warehouseId', id)}
+      />
 
       <div className="flex flex-col gap-3">
         <span className="text-ink-muted text-sm font-medium">Productos</span>

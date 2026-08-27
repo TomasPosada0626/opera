@@ -42,6 +42,16 @@ const warehouse: Warehouse = {
   isActive: true,
 };
 
+// Dos bodegas, no una: con exactamente una, WarehouseSelect se
+// autoselecciona y queda oculto — estos tests necesitan un select real
+// para poder ejercitar "no elegiste ninguna todavía".
+const warehouse2: Warehouse = {
+  id: 'warehouse-2',
+  name: 'Bodega secundaria',
+  location: null,
+  isActive: true,
+};
+
 const chair: Product = {
   id: 'product-1',
   sku: 'PT-1',
@@ -94,7 +104,7 @@ function mockHappyPathGets(products: Product[] = [chair, table]) {
       return Promise.resolve(customersResponse([customer]));
     }
     if (path.startsWith('/warehouses')) {
-      return Promise.resolve(warehousesResponse([warehouse]));
+      return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
     }
     if (path.startsWith('/products')) {
       return Promise.resolve(productsResponse(products));
@@ -237,7 +247,7 @@ describe('OrderForm', () => {
       if (path.startsWith('/customers'))
         return Promise.resolve(customersResponse([customer]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([chair, table]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
@@ -274,7 +284,7 @@ describe('OrderForm', () => {
       if (path.startsWith('/customers'))
         return Promise.resolve(customersResponse([customer]));
       if (path.startsWith('/warehouses'))
-        return Promise.resolve(warehousesResponse([warehouse]));
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
       if (path.startsWith('/products'))
         return Promise.resolve(productsResponse([chair, table]));
       return Promise.reject(new Error(`Unexpected: ${path}`));
