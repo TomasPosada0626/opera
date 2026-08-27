@@ -98,6 +98,16 @@ describe('Reports (e2e)', () => {
     const createdOrder = order.body as { id: string; items: { id: string }[] };
     orderIds.push(createdOrder.id);
 
+    // Una remisión solo despacha un pedido EN_ALMACEN (#80, revisión de
+    // seguridad de cierre de M6). Se actualiza directo por Prisma, no vía
+    // mark-production/mark-warehoused: ese flujo real escribiría su propia
+    // ENTRADA por la cantidad del pedido, descuadrando el costo/stock
+    // exacto que este test ya arma a mano arriba (10 a costo 5).
+    await prisma.order.update({
+      where: { id: createdOrder.id },
+      data: { status: 'EN_ALMACEN' },
+    });
+
     const remission = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)

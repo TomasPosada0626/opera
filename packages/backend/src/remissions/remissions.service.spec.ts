@@ -19,6 +19,7 @@ describe('RemissionsService', () => {
   const order = {
     id: 'order-1',
     warehouseId: 'warehouse-1',
+    status: 'EN_ALMACEN',
     items: [orderItem],
   };
   const baseRemission = {
@@ -141,6 +142,54 @@ describe('RemissionsService', () => {
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects dispatching an order that is not EN_ALMACEN (#80 security review)', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...order,
+        status: 'EN_PRODUCCION',
+      });
+
+      await expect(
+        service.create(
+          {
+            orderId: order.id,
+            paymentStatus: 'CARTERA',
+            items: [{ orderItemId: orderItem.id, quantity: 1 }],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('sums duplicate orderItemId entries in the same request before comparing against what remains (#80 security review)', async () => {
+      const remissionCreate = jest.fn();
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) => {
+          const tx = txStub({ alreadyDelivered: new Prisma.Decimal(0) });
+          tx.remission.create = remissionCreate;
+          return callback(tx);
+        },
+      );
+
+      // Pedido: 10. Ya entregado: 0. Dos líneas de 8 cada una para el mismo
+      // orderItemId deberían sumar 16 y exceder lo pedido, no validarse
+      // cada una por separado contra el mismo remanente de 10.
+      await expect(
+        service.create(
+          {
+            orderId: order.id,
+            paymentStatus: 'CARTERA',
+            items: [
+              { orderItemId: orderItem.id, quantity: 8 },
+              { orderItemId: orderItem.id, quantity: 8 },
+            ],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(remissionCreate).not.toHaveBeenCalled();
     });
 
     it('rejects when the requested quantity exceeds what remains to deliver', async () => {

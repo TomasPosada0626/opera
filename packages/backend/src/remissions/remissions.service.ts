@@ -100,29 +100,47 @@ export class RemissionsService {
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
     }
+    // Solo se despacha stock real de un pedido que de verdad llegó a
+    // almacén — uno PENDIENTE/EN_PRODUCCION nunca pasó por markWarehoused
+    // (no hay stock suyo que despachar), y uno CANCELADO no debe poder
+    // "revivir" como una entrega real (encontrado en revisión de seguridad
+    // de cierre de M6, #80).
+    if (order.status !== 'EN_ALMACEN') {
+      throw new BadRequestException(
+        'Solo se puede despachar un pedido que ya está en almacén',
+      );
+    }
 
     const orderItemById = new Map(order.items.map((item) => [item.id, item]));
+    // Cantidad total pedida por línea EN ESTA MISMA solicitud, no solo la
+    // del renglón actual — un `orderItemId` repetido en `dto.items` no debe
+    // poder validarse dos veces contra el mismo `remaining` ya calculado
+    // (encontrado en revisión de seguridad de cierre de M6, #80).
+    const requestedByOrderItem = new Map<string, Prisma.Decimal>();
     for (const item of dto.items) {
       if (!orderItemById.has(item.orderItemId)) {
         throw new NotFoundException(
           `Línea de pedido ${item.orderItemId} no encontrada en este pedido`,
         );
       }
+      const current =
+        requestedByOrderItem.get(item.orderItemId) ?? new Prisma.Decimal(0);
+      requestedByOrderItem.set(item.orderItemId, current.plus(item.quantity));
     }
 
     try {
       const remission = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
           const overages: Overage[] = [];
-          for (const item of dto.items) {
-            const orderItem = orderItemById.get(item.orderItemId)!;
+          for (const [orderItemId, requested] of requestedByOrderItem) {
+            const orderItem = orderItemById.get(orderItemId)!;
             // remission.voidedAt: null excluye remisiones anuladas (#99)
             // — una vez anulada, su cantidad deja de contar como
             // "entregado" y el pedido vuelve a admitir un despacho
             // correcto por esa cantidad.
             const delivered = await tx.remissionItem.aggregate({
               where: {
-                orderItemId: item.orderItemId,
+                orderItemId,
                 remission: { voidedAt: null },
               },
               _sum: { quantity: true },
@@ -130,11 +148,11 @@ export class RemissionsService {
             const alreadyDelivered =
               delivered._sum.quantity ?? new Prisma.Decimal(0);
             const remaining = orderItem.quantity.minus(alreadyDelivered);
-            if (new Prisma.Decimal(item.quantity).greaterThan(remaining)) {
+            if (requested.greaterThan(remaining)) {
               overages.push({
-                orderItemId: item.orderItemId,
+                orderItemId,
                 productName: orderItem.product.name,
-                requested: String(item.quantity),
+                requested: requested.toString(),
                 remaining: remaining.toString(),
               });
             }

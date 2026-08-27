@@ -67,12 +67,6 @@ describe('Remissions (e2e)', () => {
     });
     customerId = customer.id;
 
-    await request(app.getHttpServer())
-      .post('/inventory/entradas')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ productId, warehouseId, quantity: 10, unitCost: 5 })
-      .expect(201);
-
     const orderResponse = await request(app.getHttpServer())
       .post('/orders')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -88,6 +82,21 @@ describe('Remissions (e2e)', () => {
     };
     orderId = createdOrder.id;
     orderItemId = createdOrder.items[0].id;
+
+    // Una remisión solo puede despachar un pedido que ya llegó a almacén
+    // (#80, revisión de seguridad de cierre de M6) — sin esto, todo el
+    // resto de este spec fallaría con 400 "Solo se puede despachar...".
+    // markWarehoused es lo que de verdad entra las 10 unidades al stock
+    // real (ya no un /inventory/entradas manual aparte, que dejaría el
+    // doble de stock del que este spec espera).
+    await request(app.getHttpServer())
+      .patch(`/orders/${orderId}/mark-production`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/orders/${orderId}/mark-warehoused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
   });
 
   afterAll(async () => {
