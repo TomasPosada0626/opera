@@ -396,6 +396,35 @@ describe('RemissionsService', () => {
     );
   });
 
+  it('filters by exact number when search is a valid integer', async () => {
+    prisma.remission.findMany.mockResolvedValue([baseRemission]);
+    prisma.remission.count.mockResolvedValue(1);
+
+    await service.findAll({ search: '42' });
+
+    expect(prisma.remission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { number: 42 } }),
+    );
+    expect(prisma.remission.count).toHaveBeenCalledWith({
+      where: { number: 42 },
+    });
+  });
+
+  it('returns an empty page instead of ignoring a non-numeric search', async () => {
+    prisma.remission.findMany.mockResolvedValue([]);
+    prisma.remission.count.mockResolvedValue(0);
+
+    const result = await service.findAll({ search: 'abc' });
+
+    expect(result).toEqual({
+      data: [],
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    });
+    expect(prisma.remission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { number: -1 } }),
+    );
+  });
+
   it('throws NotFoundException when findOne cannot find the remission', async () => {
     prisma.remission.findUnique.mockResolvedValue(null);
 

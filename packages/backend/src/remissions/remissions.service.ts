@@ -45,19 +45,35 @@ export class RemissionsService {
     private readonly audit: AuditService,
   ) {}
 
+  // `number` es un Int autoincremental, no texto — igual que en
+  // SearchService (#77), solo matchea si `search` es exactamente un
+  // entero. Un `search` no numérico devuelve una página vacía en vez de
+  // ignorarse, para no confundir "no encontré nada" con "no filtré nada".
   findAll(query: ListQueryDto) {
-    const { page = 1, pageSize = 20, sortBy, sortOrder = 'desc' } = query;
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy,
+      sortOrder = 'desc',
+      search,
+    } = query;
     const orderBy = resolveOrderBy(
       sortBy,
       sortOrder,
       sortableFields,
       'createdAt',
     );
+    const parsedNumber = search ? Number(search) : undefined;
+    const where =
+      search !== undefined
+        ? { number: Number.isInteger(parsedNumber) ? parsedNumber : -1 }
+        : undefined;
 
     return paginate(
-      () => this.prisma.remission.count(),
+      () => this.prisma.remission.count({ where }),
       ({ skip, take }) =>
         this.prisma.remission.findMany({
+          where,
           include: remissionInclude,
           orderBy,
           skip,

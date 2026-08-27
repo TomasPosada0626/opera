@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Ban, Download, Pencil, Plus } from 'lucide-react';
+import { ArrowLeft, Ban, Download, Pencil, Plus, Printer } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -273,6 +273,13 @@ function OrderDetailPage() {
                           Anular
                         </Button>
                       )}
+                      <Link
+                        to={`/imprimir-remision?id=${remission.id}`}
+                        className="text-ink hover:bg-chrome-strong flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm"
+                      >
+                        <Printer className="h-4 w-4" />
+                        Imprimir
+                      </Link>
                       <Button
                         variant="ghost"
                         onClick={() =>

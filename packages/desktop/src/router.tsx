@@ -16,6 +16,7 @@ import CustomersPage from './pages/CustomersPage';
 import CustomerDetailPage from './pages/CustomerDetailPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SupplierDetailPage from './pages/SupplierDetailPage';
+import PrintRemissionPage from './pages/PrintRemissionPage';
 import ReportsPage from './pages/ReportsPage';
 import UsersPage from './pages/UsersPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -41,6 +42,17 @@ export const router = createHashRouter([
           return getAuthToken() ? redirect('/') : null;
         },
         element: <LoginPage />,
+      },
+      {
+        path: '/imprimir-remision',
+        // Standalone (fuera de AppLayout) a propósito: sin sidebar/topbar
+        // que ocultar con @media print — toda la página es la superficie
+        // imprimible salvo su propia barra de búsqueda.
+        loader: async () => {
+          await initAuthToken();
+          return getAuthToken() ? null : redirect('/login');
+        },
+        element: <PrintRemissionPage />,
       },
       {
         element: <AppLayout />,

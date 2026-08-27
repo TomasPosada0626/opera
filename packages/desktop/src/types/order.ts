@@ -40,6 +40,37 @@ export interface Remission {
   voidReason: string | null;
 }
 
+// Forma completa de GET /remissions/:id — distinta de `Remission` (la que
+// viaja anidada dentro de `Order`, sin cliente/bodega/producto propios
+// porque ya los hereda del pedido que la contiene). Usada por la vista de
+// impresión (#print), que se abre sola sin un `Order` alrededor.
+export interface RemissionDetailItem {
+  id: string;
+  orderItemId: string;
+  quantity: string;
+  orderItem: {
+    id: string;
+    product: { id: string; sku: string; name: string };
+  };
+}
+
+export interface RemissionDetail {
+  id: string;
+  number: number;
+  createdAt: string;
+  user: { id: string; name: string };
+  items: RemissionDetailItem[];
+  paymentStatus: RemissionPaymentStatus;
+  amountPaid: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  order: {
+    id: string;
+    customer: { id: string; name: string };
+    warehouse: { id: string; name: string };
+  };
+}
+
 export interface Order {
   id: string;
   status: OrderStatus;
