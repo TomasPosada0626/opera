@@ -6,6 +6,7 @@ import {
   exportErrorLog,
   type LoggedError,
 } from './error-log-store';
+import { initAutoUpdater, restartAndInstall } from './updater';
 
 // The built directory structure
 //
@@ -140,10 +141,17 @@ ipcMain.handle(
     appendErrorLog({ ...entry, source: 'renderer' }),
 );
 ipcMain.handle('error-log:export', () => exportErrorLog());
+ipcMain.handle('updater:restart', () => restartAndInstall());
 
 void app.whenReady().then(() => {
   if (!VITE_DEV_SERVER_URL) {
     applyContentSecurityPolicy();
   }
   createWindow();
+  // Solo en empaquetado — en dev (`pnpm dev`, cargando desde Vite) no hay
+  // ningún instalador real que actualizar, y electron-updater espera un
+  // `app-update.yml` que solo `electron-builder` genera al empaquetar.
+  if (!VITE_DEV_SERVER_URL && win) {
+    initAutoUpdater(win);
+  }
 });

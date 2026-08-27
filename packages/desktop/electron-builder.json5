@@ -8,6 +8,15 @@
     output: 'release/${version}',
   },
   files: ['dist', 'dist-electron'],
+  // Repo público (github.com/TomasPosada0626/opera) — el check/descarga de
+  // actualizaciones no necesita ningún token embebido en la app (la API de
+  // Releases es de lectura pública). GH_TOKEN solo hace falta del lado de
+  // quien publica (`pnpm release`), nunca en el instalador que se distribuye.
+  publish: {
+    provider: 'github',
+    owner: 'TomasPosada0626',
+    repo: 'opera',
+  },
   win: {
     icon: 'build/icon.ico',
     target: [

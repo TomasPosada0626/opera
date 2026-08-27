@@ -24,3 +24,17 @@ contextBridge.exposeInMainWorld('appLogs', {
   export: (): Promise<{ ok: boolean; path?: string; reason?: string }> =>
     ipcRenderer.invoke('error-log:export'),
 });
+
+// Actualizador automático (electron-updater, GitHub Releases — ver
+// electron/updater.ts). `onUpdateReady` es la única dirección main->renderer
+// que necesita este puente hasta ahora — por eso `ipcRenderer.on` se envuelve
+// aquí en vez de exponer `on`/`send` genéricos otra vez (mismo criterio que
+// ya se siguió para authToken en #92).
+contextBridge.exposeInMainWorld('appUpdater', {
+  onUpdateReady: (callback: (version: string) => void): void => {
+    ipcRenderer.on('updater:downloaded', (_event, info: { version: string }) =>
+      callback(info.version),
+    );
+  },
+  restartAndInstall: (): Promise<void> => ipcRenderer.invoke('updater:restart'),
+});

@@ -36,4 +36,8 @@ interface Window {
     }): Promise<void>;
     export(): Promise<{ ok: boolean; path?: string; reason?: string }>;
   };
+  appUpdater: {
+    onUpdateReady(callback: (version: string) => void): void;
+    restartAndInstall(): Promise<void>;
+  };
 }

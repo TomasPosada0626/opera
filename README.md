@@ -258,6 +258,18 @@ Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\L
 
 Desde ahí, ese instalador específico deja de disparar la advertencia de SmartScreen en esa máquina.
 
+### Publicar una nueva versión (actualización automática)
+
+El cliente de escritorio revisa GitHub Releases al arrancar (cada 6 horas mientras sigue abierto) y, si hay una versión nueva, la descarga en segundo plano y avisa con un banner ("Reiniciar y actualizar") — sin interrumpir a quien está trabajando, y sin fallar de forma visible si no hay internet (Opera es LAN-first, el chequeo de actualización es la única parte que sí necesita salir a internet, y lo hace en silencio si no puede).
+
+Para publicar una versión nueva:
+
+1. Sube la versión en `packages/desktop/package.json`.
+2. Genera un [token de GitHub](https://github.com/settings/tokens) con permiso `repo` (o un fine-grained token con `contents: write` sobre este repo) y expórtalo como `GH_TOKEN`.
+3. Corre `pnpm --filter desktop release` — compila, empaqueta, y sube el instalador como un GitHub Release con los metadatos que `electron-updater` necesita.
+
+El repo es público, así que el chequeo y la descarga de actualizaciones no necesitan ningún token embebido en la app que se distribuye — `GH_TOKEN` solo hace falta del lado de quien publica.
+
 ## Solución de problemas comunes
 
 - **`EPERM: operation not permitted` al renombrar `query_engine-*.dll.node`** (Windows, al correr `pnpm install` o `prisma generate`): algún proceso todavía tiene el motor de Prisma cargado — casi siempre un backend (`pnpm dev:backend`) que quedó corriendo en otra terminal. Ciérralo y reintenta.
