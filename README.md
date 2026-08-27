@@ -44,6 +44,9 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 - [Estructura del monorepo](#estructura-del-monorepo)
 - [Roadmap](#roadmap)
 - [Puesta en marcha](#puesta-en-marcha)
+- [Pruebas](#pruebas)
+- [Compilación](#compilación)
+- [Solución de problemas comunes](#solución-de-problemas-comunes)
 - [Estado actual](#estado-actual)
 - [Seguimiento del trabajo](#seguimiento-del-trabajo)
 - [Decisiones de arquitectura (ADRs)](#decisiones-de-arquitectura-adrs)
@@ -157,7 +160,7 @@ opera/
 
 ## Roadmap
 
-El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 91/94 issues cerradas (~97%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
+El trabajo está organizado en milestones, cada uno con sus issues de seguimiento en GitHub. **Avance: 92/94 issues cerradas (~98%), 6 de 7 milestones completos.** Ese número no pesa parejo: M5 por sí sola son 26 issues que agregan cuatro dominios de negocio nuevos completos (clientes, proveedores, ventas/remisiones con estado de pago) — en esfuerzo real es más cercano al 50-55% del proyecto total.
 
 | Milestone                                                                                        | Alcance                                                                                                                       | Estado   |
 | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -167,7 +170,7 @@ El trabajo está organizado en milestones, cada uno con sus issues de seguimient
 | [M3 - Producción](https://github.com/TomasPosada0626/opera/milestone/4)                          | BOM, órdenes de producción, costeo                                                                                            | ✅ 8/8   |
 | [M4 - Frontend Electron](https://github.com/TomasPosada0626/opera/milestone/5)                   | Cliente de escritorio, pantallas de inventario y producción                                                                   | ✅ 18/18 |
 | [M5 - Ventas/Compras/Clientes/Proveedores](https://github.com/TomasPosada0626/opera/milestone/6) | Ventas, compras, clientes, proveedores, saldos pendientes, reportes (PDF/Excel), dashboard, búsqueda global                   | ✅ 26/26 |
-| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 4/7   |
+| [M6 - Calidad y documentación](https://github.com/TomasPosada0626/opera/milestone/7)             | E2E, CI completo, ADRs, diagrama C4, revisión de seguridad final                                                              | 🟨 5/7   |
 
 ## Puesta en marcha
 
@@ -197,6 +200,43 @@ pnpm dev:desktop
 ```
 
 > Si el puerto 5432 ya está en uso en tu máquina (por ejemplo, otro PostgreSQL local), ajusta `POSTGRES_PORT` y el puerto de `DATABASE_URL` en tu `.env` — ambos los lee `docker-compose.yml` y Prisma respectivamente.
+
+Con el backend y el desktop corriendo, entra a la app y usa las credenciales que definiste en `ADMIN_EMAIL`/`ADMIN_PASSWORD` (las que `pnpm db:seed` usó para crear el Administrador inicial) en la pantalla de login. Es la única cuenta que existe hasta que crees más desde **Usuarios** dentro de la propia app.
+
+## Pruebas
+
+```bash
+# Backend: unitarios + integración (Prisma mockeado, no necesita Postgres corriendo)
+pnpm --filter backend test
+
+# Backend: e2e contra Postgres real (requiere `docker compose up -d`)
+pnpm --filter backend test:e2e
+
+# Desktop: unitarios (Vitest + Testing Library)
+pnpm --filter desktop test
+
+# Desktop: e2e (Playwright — requiere el backend real corriendo en :3000;
+# Vite se levanta solo). Solo la primera vez:
+pnpm --filter desktop exec playwright install chromium
+pnpm --filter desktop test:e2e
+
+# Todo el monorepo (solo unitarios — lo que corre en CI en cada push/PR)
+pnpm test
+```
+
+## Compilación
+
+```bash
+pnpm build
+```
+
+Compila ambos paquetes: `nest build` en el backend (`packages/backend/dist/`) y `tsc && vite build && electron-builder` en el desktop, que deja un instalador de escritorio listo para distribuir en `packages/desktop/release/`.
+
+## Solución de problemas comunes
+
+- **`EPERM: operation not permitted` al renombrar `query_engine-*.dll.node`** (Windows, al correr `pnpm install` o `prisma generate`): algún proceso todavía tiene el motor de Prisma cargado — casi siempre un backend (`pnpm dev:backend`) que quedó corriendo en otra terminal. Ciérralo y reintenta.
+- **Puerto 5432 o 3000 ya en uso**: ver la nota de `POSTGRES_PORT`/`DATABASE_URL` arriba para Postgres; para el backend, ajusta `PORT` en `.env` (y `VITE_API_URL` en el entorno del desktop si el backend no corre en `localhost:3000`).
+- **`prisma migrate dev` pide confirmación y no avanza**: en un entorno no interactivo (CI, algunos shells embebidos) usa `prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script` para generar el SQL a mano, revísalo, y aplícalo con `prisma migrate deploy` en vez de `migrate dev`.
 
 ## Estado actual
 
@@ -323,6 +363,8 @@ Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda al día con todo lo pla
 **Diagrama C4 de contexto y contenedores (#61).** Reemplaza el diagrama único de [Arquitectura](#arquitectura) por dos niveles reales de C4: contexto (el Administrador como único actor, sin sistemas externos — Opera no integra pasarela de pagos, correo ni otro ERP, ausencia deliberada, no un hueco) y contenedores (Cliente de escritorio / API REST / PostgreSQL, con los protocolos reales entre ellos: HTTPS+JWT del cliente a la API, transacciones `Serializable` de la API a Postgres vía Prisma). Se decidió no agregar un tercer diagrama de componentes (C4 nivel 3) porque duplicaría en Mermaid lo que `app.module.ts` y la tabla de Stack tecnológico ya listan — mantenerlo sincronizado en dos lugares es una fuente de desactualización, no una ganancia real de claridad.
 
 **Advisory de `deepmerge-ts` — mitigado sin migrar a Prisma 7 (#100).** La issue original pedía actualizar Prisma 6→7 para resolver el advisory de `pnpm audit` sobre `deepmerge-ts` (transitivo vía `@prisma/config`). Al investigar el alcance real de Prisma 7 (ver [guía oficial de upgrade](https://www.prisma.io/docs/orm/more/upgrade-guides/upgrading-versions/upgrading-to-prisma-7)), resultó ser mucho más que un bump de versión: exige convertir todo el backend a ES Modules puro, adaptadores de driver obligatorios (`@prisma/adapter-pg`) y varios cambios de API/CLI — una migración de arquitectura real sobre una base 100% CommonJS (NestJS + Jest + ts-node), sin ninguna necesidad funcional que la justifique hoy. La vulnerabilidad en sí solo afecta a `@prisma/config` en tiempo de CLI (`generate`/`migrate`), nunca en el runtime de la API — no era explotable por nadie usando la app. Se optó por un `pnpm.overrides` puntual (`"deepmerge-ts": "^8.0.0"`) en vez de la migración completa: los cambios entre v7 y v8 de `deepmerge-ts` son de tipos/nombres internos y de fusión de `Map`s, ninguno relevante para cómo `@prisma/config` fusiona configuración plana — verificado con `prisma generate`, `migrate status` y la suite completa (unit + e2e) en verde tras el override. `pnpm audit --audit-level=high` queda en cero hallazgos. La migración real a Prisma 7 (ESM) queda como [#104](https://github.com/TomasPosada0626/opera/issues/104), sin fecha fija — se aborda si alguna vez hay una razón funcional real, no por perseguir el número de versión más nuevo.
+
+**README final: instrucciones completas de instalación y uso (#63).** [Puesta en marcha](#puesta-en-marcha) ya cubría cómo levantar el proyecto desde cero, pero paraba justo antes de lo que un lector nuevo necesita después: cómo correr cada suite de pruebas (unit/e2e de backend, unit/e2e de desktop — cuatro comandos con requisitos distintos, no uno solo), cómo generar el instalador de escritorio (`pnpm build`), y qué hacer con dos problemas de entorno que de hecho aparecieron varias veces a lo largo de esta sesión: el bloqueo de Windows sobre el DLL del motor de Prisma cuando queda un backend corriendo, y `prisma migrate dev` rechazando un entorno no interactivo. Se documentan como troubleshooting real, no hipotético.
 
 **Con esto, M5 (Ventas/Compras/Clientes/Proveedores) queda completo salvo #99** (corrección/anulación de remisiones), el último issue del milestone.
 
