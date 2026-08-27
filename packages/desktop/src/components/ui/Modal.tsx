@@ -28,11 +28,10 @@ export function Modal({ title, onClose, children }: ModalProps) {
       if (event.key !== 'Tab' || !panelRef.current) {
         return;
       }
+      // Siempre hay al menos el botón "Cerrar" del header, así que
+      // `focusable` nunca queda vacío.
       const focusable =
         panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusable.length === 0) {
-        return;
-      }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) {
@@ -49,9 +48,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
 
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const firstFocusable =
-      panelRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-    (firstFocusable ?? panelRef.current)?.focus();
+    panelRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
     return () => previouslyFocused?.focus();
   }, []);
 

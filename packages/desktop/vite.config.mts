@@ -34,5 +34,18 @@ export default defineConfig({
     // leer/escribir el JWT. Desactivarlo en los workers de test destapa el
     // de jsdom.
     execArgv: ['--no-experimental-webstorage'],
+    // Umbral de no-regresión (#62) — un poco por debajo de lo medido al
+    // agregarlo (96.18/88/95.59/96.14) para no romper con fluctuaciones
+    // menores, no una meta a alcanzar. Mismo espíritu que el
+    // `coverageThreshold` del backend, gateado en CI.
+    coverage: {
+      provider: 'v8',
+      thresholds: {
+        statements: 95,
+        branches: 85,
+        functions: 93,
+        lines: 95,
+      },
+    },
   },
 });

@@ -15,6 +15,7 @@ import {
 import OrderDetailPage from './OrderDetailPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
+import { downloadFile } from '../lib/download-file';
 import type { Order, Remission } from '../types/order';
 
 vi.mock('../lib/api-client', () => ({
@@ -23,7 +24,12 @@ vi.mock('../lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
+vi.mock('../lib/download-file', () => ({
+  downloadFile: vi.fn(),
+}));
+
 const mockedApiFetch = apiFetch as unknown as Mock;
+const mockedDownloadFile = downloadFile as unknown as Mock;
 
 function renderWithClient(ui: ReactElement, initialPath = '/pedidos/order-1') {
   const queryClient = new QueryClient({
@@ -104,6 +110,7 @@ function buildRemission(overrides: Partial<Remission> = {}): Remission {
 describe('OrderDetailPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    mockedDownloadFile.mockReset();
   });
 
   afterEach(() => {
@@ -390,6 +397,99 @@ describe('OrderDetailPage', () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Anular' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('downloads the remission PDF with a filename derived from its number', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    const button = await screen.findByRole('button', {
+      name: 'Descargar PDF',
+    });
+    await user.click(button);
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/remissions/remission-1/pdf',
+      'remision-1.pdf',
+    );
+  });
+
+  it('closes the "Nueva remisión" modal via its close button', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(buildOrder());
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Nueva remisión' }),
+    );
+    await screen.findByRole('dialog', { name: 'Nueva remisión' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Nueva remisión' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('closes the "Editar pago" modal via its close button', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Editar pago' }),
+    );
+    await screen.findByRole('dialog', { name: 'Editar pago' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Editar pago' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('closes the "Anular remisión" modal via its close button', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockResolvedValue(
+      buildOrder({
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithClient(<OrderDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Anular' }));
+    await screen.findByRole('dialog', { name: 'Anular remisión No. 1' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Anular remisión No. 1' }),
     ).not.toBeInTheDocument();
   });
 });

@@ -90,6 +90,29 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Tabla de pino')).toBeInTheDocument();
   });
 
+  it('renders recent activity with the acting user and formatted timestamp', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildSummary({
+        recentActivity: [
+          {
+            id: 'audit-1',
+            entity: 'Order',
+            entityId: 'order-1',
+            action: 'CREATE',
+            userName: 'Admin',
+            timestamp: '2026-08-01T15:30:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    renderWithClient(<DashboardPage />);
+
+    expect(await screen.findByText('Order')).toBeInTheDocument();
+    expect(screen.getByText('CREATE')).toBeInTheDocument();
+    expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
+  });
+
   it('shows the low-stock product list only when there are critical products', async () => {
     mockedApiFetch.mockResolvedValue(
       buildSummary({

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import {
   afterEach,
@@ -204,6 +205,53 @@ describe('ReportsPage', () => {
     expect(mockedDownloadFile).toHaveBeenCalledWith(
       '/reports/productos-mas-vendidos/excel?sortOrder=asc',
       'productos-mas-vendidos.xlsx',
+    );
+  });
+
+  it('re-queries with the date range once "Desde"/"Hasta" are filled, treating "Hasta" as exclusive', async () => {
+    mockReportEndpoints();
+    const user = userEvent.setup();
+
+    renderWithClient(<ReportsPage />);
+    await screen.findByText('600,00');
+
+    await user.type(screen.getByLabelText('Desde'), '2026-08-01');
+    await user.type(screen.getByLabelText('Hasta'), '2026-08-15');
+
+    // El backend trata "to" como exclusivo — se manda el día siguiente.
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('from=2026-08-01'),
+      );
+    });
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('to=2026-08-16'),
+    );
+  });
+
+  it('includes the current date range in the sales export query', async () => {
+    mockReportEndpoints();
+    const user = userEvent.setup();
+
+    renderWithClient(<ReportsPage />);
+    await screen.findByText('600,00');
+
+    await user.type(screen.getByLabelText('Desde'), '2026-08-01');
+    await user.type(screen.getByLabelText('Hasta'), '2026-08-15');
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('from=2026-08-01'),
+      );
+    });
+
+    const [salesExportButton] = screen.getAllByRole('button', {
+      name: 'Exportar a Excel',
+    });
+    salesExportButton.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/reports/ventas/excel?from=2026-08-01&to=2026-08-16',
+      'ventas.xlsx',
     );
   });
 

@@ -207,4 +207,40 @@ describe('SupplierDetailPage', () => {
       await screen.findByRole('dialog', { name: 'Registrar compra' }),
     ).toBeInTheDocument();
   });
+
+  it('closes the "Agregar precio" modal via its close button', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockDetailGets();
+    const user = userEvent.setup();
+
+    renderWithClient(<SupplierDetailPage />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Agregar precio' }),
+    );
+    await screen.findByRole('dialog', { name: 'Agregar precio' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Agregar precio' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('closes the "Registrar compra" modal via its close button', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockDetailGets();
+    const user = userEvent.setup();
+
+    renderWithClient(<SupplierDetailPage />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Registrar compra' }),
+    );
+    await screen.findByRole('dialog', { name: 'Registrar compra' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Registrar compra' }),
+    ).not.toBeInTheDocument();
+  });
 });

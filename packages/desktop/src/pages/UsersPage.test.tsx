@@ -117,6 +117,63 @@ describe('UsersPage', () => {
     expect(deactivateButtons).toHaveLength(1);
   });
 
+  it('opens the edit modal pre-filled when "Editar" is clicked', async () => {
+    mockEndpoints([buildUser()]);
+    const user = userEvent.setup();
+
+    renderWithClient(<UsersPage />);
+    await screen.findByText('Ana Admin');
+
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Editar usuario' }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Nombre')).toHaveValue('Ana Admin');
+  });
+
+  it('closes the edit modal via its close button and resets which user is being edited', async () => {
+    mockEndpoints([buildUser()]);
+    const user = userEvent.setup();
+
+    renderWithClient(<UsersPage />);
+    await screen.findByText('Ana Admin');
+
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+    await screen.findByRole('dialog', { name: 'Editar usuario' });
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Editar usuario' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens and closes the reset-password modal for a given user', async () => {
+    mockEndpoints([buildUser()]);
+    const user = userEvent.setup();
+
+    renderWithClient(<UsersPage />);
+    await screen.findByText('Ana Admin');
+
+    await user.click(
+      screen.getByRole('button', { name: 'Resetear contraseña' }),
+    );
+
+    expect(
+      await screen.findByRole('dialog', {
+        name: 'Resetear contraseña — Ana Admin',
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+    expect(
+      screen.queryByRole('dialog', {
+        name: 'Resetear contraseña — Ana Admin',
+      }),
+    ).not.toBeInTheDocument();
+  });
+
   it('creates a user with the selected role', async () => {
     mockEndpoints([]);
     mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {

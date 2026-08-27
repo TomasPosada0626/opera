@@ -70,8 +70,8 @@ jobs:
       - name: Typecheck desktop
         run: pnpm --filter desktop exec tsc
 
-      - name: Test desktop
-        run: pnpm --filter desktop test
+      - name: Test desktop (unit, with coverage gate)
+        run: pnpm --filter desktop test:cov
 
       - name: Build desktop (renderer + electron)
         run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
