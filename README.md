@@ -232,6 +232,32 @@ pnpm build
 
 Compila ambos paquetes: `nest build` en el backend (`packages/backend/dist/`) y `tsc && vite build && electron-builder` en el desktop, que deja un instalador de escritorio listo para distribuir en `packages/desktop/release/`.
 
+### Firmar el instalador
+
+Sin firmar, Windows SmartScreen marca el instalador como "editor desconocido" y no hay forma de verificar que no fue alterado. Opera se distribuye a una sola máquina (no públicamente), así que un certificado real (OV/EV, de pago, requiere verificar una identidad legal) es una inversión que no tiene sentido para este modelo — un certificado auto-firmado, confiado a mano en esa única máquina, resuelve el mismo problema sin ese costo:
+
+```powershell
+cd packages/desktop
+./scripts/generate-self-signed-cert.ps1
+```
+
+Genera `packages/desktop/certs/opera-code-signing.pfx` (privado, gitignored) y `.cer` (público). Para firmar, exporta las variables que el script te muestra antes de compilar:
+
+```powershell
+$env:CSC_LINK = "<ruta al .pfx>"
+$env:CSC_KEY_PASSWORD = "<la contraseña que usaste>"
+pnpm build
+```
+
+`electron-builder` firma automáticamente cuando esas dos variables están presentes — sin ellas, sigue compilando igual, solo sin firmar. En la máquina donde se instala Opera, copia el `.cer` (nunca el `.pfx`) y corre como Administrador:
+
+```powershell
+Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
+Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+Desde ahí, ese instalador específico deja de disparar la advertencia de SmartScreen en esa máquina.
+
 ## Solución de problemas comunes
 
 - **`EPERM: operation not permitted` al renombrar `query_engine-*.dll.node`** (Windows, al correr `pnpm install` o `prisma generate`): algún proceso todavía tiene el motor de Prisma cargado — casi siempre un backend (`pnpm dev:backend`) que quedó corriendo en otra terminal. Ciérralo y reintenta.
