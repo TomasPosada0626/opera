@@ -17,6 +17,9 @@ export default tseslint.config(
       '**/*.tsbuildinfo',
       'pnpm-lock.yaml',
       'eslint.config.mjs',
+      // Scripts de k6 — corren en el runtime propio de k6 (goja), no en
+      // Node, y no forman parte de ningún tsconfig del monorepo.
+      'packages/backend/load-tests/k6/**',
     ],
   },
   eslint.configs.recommended,

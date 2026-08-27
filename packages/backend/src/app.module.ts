@@ -92,8 +92,16 @@ import { HealthModule } from './health/health.module';
     }),
     // Límite global por defecto para toda la API; /auth/login pisa esto con
     // un límite propio más estricto vía @Throttle (ver AuthController).
+    // Configurable solo para poder correr load-tests/ contra un techo más
+    // alto que el real de producción (ver load-tests/README.md) — el
+    // default sin la variable de entorno sigue siendo 100, igual que antes.
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 100 }],
+      throttlers: [
+        {
+          ttl: 60_000,
+          limit: Number(process.env.RATE_LIMIT_PER_MINUTE) || 100,
+        },
+      ],
     }),
     PrismaModule,
     AuditModule,

@@ -224,6 +224,10 @@ pnpm --filter desktop test:e2e
 pnpm test
 ```
 
+Pruebas de carga (k6, dataset sintético multi-año, latencia de
+Kardex/reportes/dashboard a escala): ver
+[`packages/backend/load-tests/README.md`](packages/backend/load-tests/README.md).
+
 ## Compilación
 
 ```bash
