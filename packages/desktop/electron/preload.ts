@@ -10,3 +10,17 @@ contextBridge.exposeInMainWorld('authToken', {
     ipcRenderer.invoke('auth-token:set', token),
   clear: (): Promise<void> => ipcRenderer.invoke('auth-token:clear'),
 });
+
+// Observabilidad local (sin dependencia de internet nueva, ver
+// error-log-store.ts): el renderer reporta sus propios errores no
+// atrapados, y puede pedir exportar el archivo completo a un lugar que la
+// usuaria elija.
+contextBridge.exposeInMainWorld('appLogs', {
+  reportError: (entry: {
+    type: string;
+    message: string;
+    stack?: string;
+  }): Promise<void> => ipcRenderer.invoke('error-log:report', entry),
+  export: (): Promise<{ ok: boolean; path?: string; reason?: string }> =>
+    ipcRenderer.invoke('error-log:export'),
+});

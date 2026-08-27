@@ -1,6 +1,11 @@
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { clearToken, readToken, writeToken } from './secure-token-store';
+import {
+  appendErrorLog,
+  exportErrorLog,
+  type LoggedError,
+} from './error-log-store';
 
 // The built directory structure
 //
@@ -78,6 +83,34 @@ function createWindow() {
   }
 }
 
+// Sin esto, un fallo fuera del ciclo normal de eventos (una promesa suelta,
+// un renderer que se cae) no dejaba ningún rastro — igual que el gap que
+// esto mismo cierra del lado del backend (nestjs-pino).
+process.on('uncaughtException', (error) => {
+  appendErrorLog({
+    source: 'main',
+    type: 'uncaughtException',
+    message: error.message,
+    stack: error.stack,
+  });
+});
+process.on('unhandledRejection', (reason) => {
+  appendErrorLog({
+    source: 'main',
+    type: 'unhandledRejection',
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
+
+app.on('render-process-gone', (_event, _webContents, details) => {
+  appendErrorLog({
+    source: 'renderer',
+    type: 'render-process-gone',
+    message: `reason=${details.reason} exitCode=${details.exitCode}`,
+  });
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -97,6 +130,16 @@ app.on('activate', () => {
 ipcMain.handle('auth-token:get', () => readToken());
 ipcMain.handle('auth-token:set', (_event, token: string) => writeToken(token));
 ipcMain.handle('auth-token:clear', () => clearToken());
+
+// Errores del renderer (window.onerror/unhandledrejection) llegan aquí para
+// terminar en el mismo archivo que los del proceso principal — un solo
+// registro que exportar, no dos.
+ipcMain.handle(
+  'error-log:report',
+  (_event, entry: Omit<LoggedError, 'source'>) =>
+    appendErrorLog({ ...entry, source: 'renderer' }),
+);
+ipcMain.handle('error-log:export', () => exportErrorLog());
 
 void app.whenReady().then(() => {
   if (!VITE_DEV_SERVER_URL) {

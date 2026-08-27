@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { Download, LogOut } from 'lucide-react';
 import type { CurrentUser } from '../../lib/current-user';
 
 interface UserMenuProps {
@@ -15,7 +15,22 @@ function initials(email: string): string {
 // click-outside + Escape hechos a mano, suficiente para un solo consumidor.
 export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [open, setOpen] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  async function handleExportLogs() {
+    if (!window.appLogs) {
+      return;
+    }
+    const result = await window.appLogs.export();
+    if (result.ok) {
+      setExportMessage(`Guardado en ${result.path}`);
+    } else if (result.reason === 'no-logs') {
+      setExportMessage('No hay errores registrados todavía.');
+    } else if (result.reason !== 'canceled') {
+      setExportMessage('No se pudo exportar el registro.');
+    }
+  }
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -70,6 +85,20 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
                 : 'Sin rol asignado'}
             </p>
           </div>
+          {window.appLogs && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => void handleExportLogs()}
+              className="text-ink hover:bg-surface focus-visible:ring-accent mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2"
+            >
+              <Download className="h-4 w-4" />
+              Exportar registro de errores
+            </button>
+          )}
+          {exportMessage && (
+            <p className="text-ink-muted px-3 pt-1 text-xs">{exportMessage}</p>
+          )}
           <button
             type="button"
             role="menuitem"

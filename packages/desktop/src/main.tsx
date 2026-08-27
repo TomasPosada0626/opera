@@ -3,10 +3,12 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
 import { initAuthToken } from './lib/auth-token';
+import { initErrorLogging } from './lib/error-logging';
 import { initTheme } from './lib/theme';
 
 // Antes de montar React — evita un parpadeo visible del tema equivocado.
 initTheme();
+initErrorLogging();
 
 // Hidrata el cache del token desde `safeStorage` (IPC async) antes de
 // montar. La garantía real contra la carrera con `createHashRouter`

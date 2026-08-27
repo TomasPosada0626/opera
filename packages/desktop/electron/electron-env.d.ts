@@ -28,4 +28,12 @@ interface Window {
     set(token: string): Promise<void>;
     clear(): Promise<void>;
   };
+  appLogs: {
+    reportError(entry: {
+      type: string;
+      message: string;
+      stack?: string;
+    }): Promise<void>;
+    export(): Promise<{ ok: boolean; path?: string; reason?: string }>;
+  };
 }

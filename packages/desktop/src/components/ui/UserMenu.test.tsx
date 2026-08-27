@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UserMenu } from './UserMenu';
 import type { CurrentUser } from '../../lib/current-user';
 
@@ -98,5 +98,82 @@ describe('UserMenu', () => {
     await user.click(screen.getByRole('menuitem', { name: /Cerrar sesión/ }));
 
     expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show "Exportar registro" outside Electron (no appLogs bridge)', async () => {
+    const user = userEvent.setup();
+    render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'AD' }));
+
+    expect(
+      screen.queryByRole('menuitem', { name: /Exportar registro/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('with the Electron appLogs bridge', () => {
+    const originalAppLogs = window.appLogs;
+
+    afterEach(() => {
+      window.appLogs = originalAppLogs;
+    });
+
+    it('shows the saved path after a successful export', async () => {
+      window.appLogs = {
+        reportError: vi.fn(),
+        export: vi.fn().mockResolvedValue({
+          ok: true,
+          path: 'C:\\Users\\admin\\Desktop\\opera-errores.log',
+        }),
+      };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+      await user.click(
+        screen.getByRole('menuitem', { name: /Exportar registro/ }),
+      );
+
+      expect(
+        await screen.findByText(
+          /Guardado en C:\\Users\\admin\\Desktop\\opera-errores.log/,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('tells the user when there is nothing to export yet', async () => {
+      window.appLogs = {
+        reportError: vi.fn(),
+        export: vi.fn().mockResolvedValue({ ok: false, reason: 'no-logs' }),
+      };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+      await user.click(
+        screen.getByRole('menuitem', { name: /Exportar registro/ }),
+      );
+
+      expect(
+        await screen.findByText('No hay errores registrados todavía.'),
+      ).toBeInTheDocument();
+    });
+
+    it('says nothing when the user cancels the save dialog', async () => {
+      const exportLogs = vi
+        .fn()
+        .mockResolvedValue({ ok: false, reason: 'canceled' });
+      window.appLogs = { reportError: vi.fn(), export: exportLogs };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+      await user.click(
+        screen.getByRole('menuitem', { name: /Exportar registro/ }),
+      );
+
+      await vi.waitFor(() => expect(exportLogs).toHaveBeenCalled());
+      expect(screen.queryByText(/Guardado en/)).not.toBeInTheDocument();
+    });
   });
 });
