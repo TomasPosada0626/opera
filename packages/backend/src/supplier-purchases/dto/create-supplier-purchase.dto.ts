@@ -13,6 +13,12 @@ export class CreateSupplierPurchaseDto {
   @IsUUID('4')
   productId: string;
 
+  // Requerida para toda compra nueva (#104-purchases) — sin bodega, no hay
+  // dónde recibirla después. Los registros anteriores a este campo quedan
+  // con warehouseId null y simplemente no se pueden marcar como recibidos.
+  @IsUUID('4')
+  warehouseId: string;
+
   @IsNumber()
   @IsPositive()
   quantity: number;

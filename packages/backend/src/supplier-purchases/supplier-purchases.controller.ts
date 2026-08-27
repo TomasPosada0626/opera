@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
   Req,
@@ -60,5 +61,23 @@ export class SupplierPurchasesController {
   })
   findAll(@Query() query: ListSupplierPurchasesDto) {
     return this.supplierPurchasesService.findAll(query);
+  }
+
+  @Post(':id/receive')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Marcar una compra como recibida (ADMIN)',
+    description:
+      'Reconcilia la bitácora con el Kardex real: escribe una ENTRADA de stock por la cantidad completa registrada, en la bodega de la compra. No soporta recepción parcial.',
+  })
+  @ApiResponse({ status: 201, description: 'Compra recibida, stock movido.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Compra no encontrada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya estaba recibida, o no tiene bodega registrada.',
+  })
+  receive(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.supplierPurchasesService.receive(id, req.user.sub);
   }
 }

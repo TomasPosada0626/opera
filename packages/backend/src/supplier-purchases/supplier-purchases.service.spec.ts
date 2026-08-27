@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { SupplierPurchasesService } from './supplier-purchases.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -6,40 +6,76 @@ import { AuditService } from '../audit/audit.service';
 describe('SupplierPurchasesService', () => {
   const supplier = { id: 'supplier-1', name: 'Maderas del Norte S.A.S.' };
   const product = { id: 'product-1', name: 'Tabla de pino' };
+  const warehouse = { id: 'warehouse-1', name: 'Bodega principal' };
   const basePurchase = {
     id: 'purchase-1',
     supplierId: supplier.id,
     productId: product.id,
+    warehouseId: warehouse.id,
     quantity: '10',
     unitCost: '5000',
     purchasedAt: new Date('2026-01-10'),
     userId: 'acting-user',
+    receivedAt: null,
+    stockMovementId: null,
     supplier,
     product,
+    warehouse,
     user: { id: 'acting-user', name: 'Admin' },
   };
 
   let prisma: {
     supplier: { findUnique: jest.Mock };
     product: { findUnique: jest.Mock };
+    warehouse: { findUnique: jest.Mock };
     supplierPurchase: {
       create: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
+      findUnique: jest.Mock;
     };
+    $transaction: jest.Mock;
   };
   let audit: { log: jest.Mock };
   let service: SupplierPurchasesService;
+
+  // Mismo espíritu que orders.service.spec.ts / remissions.service.spec.ts:
+  // la transacción se mockea ejecutando el callback contra un `tx` falso.
+  function txStub(overrides: {
+    updateManyCount?: number;
+    movement?: { id: string };
+    updatedPurchase?: unknown;
+  }) {
+    return {
+      supplierPurchase: {
+        updateMany: jest
+          .fn()
+          .mockResolvedValue({ count: overrides.updateManyCount ?? 1 }),
+        update: jest
+          .fn()
+          .mockResolvedValue(overrides.updatedPurchase ?? basePurchase),
+      },
+      stockMovement: {
+        create: jest
+          .fn()
+          .mockResolvedValue(overrides.movement ?? { id: 'movement-1' }),
+      },
+    };
+  }
+  type TxStub = ReturnType<typeof txStub>;
 
   beforeEach(() => {
     prisma = {
       supplier: { findUnique: jest.fn() },
       product: { findUnique: jest.fn() },
+      warehouse: { findUnique: jest.fn() },
       supplierPurchase: {
         create: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
+        findUnique: jest.fn(),
       },
+      $transaction: jest.fn(),
     };
     audit = { log: jest.fn() };
     service = new SupplierPurchasesService(
@@ -49,6 +85,7 @@ describe('SupplierPurchasesService', () => {
 
     prisma.supplier.findUnique.mockResolvedValue(supplier);
     prisma.product.findUnique.mockResolvedValue(product);
+    prisma.warehouse.findUnique.mockResolvedValue(warehouse);
   });
 
   describe('create', () => {
@@ -60,6 +97,7 @@ describe('SupplierPurchasesService', () => {
           {
             supplierId: 'missing',
             productId: product.id,
+            warehouseId: warehouse.id,
             quantity: 10,
             unitCost: 5000,
           },
@@ -77,6 +115,25 @@ describe('SupplierPurchasesService', () => {
           {
             supplierId: supplier.id,
             productId: 'missing',
+            warehouseId: warehouse.id,
+            quantity: 10,
+            unitCost: 5000,
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.supplierPurchase.create).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException when the warehouse does not exist', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          {
+            supplierId: supplier.id,
+            productId: product.id,
+            warehouseId: 'missing',
             quantity: 10,
             unitCost: 5000,
           },
@@ -93,6 +150,7 @@ describe('SupplierPurchasesService', () => {
         {
           supplierId: supplier.id,
           productId: product.id,
+          warehouseId: warehouse.id,
           quantity: 10,
           unitCost: 5000,
         },
@@ -106,6 +164,7 @@ describe('SupplierPurchasesService', () => {
       expect(createCall[0][0].data).toEqual({
         supplierId: supplier.id,
         productId: product.id,
+        warehouseId: warehouse.id,
         quantity: 10,
         unitCost: 5000,
         userId: 'acting-user',
@@ -127,6 +186,7 @@ describe('SupplierPurchasesService', () => {
         {
           supplierId: supplier.id,
           productId: product.id,
+          warehouseId: warehouse.id,
           quantity: 10,
           unitCost: 5000,
           purchasedAt: '2026-01-05T00:00:00.000Z',
@@ -140,6 +200,84 @@ describe('SupplierPurchasesService', () => {
       expect(createCall[0][0].data.purchasedAt).toEqual(
         new Date('2026-01-05T00:00:00.000Z'),
       );
+    });
+  });
+
+  describe('receive', () => {
+    it('throws NotFoundException when the purchase does not exist', async () => {
+      prisma.supplierPurchase.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.receive('missing', 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a purchase with no warehouse on record', async () => {
+      prisma.supplierPurchase.findUnique.mockResolvedValue({
+        ...basePurchase,
+        warehouseId: null,
+      });
+
+      await expect(
+        service.receive('purchase-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('writes a full-quantity ENTRADA and links it back to the purchase', async () => {
+      prisma.supplierPurchase.findUnique.mockResolvedValue(basePurchase);
+      const movementCreate = jest
+        .fn<Promise<{ id: string }>, [{ data: Record<string, unknown> }]>()
+        .mockResolvedValue({ id: 'movement-1' });
+      const purchaseUpdate = jest.fn().mockResolvedValue({
+        ...basePurchase,
+        receivedAt: new Date('2026-01-11'),
+        stockMovementId: 'movement-1',
+      });
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) => {
+          const tx = txStub({ movement: { id: 'movement-1' } });
+          tx.stockMovement.create = movementCreate;
+          tx.supplierPurchase.update = purchaseUpdate;
+          return callback(tx);
+        },
+      );
+
+      const result = await service.receive('purchase-1', 'acting-user');
+
+      const movementCreateCall = movementCreate.mock.calls[0][0];
+      expect(movementCreateCall.data).toEqual(
+        expect.objectContaining({
+          productId: product.id,
+          warehouseId: warehouse.id,
+          type: 'ENTRADA',
+          quantity: basePurchase.quantity,
+          unitCost: basePurchase.unitCost,
+          userId: 'acting-user',
+        }),
+      );
+      expect(purchaseUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { stockMovementId: 'movement-1' },
+        }),
+      );
+      expect(result.stockMovementId).toBe('movement-1');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'RECEIVE' }),
+      );
+    });
+
+    it('rejects receiving an already-received purchase (concurrency guard)', async () => {
+      prisma.supplierPurchase.findUnique.mockResolvedValue(basePurchase);
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) =>
+          callback(txStub({ updateManyCount: 0 })),
+      );
+
+      await expect(
+        service.receive('purchase-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 

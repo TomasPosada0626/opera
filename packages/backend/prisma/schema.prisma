@@ -86,15 +86,16 @@ model AuditLog {
 // distintas en cada bodega. Ubicación granular (pasillo/estante) queda como
 // campo libre en StockMovement, no como jerarquía propia bajo Warehouse.
 model Warehouse {
-  id               String            @id @default(uuid())
-  name             String            @unique
-  location         String?
-  isActive         Boolean           @default(true)
-  stockMovements   StockMovement[]
-  productionOrders ProductionOrder[]
-  orders           Order[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String             @id @default(uuid())
+  name              String             @unique
+  location          String?
+  isActive          Boolean            @default(true)
+  stockMovements    StockMovement[]
+  productionOrders  ProductionOrder[]
+  orders            Order[]
+  supplierPurchases SupplierPurchase[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }
 
 model Unit {
@@ -197,6 +198,11 @@ model StockMovement {
   userId      String
   user        User              @relation(fields: [userId], references: [id])
   createdAt   DateTime          @default(now())
+
+  // Inverso de SupplierPurchase.stockMovementId — trazabilidad de "esta
+  // ENTRADA vino de recibir esta compra registrada", sin volver el flujo
+  // normal de Inventario obligatorio a tener una compra detrás.
+  supplierPurchase SupplierPurchase?
 
   @@index([productId, warehouseId])
   @@index([warehouseId])
@@ -361,6 +367,20 @@ model SupplierPurchase {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
+
+  // Reconciliación (#104-purchases): nulo = registros históricos de antes
+  // de este campo, que nunca podrán "recibirse" — no tiene sentido
+  // reconciliar una compra ya vieja sin bodega declarada. Para compras
+  // nuevas el DTO exige warehouseId, así que en la práctica siempre viene.
+  warehouseId     String?
+  warehouse       Warehouse?     @relation(fields: [warehouseId], references: [id])
+  // Marca de hito, mismo patrón que Order.warehousedAt/ProductionOrder.completedAt
+  // — nulo = pendiente de recibir. `receive()` la fija atómicamente junto con
+  // stockMovementId, así que nunca hay una compra "recibida" sin su
+  // ENTRADA real, ni al revés.
+  receivedAt      DateTime?
+  stockMovementId String?        @unique
+  stockMovement   StockMovement? @relation(fields: [stockMovementId], references: [id])
 
   @@index([supplierId])
   @@index([productId])

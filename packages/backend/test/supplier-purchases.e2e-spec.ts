@@ -62,6 +62,10 @@ describe('Supplier purchases (e2e)', () => {
     await prisma.supplierPurchase.deleteMany({
       where: { id: { in: createdIds } },
     });
+    // El receive() de este spec escribe una ENTRADA real — hay que
+    // limpiarla antes de borrar el producto (StockMovement.productId es
+    // una FK sin ON DELETE CASCADE).
+    await prisma.stockMovement.deleteMany({ where: { productId } });
     await prisma.product.delete({ where: { id: productId } });
     await prisma.supplier.delete({ where: { id: supplierId } });
     await deleteCatalogFixtures(prisma, { categoryId, unitId, warehouseId });
@@ -76,6 +80,7 @@ describe('Supplier purchases (e2e)', () => {
       .send({
         supplierId,
         productId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+        warehouseId,
         quantity: 10,
         unitCost: 5000,
       })
@@ -89,6 +94,7 @@ describe('Supplier purchases (e2e)', () => {
       .send({
         supplierId,
         productId,
+        warehouseId,
         quantity: 20,
         unitCost: 4500,
         purchasedAt: '2026-01-15T00:00:00.000Z',
@@ -134,5 +140,45 @@ describe('Supplier purchases (e2e)', () => {
       .expect(200);
     const outOfRangeBody = outOfRange.body as { data: { id: string }[] };
     expect(outOfRangeBody.data.map((p) => p.id)).not.toContain(createdBody.id);
+  });
+
+  it('receives a purchase, moving real stock exactly once', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/supplier-purchases')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ supplierId, productId, warehouseId, quantity: 7, unitCost: 3000 })
+      .expect(201);
+    const purchaseId = (created.body as { id: string }).id;
+    createdIds.push(purchaseId);
+
+    const received = await request(app.getHttpServer())
+      .post(`/supplier-purchases/${purchaseId}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+    const receivedBody = received.body as {
+      receivedAt: string | null;
+      stockMovementId: string | null;
+    };
+    expect(receivedBody.receivedAt).not.toBeNull();
+    expect(receivedBody.stockMovementId).not.toBeNull();
+
+    const stock = await request(app.getHttpServer())
+      .get(`/inventory/${productId}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((stock.body as { stock: string }).stock).toBe('7');
+
+    // No se puede recibir dos veces la misma compra.
+    await request(app.getHttpServer())
+      .post(`/supplier-purchases/${purchaseId}/receive`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(409);
+
+    // Recibirla dos veces no debió duplicar el movimiento de stock.
+    const stockAfterRetry = await request(app.getHttpServer())
+      .get(`/inventory/${productId}/stock`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((stockAfterRetry.body as { stock: string }).stock).toBe('7');
   });
 });
