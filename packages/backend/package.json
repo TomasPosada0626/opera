@@ -22,8 +22,14 @@
     "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "db:seed": "dotenv -e ../../.env -- prisma db seed",
-    "e2e:fixtures:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/production-to-inventory.ts setup",
-    "e2e:fixtures:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/production-to-inventory.ts teardown"
+    "e2e:fixtures:production:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/production-to-inventory.ts setup",
+    "e2e:fixtures:production:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/production-to-inventory.ts teardown",
+    "e2e:fixtures:orders:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/order-remission.ts setup",
+    "e2e:fixtures:orders:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/order-remission.ts teardown",
+    "e2e:fixtures:suppliers:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/suppliers.ts setup",
+    "e2e:fixtures:suppliers:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/suppliers.ts teardown",
+    "e2e:fixtures:users:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/users.ts setup",
+    "e2e:fixtures:users:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/users.ts teardown"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

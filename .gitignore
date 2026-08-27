@@ -23,7 +23,7 @@ coverage/
 # Playwright (#57)
 playwright-report/
 test-results/
-packages/backend/e2e-fixtures/.state.json
+packages/backend/e2e-fixtures/.state*.json
 
 # Certificado de firma de código (generate-self-signed-cert.ps1) — la
 # clave privada nunca se commitea, cada máquina de build genera la suya.

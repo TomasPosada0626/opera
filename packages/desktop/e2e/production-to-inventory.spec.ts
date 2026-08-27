@@ -20,7 +20,7 @@ interface FixtureState {
 let fixtures: FixtureState;
 
 test.beforeAll(() => {
-  const output = execSync('pnpm run e2e:fixtures:setup', {
+  const output = execSync('pnpm run e2e:fixtures:production:setup', {
     cwd: BACKEND_DIR,
   }).toString();
   // El script imprime warnings de pnpm además del JSON — el JSON siempre es
@@ -37,7 +37,7 @@ test.beforeAll(() => {
 });
 
 test.afterAll(() => {
-  execSync('pnpm run e2e:fixtures:teardown', { cwd: BACKEND_DIR });
+  execSync('pnpm run e2e:fixtures:production:teardown', { cwd: BACKEND_DIR });
 });
 
 test('completar una orden de producción consume el componente y entra el terminado al stock (#57)', async ({
