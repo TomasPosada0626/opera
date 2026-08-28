@@ -10,20 +10,9 @@ import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { HASH_OPTIONS } from '../auth/argon2-options';
 
 const userInclude = { roles: { include: { role: true } } };
-
-// Explícitos, no los defaults implícitos de la librería — un futuro bump de
-// `argon2` podría cambiar sus defaults en cualquier dirección sin que nadie
-// lo note aquí. Valores iguales a los defaults actuales de argon2@0.45 (ver
-// node_modules/argon2/argon2.cjs), así que fijarlos no cambia el hash de
-// ningún usuario existente ni exige rehash.
-const HASH_OPTIONS = {
-  type: argon2.argon2id,
-  memoryCost: 65536,
-  timeCost: 3,
-  parallelism: 4,
-} as const;
 
 function toResponse(user: User & { roles: unknown[] }) {
   const { id, email, name, isActive, createdAt, updatedAt, roles } = user;

@@ -1,13 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RbacGuard } from '../auth/guards/rbac.guard';
 import { SearchService } from './search.service';
 import { SearchQueryDto } from './dto/search-query.dto';
 
 @ApiTags('search')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('search')
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}

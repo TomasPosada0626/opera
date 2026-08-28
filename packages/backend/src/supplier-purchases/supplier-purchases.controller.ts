@@ -1,13 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  Query,
-  Req,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -15,8 +6,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { SupplierPurchasesService } from './supplier-purchases.service';
@@ -27,7 +16,6 @@ type AuthenticatedRequest = Request & { user: JwtPayload };
 
 @ApiTags('supplier-purchases')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('supplier-purchases')
 export class SupplierPurchasesController {
   constructor(

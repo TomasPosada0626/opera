@@ -9,7 +9,6 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -18,8 +17,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RbacGuard } from '../auth/guards/rbac.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ListQueryDto } from '../common/dto/list-query.dto';
@@ -30,7 +27,6 @@ type AuthenticatedRequest = Request & { user: JwtPayload };
 
 @ApiTags('production-orders')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('production-orders')
 export class ProductionOrdersController {
   constructor(

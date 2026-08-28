@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
 import { type Response } from 'express';
 import {
   ApiBearerAuth,
@@ -6,8 +6,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RbacGuard } from '../auth/guards/rbac.guard';
 import { ReportsService } from './reports.service';
 import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
@@ -17,7 +15,6 @@ const XLSX_CONTENT_TYPE =
 
 @ApiTags('reports')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RbacGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}

@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { Public } from './decorators/public.decorator';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 
@@ -9,6 +10,7 @@ import { LoginDto } from './dto/login.dto';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   // Más estricto que el límite global (ThrottlerModule.forRoot en AppModule):

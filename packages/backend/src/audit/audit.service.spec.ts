@@ -56,6 +56,21 @@ describe('AuditService', () => {
     });
   });
 
+  it("swallows a failed write instead of rejecting, so it never overrides the caller's real response", async () => {
+    prisma.auditLog.create.mockRejectedValue(new Error('connection lost'));
+
+    await expect(
+      service.log({
+        userId: 'user-1',
+        entity: 'Product',
+        entityId: 'product-1',
+        action: 'UPDATE',
+        before: { name: 'Old' },
+        after: { name: 'New' },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('round-trips the snapshot through JSON so Date fields become plain values', () => {
     const before = { name: 'Old', createdAt: new Date('2026-01-01T00:00:00Z') };
 

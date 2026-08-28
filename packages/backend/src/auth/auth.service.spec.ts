@@ -42,6 +42,25 @@ describe('AuthService', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
+    // No se puede espiar argon2.verify directamente (el binding nativo
+    // expone propiedades no configurables — jest.spyOn revienta con
+    // "Cannot redefine property"), así que esto no mide tiempos; confirma
+    // el comportamiento observable de la mitigación del timing oracle: un
+    // email inexistente sigue pasando por la comparación contra el hash
+    // señuelo (en vez de un short-circuit antes de tocar argon2) en más de
+    // una llamada, sin que el cacheo del hash señuelo a nivel de módulo
+    // quede en un estado roto tras el primer uso.
+    it('rejects a missing user consistently across repeated calls, exercising the cached decoy hash each time', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.validateUser('missing-1@opera.local', 'x'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(
+        service.validateUser('missing-2@opera.local', 'y'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
     it('throws UnauthorizedException when the user is inactive', async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...withRoles([]),

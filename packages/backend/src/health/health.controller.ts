@@ -5,11 +5,12 @@ import {
   HealthCheckService,
   PrismaHealthIndicator,
 } from '@nestjs/terminus';
+import { Public } from '../auth/decorators/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
-// Sin @Roles/@UseGuards a propósito — un endpoint de salud lo consulta
-// software de monitoreo, no un usuario logueado. No expone nada sensible:
-// solo si el proceso responde y si Postgres es alcanzable.
+// @Public() a propósito — un endpoint de salud lo consulta software de
+// monitoreo, no un usuario logueado. No expone nada sensible: solo si el
+// proceso responde y si Postgres es alcanzable.
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
@@ -19,6 +20,7 @@ export class HealthController {
     private readonly prisma: PrismaService,
   ) {}
 
+  @Public()
   @Get()
   @HealthCheck()
   @ApiOperation({

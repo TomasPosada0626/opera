@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { RbacGuard } from './auth/guards/rbac.guard';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
 import { RolesModule } from './roles/roles.module';
@@ -126,6 +129,25 @@ import { HealthModule } from './health/health.module';
     HealthModule,
   ],
   controllers: [AppController],
-  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Globales a propósito (#auditoría): antes cada controller tenía que
+    // acordarse de `@UseGuards(JwtAuthGuard, RbacGuard)` — un controller
+    // nuevo sin ese decorador quedaba público por defecto, sin que nada lo
+    // atrapara. Ahora es al revés: todo está protegido salvo que una ruta
+    // se marque explícitamente con @Public() (ver auth/decorators/public
+    // .decorator.ts). El orden importa: Throttler primero (limita incluso
+    // requests no autenticadas), después JwtAuth (identifica al usuario),
+    // después Rbac (ya puede leer request.user).
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RbacGuard },
+    // Sin esto, cualquier violación de una de las 10+ constraints @unique
+    // del schema (email, SKU, nombre de categoría/unidad, taxId...) caía
+    // como 500 sin manejar en cualquier módulo — nadie lo escribía a mano
+    // por servicio. Traduce los códigos de error conocidos de Prisma a
+    // respuestas HTTP consistentes en toda la API (ver el filtro mismo).
+    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
+  ],
 })
 export class AppModule {}
