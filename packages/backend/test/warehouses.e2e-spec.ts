@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ProductType } from '@prisma/client';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
@@ -80,6 +81,48 @@ describe('Warehouses (e2e)', () => {
     expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
       true,
     );
+  });
+
+  it('rejects deactivating a warehouse that still holds real stock', async () => {
+    const unique = Date.now();
+    const warehouse = await prisma.warehouse.create({
+      data: { name: `E2E-Warehouse-InUse-${unique}` },
+    });
+    const category = await prisma.category.create({
+      data: { name: `E2E-Cat-WH-${unique}` },
+    });
+    const unit = await prisma.unit.create({
+      data: { name: `E2E-Unit-WH-${unique}`, abbreviation: `w${unique}` },
+    });
+    const product = await prisma.product.create({
+      data: {
+        sku: `E2E-WH-INUSE-${unique}`,
+        name: 'Producto con stock en la bodega',
+        type: ProductType.RAW_MATERIAL,
+        categoryId: category.id,
+        unitId: unit.id,
+      },
+    });
+    await prisma.stockMovement.create({
+      data: {
+        productId: product.id,
+        warehouseId: warehouse.id,
+        type: 'ENTRADA',
+        quantity: 10,
+        userId: adminUserId,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/warehouses/${warehouse.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+
+    await prisma.stockMovement.deleteMany({ where: { productId: product.id } });
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+    await prisma.unit.delete({ where: { id: unit.id } });
+    await prisma.warehouse.delete({ where: { id: warehouse.id } });
   });
 
   it('returns 404 for a warehouse that does not exist', async () => {

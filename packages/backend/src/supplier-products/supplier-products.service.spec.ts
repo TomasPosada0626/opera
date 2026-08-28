@@ -1,11 +1,15 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SupplierProductsService } from './supplier-products.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
 describe('SupplierProductsService', () => {
-  const supplier = { id: 'supplier-1', name: 'Maderas del Norte S.A.S.' };
-  const product = { id: 'product-1', name: 'Tabla de pino' };
+  const supplier = {
+    id: 'supplier-1',
+    name: 'Maderas del Norte S.A.S.',
+    isActive: true,
+  };
+  const product = { id: 'product-1', name: 'Tabla de pino', isActive: true };
   const baseSupplierProduct = {
     id: 'sp-1',
     supplierId: supplier.id,
@@ -71,6 +75,36 @@ describe('SupplierProductsService', () => {
           'acting-user',
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.supplierProduct.upsert).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the supplier is deactivated', async () => {
+      prisma.supplier.findUnique.mockResolvedValue({
+        ...supplier,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          { supplierId: supplier.id, productId: product.id, price: 100 },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.supplierProduct.upsert).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the product is deactivated', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        ...product,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          { supplierId: supplier.id, productId: product.id, price: 100 },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.supplierProduct.upsert).not.toHaveBeenCalled();
     });
 

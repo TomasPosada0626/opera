@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -20,6 +20,7 @@ describe('CategoriesService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    product: { count: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: CategoriesService;
@@ -33,6 +34,7 @@ describe('CategoriesService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      product: { count: jest.fn().mockResolvedValue(0) },
     };
     audit = { log: jest.fn() };
     service = new CategoriesService(
@@ -127,6 +129,15 @@ describe('CategoriesService', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
+  });
+
+  it('throws BadRequestException when active products still use this category', async () => {
+    prisma.product.count.mockResolvedValue(3);
+
+    await expect(
+      service.deactivate('category-1', 'acting-user'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.category.update).not.toHaveBeenCalled();
   });
 
   it('reactivates a category by setting isActive to true and logs a REACTIVATE audit entry', async () => {

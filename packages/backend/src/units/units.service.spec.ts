@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UnitsService } from './units.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -21,6 +21,7 @@ describe('UnitsService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    product: { count: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: UnitsService;
@@ -34,6 +35,7 @@ describe('UnitsService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      product: { count: jest.fn().mockResolvedValue(0) },
     };
     audit = { log: jest.fn() };
     service = new UnitsService(
@@ -117,6 +119,15 @@ describe('UnitsService', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
+  });
+
+  it('throws BadRequestException when active products still use this unit', async () => {
+    prisma.product.count.mockResolvedValue(2);
+
+    await expect(
+      service.deactivate('unit-1', 'acting-user'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.unit.update).not.toHaveBeenCalled();
   });
 
   it('reactivates a unit by setting isActive to true and logs a REACTIVATE audit entry', async () => {

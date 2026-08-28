@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { ProductType } from '@prisma/client';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
@@ -89,6 +90,34 @@ describe('Categories (e2e)', () => {
     expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
       true,
     );
+  });
+
+  it('rejects deactivating a category that still has active products', async () => {
+    const unique = Date.now();
+    const category = await prisma.category.create({
+      data: { name: `E2E-Cat-InUse-${unique}` },
+    });
+    const unit = await prisma.unit.create({
+      data: { name: `E2E-Unit-InUse-${unique}`, abbreviation: `u${unique}` },
+    });
+    const product = await prisma.product.create({
+      data: {
+        sku: `E2E-CAT-INUSE-${unique}`,
+        name: 'Producto que usa la categoría',
+        type: ProductType.RAW_MATERIAL,
+        categoryId: category.id,
+        unitId: unit.id,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/categories/${category.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+
+    await prisma.product.delete({ where: { id: product.id } });
+    await prisma.category.delete({ where: { id: category.id } });
+    await prisma.unit.delete({ where: { id: unit.id } });
   });
 
   it('returns 404 for a category that does not exist', async () => {

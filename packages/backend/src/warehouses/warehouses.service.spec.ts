@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { WarehousesService } from './warehouses.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -21,6 +21,7 @@ describe('WarehousesService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    stockMovement: { groupBy: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: WarehousesService;
@@ -34,6 +35,7 @@ describe('WarehousesService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      stockMovement: { groupBy: jest.fn().mockResolvedValue([]) },
     };
     audit = { log: jest.fn() };
     service = new WarehousesService(
@@ -170,6 +172,20 @@ describe('WarehousesService', () => {
     expect(audit.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
+  });
+
+  it('throws BadRequestException when the warehouse still holds real stock', async () => {
+    // El service solo mira si `having` (aplicado por Postgres de verdad)
+    // devolvió alguna fila — el valor exacto de _sum acá no importa para
+    // este test, solo que el grupo exista.
+    prisma.stockMovement.groupBy.mockResolvedValue([
+      { productId: 'product-1', _sum: { quantity: 5 } },
+    ]);
+
+    await expect(
+      service.deactivate('warehouse-1', 'acting-user'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.warehouse.update).not.toHaveBeenCalled();
   });
 
   it('reactivates a warehouse by setting isActive to true and logs a REACTIVATE audit entry', async () => {

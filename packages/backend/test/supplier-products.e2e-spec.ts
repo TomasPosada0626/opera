@@ -81,6 +81,20 @@ describe('Supplier products (e2e)', () => {
       .expect(404);
   });
 
+  it('rejects creation for a deactivated supplier', async () => {
+    const deactivated = await prisma.supplier.create({
+      data: { name: `Proveedor desactivado ${Date.now()}`, isActive: false },
+    });
+
+    await request(app.getHttpServer())
+      .post('/supplier-products')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ supplierId: deactivated.id, productId, price: 15000 })
+      .expect(400);
+
+    await prisma.supplier.delete({ where: { id: deactivated.id } });
+  });
+
   it('creates a price, then overwrites it on the same supplier/product pair', async () => {
     const created = await request(app.getHttpServer())
       .post('/supplier-products')

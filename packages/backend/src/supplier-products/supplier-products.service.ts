@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -26,11 +30,21 @@ export class SupplierProductsService {
     if (!supplier) {
       throw new NotFoundException('Proveedor no encontrado');
     }
+    // isActive es un flag de catálogo (CatalogService.deactivate), no
+    // borrado — mismo chequeo que ya tienen orders/production/
+    // supplier-purchases, señalado en la re-auditoría como el cuarto
+    // consumidor que había quedado afuera.
+    if (!supplier.isActive) {
+      throw new BadRequestException('El proveedor está desactivado');
+    }
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
     });
     if (!product) {
       throw new NotFoundException('Producto no encontrado');
+    }
+    if (!product.isActive) {
+      throw new BadRequestException('El producto está desactivado');
     }
 
     const existing = await this.prisma.supplierProduct.findUnique({
