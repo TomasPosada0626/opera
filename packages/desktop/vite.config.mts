@@ -9,18 +9,33 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    electron({
-      main: {
-        // Shortcut of `build.lib.entry`.
-        entry: 'electron/main.ts',
-      },
-      preload: {
-        // Shortcut of `build.rollupOptions.input`.
-        input: path.join(import.meta.dirname, 'electron/preload.ts'),
-      },
-      // Polyfill the Electron and Node.js API for the Renderer process.
-      renderer: process.env.NODE_ENV === 'test' ? undefined : {},
-    }),
+    // Con NODE_ENV=test (Vitest ya lo fija solo; playwright.config.ts lo
+    // fija a propósito para el webServer de Chromium), el plugin ni se
+    // registra -- de lo contrario, arrancar `vite` con este plugin activo
+    // LANZA Electron de verdad al levantar el dev server. Eso rompe en dos
+    // formas distintas según el entorno: en un runner Linux sin display,
+    // Electron no puede inicializar su GUI ("ui/aura/env.cc"); forzando
+    // ELECTRON_RUN_AS_NODE para esquivar eso, `electron.app` queda
+    // undefined y el propio manejador de errores de electron/main.ts
+    // crashea al intentar loguear (encontrado corriendo Playwright en CI
+    // real por primera vez). El e2e de Chromium (playwright.config.ts)
+    // nunca necesitó el proceso de Electron para empezar — solo la SPA.
+    ...(process.env.NODE_ENV === 'test'
+      ? []
+      : [
+          electron({
+            main: {
+              // Shortcut of `build.lib.entry`.
+              entry: 'electron/main.ts',
+            },
+            preload: {
+              // Shortcut of `build.rollupOptions.input`.
+              input: path.join(import.meta.dirname, 'electron/preload.ts'),
+            },
+            // Polyfill the Electron and Node.js API for the Renderer process.
+            renderer: {},
+          }),
+        ]),
   ],
   test: {
     environment: 'jsdom',

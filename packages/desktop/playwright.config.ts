@@ -1,13 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Corre contra Chromium propio (no Electron): el proceso de Electron en
-// este entorno se lanza con ELECTRON_RUN_AS_NODE=1 forzado por la shell,
-// lo que rompe `require('electron')` antes de crear ninguna ventana (ver
-// memoria "Electron GUI verification"). El renderer es una SPA normal
+// Corre contra Chromium propio (no Electron). El renderer es una SPA normal
 // servida por Vite (ADR 0003) — probarla en Chromium real ejercita el
 // mismo código React/TanStack Query que corre dentro de Electron, solo
 // que sin el proceso principal (que la app ya degrada con gracia, ver
 // lib/auth-token.ts). La ventana de Electron en sí se verifica a mano.
+// NODE_ENV=test en el webServer (ver vite.config.mts) es lo que de verdad
+// evita que se lance: sin esto, `vite-plugin-electron` arranca un Electron
+// real al levantar el dev server — en un runner Linux sin display eso
+// crashea ("ui/aura/env.cc: The platform failed to initialize"), y
+// forzando ELECTRON_RUN_AS_NODE para esquivarlo, `electron.app` queda
+// undefined y el propio manejador de errores de electron/main.ts crashea
+// distinto (encontrado corriendo esto en CI real por primera vez).
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -34,6 +38,7 @@ export default defineConfig({
     url: 'http://localhost:5173',
     reuseExistingServer: true,
     timeout: 60_000,
+    env: { NODE_ENV: 'test' },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

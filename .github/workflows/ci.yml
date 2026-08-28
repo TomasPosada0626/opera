@@ -111,17 +111,15 @@ jobs:
           exit 1
 
       - name: E2E tests (desktop, Playwright contra el backend real)
-        # vite-plugin-electron (vite.config.mts) lanza Electron de verdad al
-        # arrancar el dev server que Playwright usa como webServer -- en un
-        # runner Linux sin display eso crashea con "ui/aura/env.cc: The
-        # platform failed to initialize" y tumba el suite entero antes de
+        # vite-plugin-electron (vite.config.mts) lanzaba Electron de verdad
+        # al arrancar el dev server que Playwright usa como webServer -- en
+        # un runner Linux sin display eso crasheaba con "ui/aura/env.cc: The
+        # platform failed to initialize" y tumbaba el suite entero antes de
         # arrancar (encontrado corriendo esto por primera vez en CI real).
-        # ELECTRON_RUN_AS_NODE hace que el binario de Electron corra como
-        # Node puro sin tocar Chromium/GUI -- mismo motivo por el que esto
-        # nunca se vio en local, donde ya está seteado (ver la nota en
-        # memoria "Electron GUI verification").
-        env:
-          ELECTRON_RUN_AS_NODE: '1'
+        # playwright.config.ts ya fija NODE_ENV=test para el webServer, y
+        # vite.config.mts deja de registrar el plugin de Electron con ese
+        # NODE_ENV -- no hay nada que arrancar acá, ni falta ninguna env var
+        # especial en este step.
         run: pnpm --filter desktop test:e2e
 
       - name: Stop backend server
