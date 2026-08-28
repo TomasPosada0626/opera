@@ -74,7 +74,31 @@ function createWindow() {
     icon: path.join(process.env.VITE_PUBLIC, 'icon-256.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      // Ya son el default desde Electron 20+/28+ — declarados a propósito
+      // (señalado en la re-auditoría) para que el checklist de seguridad
+      // (ver CSP arriba) sea auditable leyendo este archivo, sin depender
+      // de que quien lo lea sepa de memoria cuáles son los defaults
+      // actuales de la versión de Electron instalada.
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
     },
+  });
+
+  // La app nunca abre ventanas nuevas ni navega fuera de sí misma a
+  // propósito — cualquier intento de hacerlo (un `target="_blank"` o un
+  // `window.open` colado en algún texto renderizado, un link externo mal
+  // manejado) se deniega en vez de abrir una ventana sin las protecciones
+  // de esta (CSP, webPreferences) o navegar el proceso principal a un sitio
+  // arbitrario (señalado en la re-auditoría).
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (event, url) => {
+    const allowed = VITE_DEV_SERVER_URL
+      ? url.startsWith(VITE_DEV_SERVER_URL)
+      : url.startsWith('file://');
+    if (!allowed) {
+      event.preventDefault();
+    }
   });
 
   if (VITE_DEV_SERVER_URL) {
@@ -125,20 +149,48 @@ app.on('activate', () => {
   }
 });
 
+// El tipo del handler (`token: string`) solo lo hace cumplir TypeScript del
+// lado del renderer que compilamos nosotros — a runtime, ipcMain.handle
+// recibe lo que sea que le llegue por el canal, sin garantía de forma
+// (señalado en la re-auditoría). Sin este guard, un token no-string
+// reventaría dentro del binding nativo de safeStorage.encryptString con un
+// stack críptico en vez de un error claro.
+function assertString(value: unknown, label: string): string {
+  if (typeof value !== 'string') {
+    throw new TypeError(`${label} debe ser un string, llegó ${typeof value}`);
+  }
+  return value;
+}
+
+function assertLoggedErrorPayload(value: unknown): Omit<LoggedError, 'source'> {
+  if (typeof value !== 'object' || value === null) {
+    throw new TypeError('El payload de error-log:report debe ser un objeto');
+  }
+  const entry = value as Record<string, unknown>;
+  return {
+    type: assertString(entry.type, 'error-log:report.type'),
+    message: assertString(entry.message, 'error-log:report.message'),
+    stack:
+      entry.stack === undefined
+        ? undefined
+        : assertString(entry.stack, 'error-log:report.stack'),
+  };
+}
+
 // Único secreto que cruza el puente IPC hoy (#92) — el JWT de sesión,
 // cifrado en disco vía `safeStorage` en el proceso principal en vez de
 // `localStorage` del renderer.
 ipcMain.handle('auth-token:get', () => readToken());
-ipcMain.handle('auth-token:set', (_event, token: string) => writeToken(token));
+ipcMain.handle('auth-token:set', (_event, token: unknown) =>
+  writeToken(assertString(token, 'auth-token:set')),
+);
 ipcMain.handle('auth-token:clear', () => clearToken());
 
 // Errores del renderer (window.onerror/unhandledrejection) llegan aquí para
 // terminar en el mismo archivo que los del proceso principal — un solo
 // registro que exportar, no dos.
-ipcMain.handle(
-  'error-log:report',
-  (_event, entry: Omit<LoggedError, 'source'>) =>
-    appendErrorLog({ ...entry, source: 'renderer' }),
+ipcMain.handle('error-log:report', (_event, entry: unknown) =>
+  appendErrorLog({ ...assertLoggedErrorPayload(entry), source: 'renderer' }),
 );
 ipcMain.handle('error-log:export', () => exportErrorLog());
 ipcMain.handle('updater:restart', () => restartAndInstall());

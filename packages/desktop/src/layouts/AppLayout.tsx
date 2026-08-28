@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalSearch } from '../components/search/GlobalSearch';
 import { Logo } from '../components/ui/Logo';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
@@ -214,7 +215,9 @@ function AppLayout() {
         </header>
         <main className="flex-1 p-8">
           <div className="mx-auto max-w-6xl">
-            <Outlet />
+            <ErrorBoundary variant="inline" key={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>

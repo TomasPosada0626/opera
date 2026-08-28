@@ -69,4 +69,25 @@ export default tseslint.config(
       ],
     },
   },
+  // electron/*.test.ts mockea 'electron' entero y hace vi.mocked(app.on),
+  // vi.mocked(win.webContents.on), etc. — unbound-method asume que un
+  // método leído así podría perder su `this` real al llamarse suelto, pero
+  // acá el objeto completo ES el mock (vi.fn()s que nunca usan `this`), así
+  // que la advertencia no aplica. Sin eslint-plugin-jest (que trae una
+  // versión de esta regla consciente de mocks), se apaga solo en estos
+  // archivos en vez de en todo el paquete. Los tres de abajo son fricción
+  // esperada del mismo motivo: los tipos reales de Electron (overloads de
+  // BrowserWindow/app/ipcMain) no coinciden 1:1 con la forma simple del
+  // mock, y justamente lo que este archivo prueba es la validación runtime
+  // de payloads sin forma garantizada cruzando IPC — el `any`/`unknown`
+  // ahí es intencional, no un descuido.
+  {
+    files: ['packages/desktop/electron/*.test.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+    },
+  },
 );

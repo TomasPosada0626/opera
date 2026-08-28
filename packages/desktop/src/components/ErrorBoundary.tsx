@@ -3,6 +3,15 @@ import { Button } from './ui/Button';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
+  // 'full' (default): último recurso alrededor de todo el árbol (App.tsx) —
+  // ocupa la pantalla completa porque en ese punto ya no queda ningún shell
+  // (sidebar/topbar) que seguir mostrando. 'inline': usado dentro de
+  // AppLayout alrededor de <Outlet/> (señalado en la re-auditoría — antes
+  // un solo boundary global tumbaba TODA la app, sidebar incluido, por un
+  // error de render en una sola página) — se queda dentro de su
+  // contenedor, así el resto del shell sigue usable para navegar a otra
+  // pantalla que sí funcione.
+  variant?: 'full' | 'inline';
 }
 
 interface ErrorBoundaryState {
@@ -44,12 +53,17 @@ export class ErrorBoundary extends Component<
       return this.props.children;
     }
 
+    const isFull = (this.props.variant ?? 'full') === 'full';
+
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-6 text-center">
+      <div
+        className={`flex flex-col items-center justify-center gap-3 px-6 text-center ${isFull ? 'min-h-screen' : 'py-16'}`}
+      >
         <h1 className="text-ink text-2xl font-medium">Algo salió mal</h1>
         <p className="text-ink-muted max-w-md">
-          La aplicación encontró un error inesperado y no puede continuar en
-          esta pantalla. El error ya quedó registrado localmente.
+          {isFull
+            ? 'La aplicación encontró un error inesperado y no puede continuar en esta pantalla. El error ya quedó registrado localmente.'
+            : 'Esta pantalla encontró un error inesperado. El resto de la aplicación sigue funcionando — el error ya quedó registrado localmente.'}
         </p>
         <Button onClick={this.handleReload}>Recargar</Button>
       </div>
