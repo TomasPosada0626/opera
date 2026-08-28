@@ -124,4 +124,43 @@ describe('Supplier products (e2e)', () => {
     expect(listBody.data).toHaveLength(1);
     expect(listBody.data[0].price).toBe('18000');
   });
+
+  it('rejects deletion by a non-ADMIN user, then deletes it and it disappears from the list', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/supplier-products')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ supplierId, productId, price: 20000 })
+      .expect(201);
+    const createdId = (created.body as { id: string }).id;
+
+    const staff = await createUserAndLogin(app, prisma, {
+      emailPrefix: 'supplier-products-staff',
+    });
+
+    await request(app.getHttpServer())
+      .delete(`/supplier-products/${createdId}`)
+      .set('Authorization', `Bearer ${staff.token}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .delete(`/supplier-products/${createdId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(204);
+
+    const list = await request(app.getHttpServer())
+      .get('/supplier-products')
+      .query({ supplierId, productId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((list.body as { data: unknown[] }).data).toHaveLength(0);
+
+    await deleteUsers(prisma, [staff.id]);
+  });
+
+  it('returns 404 when deleting a supplier-product price that does not exist', async () => {
+    await request(app.getHttpServer())
+      .delete('/supplier-products/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(404);
+  });
 });

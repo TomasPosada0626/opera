@@ -5,6 +5,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
+import { DeleteSupplierProductAction } from '../components/suppliers/DeleteSupplierProductAction';
 import { ReceivePurchaseAction } from '../components/suppliers/ReceivePurchaseAction';
 import { SupplierProductForm } from '../components/suppliers/SupplierProductForm';
 import { SupplierPurchaseForm } from '../components/suppliers/SupplierPurchaseForm';
@@ -93,6 +94,7 @@ function SupplierDetailPage() {
                       <th className="text-ink-muted px-4 py-3 text-right text-xs font-medium tracking-wide uppercase">
                         Precio
                       </th>
+                      {isAdmin && <th className="px-4 py-3" />}
                     </tr>
                   </thead>
                   <tbody>
@@ -107,6 +109,11 @@ function SupplierDetailPage() {
                         <td className="text-ink px-4 py-3 text-right tabular-nums">
                           {formatMoney(entry.price)}
                         </td>
+                        {isAdmin && (
+                          <td className="px-4 py-3 text-right">
+                            <DeleteSupplierProductAction id={entry.id} />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

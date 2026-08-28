@@ -27,6 +27,7 @@ describe('SupplierProductsService', () => {
       upsert: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
+      delete: jest.Mock;
     };
   };
   let audit: { log: jest.Mock };
@@ -41,6 +42,7 @@ describe('SupplierProductsService', () => {
         upsert: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
+        delete: jest.fn(),
       },
     };
     audit = { log: jest.fn() };
@@ -162,6 +164,34 @@ describe('SupplierProductsService', () => {
           after: baseSupplierProduct,
         }),
       );
+    });
+  });
+
+  describe('remove', () => {
+    it('throws NotFoundException when the price row does not exist', async () => {
+      prisma.supplierProduct.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.remove('missing', 'acting-user'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.supplierProduct.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes the row and logs a DELETE audit entry with before only', async () => {
+      prisma.supplierProduct.findUnique.mockResolvedValue(baseSupplierProduct);
+
+      await service.remove('sp-1', 'acting-user');
+
+      expect(prisma.supplierProduct.delete).toHaveBeenCalledWith({
+        where: { id: 'sp-1' },
+      });
+      expect(audit.log).toHaveBeenCalledWith({
+        userId: 'acting-user',
+        entity: 'SupplierProduct',
+        entityId: 'sp-1',
+        action: 'DELETE',
+        before: baseSupplierProduct,
+      });
     });
   });
 

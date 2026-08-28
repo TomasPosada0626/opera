@@ -84,6 +84,32 @@ export class SupplierProductsService {
     return supplierProduct;
   }
 
+  // Borrado real, no un deactivate estilo CatalogService: SupplierProduct no
+  // tiene isActive (es solo un precio de referencia, no un catálogo con
+  // historial propio) y nada más en el schema lo referencia por FK — al
+  // dejar de comprarle un producto a un proveedor, la fila simplemente ya no
+  // debería aparecer en la lista de precios (señalado en la re-auditoría
+  // como el único CRUD del sistema sin ninguna vía de baja).
+  async remove(id: string, actingUserId: string) {
+    const existing = await this.prisma.supplierProduct.findUnique({
+      where: { id },
+      include: supplierProductInclude,
+    });
+    if (!existing) {
+      throw new NotFoundException('Precio de proveedor no encontrado');
+    }
+
+    await this.prisma.supplierProduct.delete({ where: { id } });
+
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'SupplierProduct',
+      entityId: id,
+      action: 'DELETE',
+      before: existing,
+    });
+  }
+
   findAll(query: ListSupplierProductsDto) {
     const {
       page = 1,

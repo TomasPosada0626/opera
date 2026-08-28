@@ -164,6 +164,60 @@ describe('SupplierDetailPage', () => {
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 
+  it('hides "Eliminar" for a price row when the user is not ADMIN', async () => {
+    setAuthToken(fakeJwt(['STAFF']));
+    mockDetailGets([
+      {
+        id: 'sp-1',
+        price: '15000',
+        product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]);
+
+    renderWithClient(<SupplierDetailPage />);
+
+    await screen.findByText('MP-1 — Tabla de pino');
+    expect(
+      screen.queryByRole('button', { name: 'Eliminar' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('deletes a price row via "Eliminar" for an ADMIN user', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    const priceRow: SupplierProduct = {
+      id: 'sp-1',
+      price: '15000',
+      product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+      if (options?.method === 'DELETE' && path === '/supplier-products/sp-1') {
+        return Promise.resolve(undefined);
+      }
+      if (options?.method) {
+        return Promise.reject(new Error(`Unexpected write: ${path}`));
+      }
+      if (path === '/suppliers/supplier-1') return Promise.resolve(supplier);
+      if (path.startsWith('/supplier-products'))
+        return Promise.resolve(paginated([priceRow]));
+      if (path.startsWith('/supplier-purchases'))
+        return Promise.resolve(paginated([]));
+      return Promise.reject(new Error(`Unexpected GET: ${path}`));
+    });
+    const user = userEvent.setup();
+
+    renderWithClient(<SupplierDetailPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'Eliminar' }));
+
+    expect(mockedApiFetch).toHaveBeenCalledWith('/supplier-products/sp-1', {
+      method: 'DELETE',
+    });
+  });
+
   it('shows a received badge and no action for an already-received purchase', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
     mockDetailGets(

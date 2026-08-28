@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -50,5 +60,20 @@ export class SupplierProductsController {
   })
   findAll(@Query() query: ListSupplierProductsDto) {
     return this.supplierProductsService.findAll(query);
+  }
+
+  @Delete(':id')
+  @Roles('ADMIN')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Eliminar el precio de referencia de un proveedor (ADMIN)',
+    description:
+      'Borrado real, no desactivación — SupplierProduct es solo un precio de referencia, sin historial transaccional propio.',
+  })
+  @ApiResponse({ status: 204, description: 'Precio eliminado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'No encontrado.' })
+  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.supplierProductsService.remove(id, req.user.sub);
   }
 }
