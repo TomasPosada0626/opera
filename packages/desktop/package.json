@@ -8,7 +8,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && electron-builder --publish never",
     "release": "tsc && vite build && electron-builder --publish always",
     "preview": "vite preview",
     "test": "vitest run",
