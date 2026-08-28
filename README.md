@@ -257,7 +257,6 @@ pnpm build
 
 ```powershell
 Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher
-Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 Desde ahí, ese instalador específico deja de disparar la advertencia de SmartScreen en esa máquina.

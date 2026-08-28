@@ -4,14 +4,17 @@ import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { queryClient } from './lib/query-client';
 import { UpdateBanner } from './components/ui/UpdateBanner';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <UpdateBanner />
-      {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+        <UpdateBanner />
+        {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

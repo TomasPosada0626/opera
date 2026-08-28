@@ -82,6 +82,41 @@ jobs:
       - name: Build desktop (renderer + electron)
         run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
 
+      # Los 4 specs de Playwright (e2e/*.spec.ts) existían pero no corrían
+      # en CI — podían pudrirse sin que nadie se entere, a diferencia del
+      # e2e de Jest del backend, que sí está gateado (y que ya demostró su
+      # valor real atrapando un bug de concurrencia genuino). Corren contra
+      # Chromium real (no Electron, ver playwright.config.ts) + el backend
+      # real de este mismo job, ya construido, contra el mismo Postgres del
+      # service container.
+      - name: Install Playwright browsers
+        run: pnpm --filter desktop exec playwright install --with-deps chromium
+
+      - name: Start backend server for Playwright (background)
+        run: |
+          nohup node packages/backend/dist/src/main.js > backend-server.log 2>&1 &
+          echo $! > backend.pid
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "Backend listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "El backend no quedó listo a tiempo"
+          cat backend-server.log
+          exit 1
+
+      - name: E2E tests (desktop, Playwright contra el backend real)
+        run: pnpm --filter desktop test:e2e
+
+      - name: Stop backend server
+        if: always()
+        run: kill "$(cat backend.pid)" || true
+
   package-windows:
     # El instalador NSIS de Windows no se puede cross-compilar de forma
     # confiable desde ubuntu-latest: electron-builder necesita Wine para

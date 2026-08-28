@@ -77,5 +77,9 @@ Write-Host ''
 Write-Host 'En la maquina donde se va a instalar Opera, para que Windows confie en el' -ForegroundColor Cyan
 Write-Host 'instalador (quita la advertencia de SmartScreen), copia opera-code-signing.cer'
 Write-Host 'ahi y corre, como Administrador:'
+# Solo TrustedPublisher: es el almacen que Windows consulta para decidir
+# si confia en la FIRMA de un ejecutable. Root ademas de innecesario es
+# sobre-privilegio real: ese almacen es de autoridades certificadoras,
+# le da a este certificado la capacidad de validar OTROS certificados,
+# no solo firmar este instalador (senalado en la auditoria de seguridad).
 Write-Host '  Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\TrustedPublisher'
-Write-Host '  Import-Certificate -FilePath .\opera-code-signing.cer -CertStoreLocation Cert:\LocalMachine\Root'

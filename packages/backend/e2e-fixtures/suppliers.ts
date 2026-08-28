@@ -19,6 +19,7 @@ interface FixtureState {
   password: string;
   categoryId: string;
   unitId: string;
+  warehouseId: string;
   productId: string;
   productSku: string;
   productName: string;
@@ -65,12 +66,23 @@ async function setup() {
     },
   });
 
+  // Registrar una compra en el test pasa por WarehouseSelect, que se
+  // autoselecciona y oculta el campo solo con EXACTAMENTE una bodega activa
+  // (ver components/form/WarehouseSelect.tsx) — sin esta bodega dedicada, el
+  // conteo real depende de qué haya de sobra en la base compartida al
+  // momento de correr, y el picker puede aparecer como un <select> real que
+  // el test nunca completa.
+  const warehouse = await prisma.warehouse.create({
+    data: { name: `PWSupWarehouse-${unique}` },
+  });
+
   const state: FixtureState = {
     adminUserId: user.id,
     email,
     password,
     categoryId: category.id,
     unitId: unit.id,
+    warehouseId: warehouse.id,
     productId: product.id,
     productSku: product.sku,
     productName: product.name,
@@ -118,6 +130,7 @@ async function teardown() {
   await prisma.product.delete({ where: { id: state.productId } });
   await prisma.category.delete({ where: { id: state.categoryId } });
   await prisma.unit.delete({ where: { id: state.unitId } });
+  await prisma.warehouse.delete({ where: { id: state.warehouseId } });
   await prisma.auditLog.deleteMany({ where: { userId: state.adminUserId } });
   await prisma.user.delete({ where: { id: state.adminUserId } });
   fs.unlinkSync(STATE_FILE);

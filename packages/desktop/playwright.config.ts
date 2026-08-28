@@ -12,7 +12,18 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   fullyParallel: false,
-  retries: 0,
+  // Cada spec crea sus propias fixtures (usuario, bodega, producto) contra
+  // el MISMO Postgres compartido, sin aislamiento de esquema entre specs —
+  // con más de un worker, dos specs corriendo a la vez pueden coexistir con
+  // más de una bodega activa al mismo tiempo, lo que rompe el supuesto de
+  // WarehouseSelect de "exactamente una bodega = se autoselecciona y oculta
+  // el campo" (encontrado corriendo esto por primera vez contra CI real).
+  workers: 1,
+  // Reintenta en CI (jitter real de red/async entre tests que comparten un
+  // solo backend — ver el `workers: 1` de arriba), nunca en local: acá
+  // queremos que un fallo real se vea a la primera, no escondido tras un
+  // reintento.
+  retries: process.env.CI ? 2 : 0,
   reporter: 'list',
   use: {
     baseURL: 'http://localhost:5173',

@@ -58,9 +58,10 @@ test('completar una orden de producción consume el componente y entra el termin
   await page
     .getByRole('button', { name: new RegExp(fixtures.finishedGoodSku) })
     .click();
-  await page
-    .getByLabel('Bodega')
-    .selectOption({ label: fixtures.warehouseName });
+  // Sin selección manual de bodega: el fixture crea exactamente una, y
+  // WarehouseSelect la auto-selecciona y oculta el campo cuando solo hay
+  // una activa (ver components/form/WarehouseSelect.tsx) — un `getByLabel
+  // ('Bodega')` acá esperaría un <select> que nunca se renderiza.
   await page.getByLabel('Cantidad a producir').fill('3');
   await page.getByRole('button', { name: 'Crear orden' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

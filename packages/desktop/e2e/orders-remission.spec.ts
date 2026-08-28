@@ -60,10 +60,10 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
     .getByRole('button', { name: fixtures.customerName, exact: true })
     .click();
 
-  await page
-    .getByLabel('Bodega')
-    .selectOption({ label: fixtures.warehouseName });
-
+  // Sin selección manual de bodega: el fixture crea exactamente una, y
+  // WarehouseSelect la auto-selecciona y oculta el campo cuando solo hay
+  // una activa (ver components/form/WarehouseSelect.tsx) — un `getByLabel
+  // ('Bodega')` acá esperaría un <select> que nunca se renderiza.
   await page.getByLabel('Buscar producto').fill(fixtures.productSku);
   await page
     .getByRole('button', { name: new RegExp(fixtures.productSku) })
