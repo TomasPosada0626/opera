@@ -110,6 +110,24 @@ describe('Orders (e2e)', () => {
       .expect(404);
   });
 
+  it('rejects creation for a deactivated customer', async () => {
+    const deactivated = await prisma.customer.create({
+      data: { name: `Cliente desactivado ${Date.now()}`, isActive: false },
+    });
+
+    await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId: deactivated.id,
+        warehouseId,
+        items: [{ productId, quantity: 1, unitPrice: 10 }],
+      })
+      .expect(400);
+
+    await prisma.customer.delete({ where: { id: deactivated.id } });
+  });
+
   it('creates an order PENDIENTE without touching stock', async () => {
     const createResponse = await request(app.getHttpServer())
       .post('/orders')

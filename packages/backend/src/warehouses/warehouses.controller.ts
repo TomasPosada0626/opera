@@ -71,4 +71,12 @@ export class WarehousesController {
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.warehousesService.deactivate(id, req.user.sub);
   }
+
+  @Patch(':id/reactivate')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reactivar bodega (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Bodega no encontrada.' })
+  reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.warehousesService.reactivate(id, req.user.sub);
+  }
 }

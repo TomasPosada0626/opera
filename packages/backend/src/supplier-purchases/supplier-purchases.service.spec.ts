@@ -1,12 +1,28 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SupplierPurchasesService } from './supplier-purchases.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
 describe('SupplierPurchasesService', () => {
-  const supplier = { id: 'supplier-1', name: 'Maderas del Norte S.A.S.' };
-  const product = { id: 'product-1', name: 'Tabla de pino' };
-  const warehouse = { id: 'warehouse-1', name: 'Bodega principal' };
+  const supplier = {
+    id: 'supplier-1',
+    name: 'Maderas del Norte S.A.S.',
+    isActive: true,
+  };
+  const product = {
+    id: 'product-1',
+    name: 'Tabla de pino',
+    isActive: true,
+  };
+  const warehouse = {
+    id: 'warehouse-1',
+    name: 'Bodega principal',
+    isActive: true,
+  };
   const basePurchase = {
     id: 'purchase-1',
     supplierId: supplier.id,
@@ -140,6 +156,69 @@ describe('SupplierPurchasesService', () => {
           'acting-user',
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.supplierPurchase.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the supplier is deactivated', async () => {
+      prisma.supplier.findUnique.mockResolvedValue({
+        ...supplier,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          {
+            supplierId: supplier.id,
+            productId: product.id,
+            warehouseId: warehouse.id,
+            quantity: 10,
+            unitCost: 5000,
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.supplierPurchase.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the product is deactivated', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        ...product,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          {
+            supplierId: supplier.id,
+            productId: product.id,
+            warehouseId: warehouse.id,
+            quantity: 10,
+            unitCost: 5000,
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.supplierPurchase.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the warehouse is deactivated', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue({
+        ...warehouse,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          {
+            supplierId: supplier.id,
+            productId: product.id,
+            warehouseId: warehouse.id,
+            quantity: 10,
+            unitCost: 5000,
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.supplierPurchase.create).not.toHaveBeenCalled();
     });
 

@@ -101,12 +101,22 @@ export class OrdersService {
     if (!customer) {
       throw new NotFoundException('Cliente no encontrado');
     }
+    // isActive es un flag de catálogo (CatalogService.deactivate), no borrado
+    // — sin este chequeo seguía pudiendo recibir pedidos nuevos después de
+    // "desactivado", el flag era cosmético fuera de su propio listado
+    // (señalado en la auditoría).
+    if (!customer.isActive) {
+      throw new BadRequestException('El cliente está desactivado');
+    }
 
     const warehouse = await this.prisma.warehouse.findUnique({
       where: { id: dto.warehouseId },
     });
     if (!warehouse) {
       throw new NotFoundException('Bodega no encontrada');
+    }
+    if (!warehouse.isActive) {
+      throw new BadRequestException('La bodega está desactivada');
     }
 
     const productIds = dto.items.map((item) => item.productId);
@@ -117,8 +127,14 @@ export class OrdersService {
       products.map((product) => [product.id, product]),
     );
     for (const item of dto.items) {
-      if (!productById.has(item.productId)) {
+      const product = productById.get(item.productId);
+      if (!product) {
         throw new NotFoundException(`Producto ${item.productId} no encontrado`);
+      }
+      if (!product.isActive) {
+        throw new BadRequestException(
+          `El producto ${product.name} está desactivado`,
+        );
       }
     }
 

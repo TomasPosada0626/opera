@@ -151,6 +151,39 @@ describe('Products (e2e)', () => {
     expect(byFinish.data.map((product) => product.id)).toContain(created.id);
   });
 
+  it('deactivates and reactivates a product', async () => {
+    const unique = Date.now();
+    const createResponse = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sku: `E2E-LIFECYCLE-${unique}`,
+        name: `Producto lifecycle ${unique}`,
+        type: 'FINISHED_GOOD',
+        categoryId,
+        unitId,
+      })
+      .expect(201);
+    const created = createResponse.body as { id: string };
+    createdIds.push(created.id);
+
+    const deactivateResponse = await request(app.getHttpServer())
+      .patch(`/products/${created.id}/deactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((deactivateResponse.body as { isActive: boolean }).isActive).toBe(
+      false,
+    );
+
+    const reactivateResponse = await request(app.getHttpServer())
+      .patch(`/products/${created.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
+      true,
+    );
+  });
+
   it('returns 404 for a product that does not exist', async () => {
     await request(app.getHttpServer())
       .get('/products/00000000-0000-0000-0000-000000000000')

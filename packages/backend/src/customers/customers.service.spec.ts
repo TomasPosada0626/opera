@@ -179,6 +179,30 @@ describe('CustomersService', () => {
     );
   });
 
+  it('reactivates a customer by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.customer.findUnique.mockResolvedValue({
+      ...baseCustomer,
+      isActive: false,
+    });
+    prisma.customer.update.mockResolvedValue({
+      ...baseCustomer,
+      isActive: true,
+    });
+
+    const result = await service.reactivate('customer-1', 'acting-user');
+
+    expect(prisma.customer.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'customer-1' },
+        data: { isActive: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
+
   describe('getBalance', () => {
     it('throws NotFoundException when the customer does not exist', async () => {
       prisma.customer.findUnique.mockResolvedValue(null);

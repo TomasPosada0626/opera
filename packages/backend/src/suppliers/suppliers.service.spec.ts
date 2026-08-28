@@ -174,4 +174,28 @@ describe('SuppliersService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('reactivates a supplier by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.supplier.findUnique.mockResolvedValue({
+      ...baseSupplier,
+      isActive: false,
+    });
+    prisma.supplier.update.mockResolvedValue({
+      ...baseSupplier,
+      isActive: true,
+    });
+
+    const result = await service.reactivate('supplier-1', 'acting-user');
+
+    expect(prisma.supplier.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'supplier-1' },
+        data: { isActive: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
 });

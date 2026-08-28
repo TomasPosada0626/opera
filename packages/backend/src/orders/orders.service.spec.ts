@@ -9,9 +9,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 
 describe('OrdersService', () => {
-  const customer = { id: 'customer-1', name: 'Cliente de prueba' };
-  const warehouse = { id: 'warehouse-1', name: 'Bodega principal' };
-  const product = { id: 'product-1', name: 'Silla de madera' };
+  const customer = {
+    id: 'customer-1',
+    name: 'Cliente de prueba',
+    isActive: true,
+  };
+  const warehouse = {
+    id: 'warehouse-1',
+    name: 'Bodega principal',
+    isActive: true,
+  };
+  const product = {
+    id: 'product-1',
+    name: 'Silla de madera',
+    isActive: true,
+  };
   const baseOrder = {
     id: 'order-1',
     customerId: customer.id,
@@ -119,6 +131,62 @@ describe('OrdersService', () => {
           'acting-user',
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the customer is deactivated', async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        ...customer,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          {
+            customerId: customer.id,
+            warehouseId: warehouse.id,
+            items: [{ productId: product.id, quantity: 1, unitPrice: 10 }],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the warehouse is deactivated', async () => {
+      prisma.warehouse.findUnique.mockResolvedValue({
+        ...warehouse,
+        isActive: false,
+      });
+
+      await expect(
+        service.create(
+          {
+            customerId: customer.id,
+            warehouseId: warehouse.id,
+            items: [{ productId: product.id, quantity: 1, unitPrice: 10 }],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.create).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when an item references a deactivated product', async () => {
+      prisma.product.findMany.mockResolvedValue([
+        { ...product, isActive: false },
+      ]);
+
+      await expect(
+        service.create(
+          {
+            customerId: customer.id,
+            warehouseId: warehouse.id,
+            items: [{ productId: product.id, quantity: 1, unitPrice: 10 }],
+          },
+          'acting-user',
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
       expect(prisma.order.create).not.toHaveBeenCalled();
     });
 

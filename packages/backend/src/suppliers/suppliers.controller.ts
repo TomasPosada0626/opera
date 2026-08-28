@@ -71,4 +71,12 @@ export class SuppliersController {
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.suppliersService.deactivate(id, req.user.sub);
   }
+
+  @Patch(':id/reactivate')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reactivar proveedor (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
+  reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.suppliersService.reactivate(id, req.user.sub);
+  }
 }

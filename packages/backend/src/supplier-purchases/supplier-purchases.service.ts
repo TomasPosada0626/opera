@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -39,17 +40,30 @@ export class SupplierPurchasesService {
     if (!supplier) {
       throw new NotFoundException('Proveedor no encontrado');
     }
+    // isActive es un flag de catálogo (CatalogService.deactivate), no
+    // borrado — sin estos tres chequeos se podía seguir registrando una
+    // compra contra un proveedor/producto/bodega "desactivado" (señalado
+    // en la auditoría).
+    if (!supplier.isActive) {
+      throw new BadRequestException('El proveedor está desactivado');
+    }
     const product = await this.prisma.product.findUnique({
       where: { id: dto.productId },
     });
     if (!product) {
       throw new NotFoundException('Producto no encontrado');
     }
+    if (!product.isActive) {
+      throw new BadRequestException('El producto está desactivado');
+    }
     const warehouse = await this.prisma.warehouse.findUnique({
       where: { id: dto.warehouseId },
     });
     if (!warehouse) {
       throw new NotFoundException('Bodega no encontrada');
+    }
+    if (!warehouse.isActive) {
+      throw new BadRequestException('La bodega está desactivada');
     }
 
     const purchase = await this.prisma.supplierPurchase.create({

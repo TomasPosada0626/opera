@@ -55,7 +55,7 @@ describe('Units (e2e)', () => {
       .expect(400);
   });
 
-  it('creates a unit, lists it, and deactivates it', async () => {
+  it('creates a unit, lists it, deactivates it, and reactivates it', async () => {
     const unique = `E2E-Unit-${Date.now()}`;
 
     const createResponse = await request(app.getHttpServer())
@@ -80,6 +80,14 @@ describe('Units (e2e)', () => {
       .expect(200);
     expect((deactivateResponse.body as { isActive: boolean }).isActive).toBe(
       false,
+    );
+
+    const reactivateResponse = await request(app.getHttpServer())
+      .patch(`/units/${created.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
+      true,
     );
   });
 

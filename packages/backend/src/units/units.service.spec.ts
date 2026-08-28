@@ -118,4 +118,22 @@ describe('UnitsService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('reactivates a unit by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.unit.findUnique.mockResolvedValue({ ...baseUnit, isActive: false });
+    prisma.unit.update.mockResolvedValue({ ...baseUnit, isActive: true });
+
+    const result = await service.reactivate('unit-1', 'acting-user');
+
+    expect(prisma.unit.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'unit-1' },
+        data: { isActive: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
 });

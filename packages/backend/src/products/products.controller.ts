@@ -73,4 +73,12 @@ export class ProductsController {
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.productsService.deactivate(id, req.user.sub);
   }
+
+  @Patch(':id/reactivate')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reactivar producto (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Producto no encontrado.' })
+  reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.productsService.reactivate(id, req.user.sub);
+  }
 }

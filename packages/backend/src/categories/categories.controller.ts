@@ -71,4 +71,12 @@ export class CategoriesController {
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.categoriesService.deactivate(id, req.user.sub);
   }
+
+  @Patch(':id/reactivate')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reactivar categoría (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Categoría no encontrada.' })
+  reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.categoriesService.reactivate(id, req.user.sub);
+  }
 }

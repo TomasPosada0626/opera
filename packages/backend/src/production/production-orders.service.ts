@@ -84,12 +84,21 @@ export class ProductionOrdersService {
         'Solo se pueden crear órdenes de producción para productos terminados',
       );
     }
+    // isActive es un flag de catálogo (CatalogService.deactivate), no
+    // borrado — sin este chequeo se podía seguir produciendo un producto
+    // "desactivado" (señalado en la auditoría).
+    if (!product.isActive) {
+      throw new BadRequestException('El producto está desactivado');
+    }
 
     const warehouse = await this.prisma.warehouse.findUnique({
       where: { id: dto.warehouseId },
     });
     if (!warehouse) {
       throw new NotFoundException('Bodega no encontrada');
+    }
+    if (!warehouse.isActive) {
+      throw new BadRequestException('La bodega está desactivada');
     }
 
     const bom = await this.prisma.billOfMaterials.findUnique({

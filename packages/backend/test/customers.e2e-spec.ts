@@ -53,7 +53,7 @@ describe('Customers (e2e)', () => {
       .expect(400);
   });
 
-  it('creates, reads, updates and deactivates a customer', async () => {
+  it('creates, reads, updates, deactivates, and reactivates a customer', async () => {
     const unique = `E2E-CRUD-${Date.now()}`;
 
     const createResponse = await request(app.getHttpServer())
@@ -83,6 +83,14 @@ describe('Customers (e2e)', () => {
       .expect(200);
     expect((deactivateResponse.body as { isActive: boolean }).isActive).toBe(
       false,
+    );
+
+    const reactivateResponse = await request(app.getHttpServer())
+      .patch(`/customers/${created.id}/reactivate`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
+      true,
     );
   });
 

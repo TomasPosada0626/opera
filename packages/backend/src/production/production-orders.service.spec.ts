@@ -10,8 +10,12 @@ import { InventoryService } from '../inventory/inventory.service';
 import { AuditService } from '../audit/audit.service';
 
 describe('ProductionOrdersService', () => {
-  const finishedGood = { id: 'product-1', type: 'FINISHED_GOOD' };
-  const warehouse = { id: 'warehouse-1' };
+  const finishedGood = {
+    id: 'product-1',
+    type: 'FINISHED_GOOD',
+    isActive: true,
+  };
+  const warehouse = { id: 'warehouse-1', isActive: true };
   const componentA = { id: 'component-a', name: 'Materia A' };
   const componentB = { id: 'component-b', name: 'Materia B' };
 
@@ -162,12 +166,35 @@ describe('ProductionOrdersService', () => {
       );
     });
 
+    it('throws BadRequestException when the product is deactivated', async () => {
+      prisma.product.findUnique.mockResolvedValue({
+        ...finishedGood,
+        isActive: false,
+      });
+
+      await expect(service.create(dto, 'acting-user')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    });
+
     it('throws NotFoundException when the warehouse does not exist', async () => {
       prisma.product.findUnique.mockResolvedValue(finishedGood);
       prisma.warehouse.findUnique.mockResolvedValue(null);
 
       await expect(service.create(dto, 'acting-user')).rejects.toBeInstanceOf(
         NotFoundException,
+      );
+    });
+
+    it('throws BadRequestException when the warehouse is deactivated', async () => {
+      prisma.product.findUnique.mockResolvedValue(finishedGood);
+      prisma.warehouse.findUnique.mockResolvedValue({
+        ...warehouse,
+        isActive: false,
+      });
+
+      await expect(service.create(dto, 'acting-user')).rejects.toBeInstanceOf(
+        BadRequestException,
       );
     });
 

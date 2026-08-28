@@ -171,4 +171,28 @@ describe('WarehousesService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('reactivates a warehouse by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.warehouse.findUnique.mockResolvedValue({
+      ...baseWarehouse,
+      isActive: false,
+    });
+    prisma.warehouse.update.mockResolvedValue({
+      ...baseWarehouse,
+      isActive: true,
+    });
+
+    const result = await service.reactivate('warehouse-1', 'acting-user');
+
+    expect(prisma.warehouse.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'warehouse-1' },
+        data: { isActive: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
 });

@@ -170,4 +170,29 @@ describe('ProductsService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('reactivates a product by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.product.findUnique.mockResolvedValue({
+      ...baseProduct,
+      isActive: false,
+    });
+    prisma.product.update.mockResolvedValue({
+      ...baseProduct,
+      isActive: true,
+    });
+
+    const result = await service.reactivate('product-1', 'acting-user');
+
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'product-1' },
+        data: { isActive: true },
+        include: { category: true, unit: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
 });

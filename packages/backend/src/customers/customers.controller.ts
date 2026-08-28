@@ -82,4 +82,12 @@ export class CustomersController {
   deactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.customersService.deactivate(id, req.user.sub);
   }
+
+  @Patch(':id/reactivate')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reactivar cliente (ADMIN)' })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado.' })
+  reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.customersService.reactivate(id, req.user.sub);
+  }
 }

@@ -128,4 +128,28 @@ describe('CategoriesService', () => {
       expect.objectContaining({ action: 'DEACTIVATE' }),
     );
   });
+
+  it('reactivates a category by setting isActive to true and logs a REACTIVATE audit entry', async () => {
+    prisma.category.findUnique.mockResolvedValue({
+      ...baseCategory,
+      isActive: false,
+    });
+    prisma.category.update.mockResolvedValue({
+      ...baseCategory,
+      isActive: true,
+    });
+
+    const result = await service.reactivate('category-1', 'acting-user');
+
+    expect(prisma.category.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'category-1' },
+        data: { isActive: true },
+      }),
+    );
+    expect(result.isActive).toBe(true);
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REACTIVATE' }),
+    );
+  });
 });
