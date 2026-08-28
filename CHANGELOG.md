@@ -13,17 +13,35 @@ hacia atrás; este changelog arranca desde que se creó.
   products, categories, units, warehouses) — antes desactivar no tenía vuelta
   atrás.
 - Validación de `isActive` antes de operar en `orders.create`,
-  `production.create` y `supplier-purchases.create` — un cliente/bodega/
-  producto/proveedor desactivado ya no puede recibir pedidos, órdenes de
-  producción o compras nuevas.
+  `production.create`, `supplier-purchases.create` y ahora también
+  `supplier-products.create` — un cliente/bodega/producto/proveedor
+  desactivado ya no puede recibir pedidos, órdenes de producción, compras o
+  precios de referencia nuevos.
+- `CategoriesService`/`UnitsService`/`WarehousesService` bloquean (400)
+  desactivar una entidad todavía en uso real: productos activos para
+  Category/Unit, stock real (`stockMovement.groupBy` + `having`) para
+  Warehouse.
+- `DELETE /supplier-products/:id` (ADMIN) — antes no había ninguna vía para
+  quitar el precio de referencia de un proveedor que dejó de vender un
+  producto. Botón "Eliminar" por fila en `SupplierDetailPage`.
 - `PATCH :id/reactivate`, filtro global de errores de Prisma
   (`PrismaExceptionFilter`), guards de autenticación globales por defecto
   (`@Public()` explícito para las 3 rutas abiertas), y validación de entorno
   con Joi al arranque.
 - Índices GIN/trigram (`pg_trgm`) para las búsquedas de texto en Product,
   Customer y Supplier; índice compuesto en `StockMovement` que cubre el
-  `ORDER BY createdAt` de `getAverageCost()`/`getKardex()`.
-- `ErrorBoundary` de React envolviendo la app de escritorio completa.
+  `ORDER BY createdAt` de `getAverageCost()`/`getKardex()`; índices en
+  `AuditLog` que cubren el `ORDER BY timestamp desc` de `query()`/
+  `getRecent()` además del filtro.
+- `ErrorBoundary` de React envolviendo la app de escritorio completa, más
+  una variante `inline` alrededor de `<Outlet/>` en `AppLayout` — un error de
+  render en una sola página ya no tumba el sidebar/topbar completos.
+- Content-Security-Policy real en el proceso principal de Electron, más
+  `contextIsolation`/`sandbox`/`nodeIntegration` explícitos,
+  `setWindowOpenHandler` denegando ventanas nuevas y un guard en
+  `will-navigate` que bloquea navegar fuera del propio origen de la app.
+  Validación runtime de los payloads que cruzan IPC (`auth-token:set`,
+  `error-log:report`).
 - Los 4 specs de Playwright (`packages/desktop/e2e/`) ahora corren en CI, no
   solo en local.
 - Workflow de CodeQL (análisis estático semanal + en cada push/PR a `main`).
@@ -37,7 +55,8 @@ hacia atrás; este changelog arranca desde que se creó.
   transacción `Serializable` dejaba pasar más de una llamada cuando las
   transacciones no llegaban a solaparse de verdad en Postgres (contención de
   pool bajo CI) — reemplazado por un guard atómico (`updateMany` con el
-  estado en el `where`).
+  estado en el `where`), con el mismo patrón ya extendido a
+  `RemissionsService.voidRemission()`.
 - Timing oracle en el login: `AuthService.validateUser` ya no hace
   short-circuit antes de `argon2.verify` cuando el email no existe, así el
   tiempo de respuesta no delata qué emails están registrados.
@@ -45,17 +64,35 @@ hacia atrás; este changelog arranca desde que se creó.
   si la escritura del log falla — se loguea como warning en vez de propagar.
 - `packages/backend/package.json`: `start:prod` apuntaba a `dist/main`
   (no existe); el build real deja el entry point en `dist/src/main.js`.
+- `packages/backend/src/config/env.ts` resolvía el `.env` raíz con una ruta
+  relativa a `process.cwd()`, fràgil si el proceso no arrancaba exactamente
+  desde `packages/backend`; ahora sube desde `__dirname` hasta encontrar
+  `pnpm-workspace.yaml` (la raíz real del monorepo), funciona igual en dev y
+  en el build compilado sin importar el cwd del proceso.
+- `PORT`/`SWAGGER_ENABLED`/`RATE_LIMIT_PER_MINUTE` se leían de
+  `process.env` directo en `main.ts`/`app.module.ts`, esquivando el
+  `ConfigService` y los `.default()` que el schema de Joi ya declara — ahora
+  pasan por `ConfigService` de forma consistente.
 - `packages/desktop/scripts/generate-self-signed-cert.ps1` y el README ya no
   indican importar el certificado también a `Cert:\LocalMachine\Root`
   (sobre-privilegio real; `TrustedPublisher` alcanza).
 
 ### Rendimiento
 
-- `ProductionOrdersService.complete()` y `RemissionsService.create()`:
-  loops secuenciales de N consultas por componente/línea reemplazados por
-  consultas agrupadas (`getStockForProducts`/`getAverageCostForProducts`,
-  `groupBy`) — menos tiempo con locks abiertos dentro de transacciones
-  `Serializable`.
+- `ProductionOrdersService.complete()`, `OrdersService.markWarehoused()` y
+  `RemissionsService.create()`/`voidRemission()`: loops secuenciales de N
+  escrituras/consultas por componente/línea reemplazados por operaciones
+  agrupadas (`stockMovement.createMany`, `getStockForProducts`/
+  `getAverageCostForProducts`, `groupBy`) — menos tiempo con locks abiertos
+  dentro de transacciones `Serializable`.
+
+### Pruebas
+
+- Suite dedicada para `CatalogService` (la base compartida de los 6 módulos
+  de catálogo), antes solo cubierta indirectamente vía cada subclase.
+- Cobertura de `electron/main.ts` y `electron/updater.ts` — antes sin
+  ningún test propio, ya que Playwright corre con `NODE_ENV=test` (se salta
+  el plugin de electron por completo) y nunca los ejercitaba.
 
 ## [0.0.1] — 2026-08-27
 

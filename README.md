@@ -227,7 +227,11 @@ pnpm --filter desktop test
 pnpm --filter desktop exec playwright install chromium
 pnpm --filter desktop test:e2e
 
-# Todo el monorepo (solo unitarios — lo que corre en CI en cada push/PR)
+# Todo el monorepo (solo unitarios de ambos paquetes — atajo local, no
+# el pipeline completo: CI en cada push/PR a main además corre lint,
+# format check, ambas suites e2e (backend contra Postgres real y
+# Playwright contra el backend real) y el build de los dos paquetes —
+# ver .github/workflows/ci.yml)
 pnpm test
 ```
 
@@ -328,6 +332,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0003 — Cliente de escritorio Electron sobre una SPA servida](docs/adr/0003-electron-sobre-spa-servida.md)
 - [0004 — NestJS + Prisma sobre otras alternativas de backend](docs/adr/0004-nestjs-prisma-sobre-alternativas.md)
 - [0005 — No migrar a Clean Architecture / DDD táctico](docs/adr/0005-no-clean-architecture.md)
+- [0006 — Retención y archivado de AuditLog y StockMovement](docs/adr/0006-retencion-auditlog-stockmovement.md)
 
 ## Changelog
 

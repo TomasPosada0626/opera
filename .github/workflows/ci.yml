@@ -6,9 +6,20 @@ on:
   pull_request:
     branches: [main]
 
+# Default mínimo (solo lectura del repo) para el GITHUB_TOKEN de ambos jobs —
+# ninguno de los dos necesita escribir nada (no publican releases, no
+# comentan PRs, no empujan tags). Sin esto, el permiso efectivo depende de
+# un ajuste de organización que puede cambiar sin que este archivo lo refleje.
+permissions:
+  contents: read
+
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
+    # ~4 min en la corrida típica (ver runs reales) — el margen es para un
+    # colgado genuino (ej. Playwright esperando un puerto que nunca
+    # responde), no para variación normal.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -89,8 +100,28 @@ jobs:
       # Chromium real (no Electron, ver playwright.config.ts) + el backend
       # real de este mismo job, ya construido, contra el mismo Postgres del
       # service container.
+      # El binario de Chromium (no los deps de sistema de --with-deps, esos
+      # los vuelve a instalar apt cada vez igual) es lo pesado de esta
+      # descarga — cachearlo por versión de Playwright ahorra ese tiempo en
+      # cada corrida en la que el lockfile no cambió esa versión.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Playwright browsers
         run: pnpm --filter desktop exec playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      # --with-deps también instala las dependencias de sistema de Chromium
+      # (libnss3, etc.) — esas SÍ hay que reinstalarlas aunque el binario ya
+      # esté en caché, porque no viven en ~/.cache/ms-playwright sino en el
+      # sistema del runner (que siempre arranca limpio).
+      - name: Install Playwright system dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter desktop exec playwright install-deps chromium
 
       - name: Start backend server for Playwright (background)
         run: |
@@ -122,6 +153,23 @@ jobs:
         # especial en este step.
         run: pnpm --filter desktop test:e2e
 
+      # playwright.config.ts ya genera trace 'retain-on-failure' en
+      # test-results/ -- antes se perdía junto con el runner al terminar el
+      # job, así que un fallo solo-en-CI no tenía nada que descargar para
+      # depurar más que el log de la consola. backend-server.log también:
+      # es lo único que explica un fallo del lado del backend real que
+      # Playwright usó.
+      - name: Upload Playwright diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-diagnostics
+          path: |
+            packages/desktop/test-results/
+            backend-server.log
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Stop backend server
         if: always()
         run: kill "$(cat backend.pid)" || true
@@ -135,6 +183,7 @@ jobs:
     # verdad lo que se empaqueta.
     runs-on: windows-latest
     needs: lint-test-build
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4

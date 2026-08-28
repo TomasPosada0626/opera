@@ -8,6 +8,22 @@ updates:
       dependencies:
         patterns:
           - '*'
+        # Prisma (issue #104): migrar a v7 es trabajo aparte, deliberadamente
+        # pospuesto. Agrupado en el mismo PR que el resto, un solo bump de
+        # prisma/@prisma/client bloqueaba TODAS las demás actualizaciones —
+        # ahora quedan en su propio PR, que se puede ignorar/cerrar sin
+        # frenar nada más.
+        exclude-patterns:
+          - 'prisma'
+          - '@prisma/*'
+    # Nunca proponer el PR de major (v7) hasta que el trabajo de #104
+    # arranque — updates menores/parche de Prisma dentro de v6 sí siguen
+    # llegando (su propio PR, fuera del group de arriba).
+    ignore:
+      - dependency-name: 'prisma'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@prisma/*'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /

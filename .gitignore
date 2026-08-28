@@ -26,6 +26,10 @@ test-results/
 packages/backend/e2e-fixtures/.state*.json
 packages/backend/load-tests/.dataset.json
 
+# Export generado por scripts/archive-audit-log.ts (ADR 0006) — datos reales
+# de una instalación puntual, nunca material para commitear al repo.
+packages/backend/scripts/*.jsonl
+
 # Certificado de firma de código (generate-self-signed-cert.ps1) — la
 # clave privada nunca se commitea, cada máquina de build genera la suya.
 packages/desktop/certs/
