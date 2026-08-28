@@ -1,0 +1,41 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Semanal, no en cada push — CodeQL analiza el árbol completo, no solo
+    # el diff, así que corre menos seguido que el CI normal (lint-test-build
+    # corre en cada push). Detecta drift de vulnerabilidades introducidas
+    # por dependencias nuevas entre pushes, no solo por código propio.
+    - cron: '0 6 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # javascript-typescript cubre backend y desktop en un solo análisis
+        # (mismo lenguaje, CodeQL no necesita una corrida separada por
+        # paquete del monorepo).
+        language: ['javascript-typescript']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

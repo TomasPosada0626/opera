@@ -3,9 +3,15 @@
 <div align="center">
 
 ![CI](https://github.com/TomasPosada0626/opera/actions/workflows/ci.yml/badge.svg)
-![Status](https://img.shields.io/badge/status-en%20desarrollo-yellow?style=flat-square)
+![CodeQL](https://github.com/TomasPosada0626/opera/actions/workflows/codeql.yml/badge.svg)
+![Status](<https://img.shields.io/badge/status-completo%20(7%2F7%20milestones)-brightgreen?style=flat-square>)
 ![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
-![Milestone](https://img.shields.io/badge/fase%20actual-M5%20Ventas%2FCompras%2FClientes%2FProveedores-lightgrey?style=flat-square)
+<!-- Umbrales del gate de cobertura en CI (pnpm test:cov), no un reporte en
+     vivo -- ver "Test (unit, with coverage gate)" en ci.yml. Backend:
+     jest.config coverageThreshold; Desktop: vite.config.mts coverage.thresholds. -->
+
+![Coverage Backend](https://img.shields.io/badge/coverage%20backend-≥95%25%20stmt%20%7C%20≥82%25%20branch-blue?style=flat-square)
+![Coverage Desktop](https://img.shields.io/badge/coverage%20desktop-≥95%25%20stmt%20%7C%20≥85%25%20branch-blue?style=flat-square)
 
 **Backend**
 
@@ -50,6 +56,7 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 - [Modelo de dominio](#modelo-de-dominio)
 - [Módulos](#módulos)
 - [Decisiones de arquitectura (ADRs)](#decisiones-de-arquitectura-adrs)
+- [Changelog](#changelog)
 - [Licencia](#licencia)
 
 ## Visión
@@ -320,6 +327,11 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0002 — Costeo de producción por promedio ponderado](docs/adr/0002-costeo-promedio-ponderado.md)
 - [0003 — Cliente de escritorio Electron sobre una SPA servida](docs/adr/0003-electron-sobre-spa-servida.md)
 - [0004 — NestJS + Prisma sobre otras alternativas de backend](docs/adr/0004-nestjs-prisma-sobre-alternativas.md)
+- [0005 — No migrar a Clean Architecture / DDD táctico](docs/adr/0005-no-clean-architecture.md)
+
+## Changelog
+
+Cambios notables por versión en [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Licencia
 

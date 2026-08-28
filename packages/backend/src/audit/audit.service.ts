@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { paginate } from '../common/pagination/paginate';
+import { AuditQueryDto } from './dto/audit-query.dto';
 
 interface LogParams {
   userId: string;
@@ -71,5 +73,42 @@ export class AuditService {
         user: { select: { id: true, name: true } },
       },
     });
+  }
+
+  // "¿Quién cambió el pedido X y cuándo?" — antes había que ir directo a la
+  // base de datos, sin ninguna forma de autoservicio de consultar el
+  // AuditLog (señalado en la auditoría: el dato existía, pero no era
+  // consultable). Con before/after completos (a diferencia de getRecent,
+  // que los omite a propósito para el feed del dashboard) — este endpoint
+  // es justo para el caso puntual donde antes/después sí importa.
+  query(dto: AuditQueryDto) {
+    const { entity, entityId, userId, from, to, page = 1, pageSize = 20 } = dto;
+    const where: Prisma.AuditLogWhereInput = {
+      ...(entity ? { entity } : {}),
+      ...(entityId ? { entityId } : {}),
+      ...(userId ? { userId } : {}),
+      ...(from || to
+        ? {
+            timestamp: {
+              ...(from ? { gte: new Date(from) } : {}),
+              ...(to ? { lt: new Date(to) } : {}),
+            },
+          }
+        : {}),
+    };
+
+    return paginate(
+      () => this.prisma.auditLog.count({ where }),
+      ({ skip, take }) =>
+        this.prisma.auditLog.findMany({
+          where,
+          orderBy: { timestamp: 'desc' },
+          skip,
+          take,
+          include: { user: { select: { id: true, name: true } } },
+        }),
+      page,
+      pageSize,
+    );
   }
 }
