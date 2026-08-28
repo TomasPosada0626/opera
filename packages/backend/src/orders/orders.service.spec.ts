@@ -58,7 +58,7 @@ describe('OrdersService', () => {
   function txStub(overrides: {
     orderUpdateMany?: unknown;
     orderFindUniqueOrThrow?: unknown;
-    movementCreate?: jest.Mock;
+    movementCreateMany?: jest.Mock;
   }) {
     return {
       order: {
@@ -70,7 +70,7 @@ describe('OrdersService', () => {
           .mockResolvedValue(overrides.orderFindUniqueOrThrow),
       },
       stockMovement: {
-        create: overrides.movementCreate ?? jest.fn(),
+        createMany: overrides.movementCreateMany ?? jest.fn(),
       },
     };
   }
@@ -391,7 +391,7 @@ describe('OrdersService', () => {
         ...baseOrder,
         status: 'EN_PRODUCCION',
       });
-      const movementCreate = jest.fn();
+      const movementCreateMany = jest.fn();
       const orderUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
       const orderFindUniqueOrThrow = jest.fn().mockResolvedValue({
         ...baseOrder,
@@ -400,7 +400,7 @@ describe('OrdersService', () => {
       });
       prisma.$transaction.mockImplementation(
         (callback: (tx: TxStub) => Promise<unknown>) => {
-          const tx = txStub({ movementCreate });
+          const tx = txStub({ movementCreateMany });
           tx.order.updateMany = orderUpdateMany;
           tx.order.findUniqueOrThrow = orderFindUniqueOrThrow;
           return callback(tx);
@@ -410,16 +410,20 @@ describe('OrdersService', () => {
       const result = await service.markWarehoused('order-1', 'acting-user');
 
       expect(result.status).toBe('EN_ALMACEN');
-      const movementCalls = movementCreate.mock.calls as [
-        [{ data: { productId: string; type: string; quantity: string } }],
+      const movementCalls = movementCreateMany.mock.calls as [
+        [
+          {
+            data: { productId: string; type: string; quantity: string }[];
+          },
+        ],
       ];
-      expect(movementCalls[0][0].data).toEqual(
+      expect(movementCalls[0][0].data).toEqual([
         expect.objectContaining({
           productId: product.id,
           type: 'ENTRADA',
           quantity: '2',
         }),
-      );
+      ]);
       const orderUpdateManyCalls = orderUpdateMany.mock.calls as [
         [{ where: { status: string }; data: { status: string } }],
       ];

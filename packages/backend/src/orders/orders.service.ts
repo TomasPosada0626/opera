@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -35,6 +36,8 @@ const sortableFields = ['createdAt', 'status'] as const;
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -189,6 +192,9 @@ export class OrdersService {
       data: { status: 'EN_PRODUCCION', productionStartedAt: new Date() },
     });
     if (result.count === 0) {
+      this.logger.warn(
+        `Guard atómico: el pedido ${id} ya cambió de estado antes de marcarlo en producción`,
+      );
       throw new ConflictException(
         'El pedido cambió de estado antes de poder marcarlo en producción, intenta de nuevo',
       );
@@ -240,24 +246,29 @@ export class OrdersService {
     try {
       const updated = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
-          for (const item of order.items) {
-            await tx.stockMovement.create({
-              data: {
-                productId: item.productId,
-                warehouseId: order.warehouseId,
-                type: 'ENTRADA',
-                quantity: item.quantity,
-                reason: `Producción terminada, pedido ${order.id}`,
-                userId: actingUserId,
-              },
-            });
-          }
+          // Un solo createMany para todas las líneas del pedido en vez de
+          // un create por línea dentro del for — menos tiempo con locks
+          // abiertos dentro de la transacción Serializable (señalado en la
+          // re-auditoría de escalabilidad).
+          await tx.stockMovement.createMany({
+            data: order.items.map((item) => ({
+              productId: item.productId,
+              warehouseId: order.warehouseId,
+              type: 'ENTRADA' as const,
+              quantity: item.quantity,
+              reason: `Producción terminada, pedido ${order.id}`,
+              userId: actingUserId,
+            })),
+          });
 
           const result = await tx.order.updateMany({
             where: { id: order.id, status: 'EN_PRODUCCION' },
             data: { status: 'EN_ALMACEN', warehousedAt: new Date() },
           });
           if (result.count === 0) {
+            this.logger.warn(
+              `Guard atómico: el pedido ${order.id} ya cambió de estado antes de marcarlo enviado a almacén`,
+            );
             throw new ConflictException(
               'El pedido cambió de estado antes de poder marcarlo enviado a almacén, intenta de nuevo',
             );
@@ -286,6 +297,9 @@ export class OrdersService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         (error.code === 'P2034' || error.code === 'P2028')
       ) {
+        this.logger.warn(
+          `Conflicto de concurrencia marcando el pedido ${order.id} enviado a almacén (${error.code}) — el cliente reintentará`,
+        );
         throw new ConflictException(
           'Conflicto al marcar el pedido enviado a almacén, intenta de nuevo',
         );
@@ -332,6 +346,9 @@ export class OrdersService {
       data: { status: 'CANCELADO' },
     });
     if (result.count === 0) {
+      this.logger.warn(
+        `Guard atómico: el pedido ${id} ya cambió de estado o tiene una remisión activa antes de poder cancelarlo`,
+      );
       throw new ConflictException(
         'El pedido cambió de estado antes de poder cancelarlo, intenta de nuevo',
       );

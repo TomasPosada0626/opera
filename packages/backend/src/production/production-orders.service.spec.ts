@@ -41,7 +41,7 @@ describe('ProductionOrdersService', () => {
 
   let txClient: {
     billOfMaterials: { findUnique: jest.Mock };
-    stockMovement: { create: jest.Mock };
+    stockMovement: { create: jest.Mock; createMany: jest.Mock };
     productionOrder: { updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
   };
   let prisma: {
@@ -69,7 +69,10 @@ describe('ProductionOrdersService', () => {
   beforeEach(() => {
     txClient = {
       billOfMaterials: { findUnique: jest.fn() },
-      stockMovement: { create: jest.fn() },
+      stockMovement: {
+        create: jest.fn(),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
       productionOrder: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn(),
@@ -226,9 +229,10 @@ describe('ProductionOrdersService', () => {
       prisma.warehouse.findUnique.mockResolvedValue(warehouse);
       prisma.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
       // Necesita 2*10=20 de A y 1*10=10 de B; A alcanza, B no.
-      inventory.getStock
-        .mockResolvedValueOnce(new Prisma.Decimal(20))
-        .mockResolvedValueOnce(new Prisma.Decimal(5));
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'component-a', stock: new Prisma.Decimal(20) },
+        { productId: 'component-b', stock: new Prisma.Decimal(5) },
+      ]);
 
       await expect(service.create(dto, 'acting-user')).rejects.toMatchObject({
         response: {
@@ -249,9 +253,10 @@ describe('ProductionOrdersService', () => {
       prisma.product.findUnique.mockResolvedValue(finishedGood);
       prisma.warehouse.findUnique.mockResolvedValue(warehouse);
       prisma.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
-      inventory.getStock
-        .mockResolvedValueOnce(new Prisma.Decimal(20))
-        .mockResolvedValueOnce(new Prisma.Decimal(10));
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'component-a', stock: new Prisma.Decimal(20) },
+        { productId: 'component-b', stock: new Prisma.Decimal(10) },
+      ]);
       prisma.productionOrder.create.mockResolvedValue({
         id: 'order-1',
         ...dto,
@@ -318,6 +323,7 @@ describe('ProductionOrdersService', () => {
         service.complete('order-1', 'acting-user'),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(txClient.stockMovement.create).not.toHaveBeenCalled();
+      expect(txClient.stockMovement.createMany).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException listing shortages when a component lacks stock', async () => {
@@ -342,6 +348,7 @@ describe('ProductionOrdersService', () => {
         },
       });
       expect(txClient.stockMovement.create).not.toHaveBeenCalled();
+      expect(txClient.stockMovement.createMany).not.toHaveBeenCalled();
     });
 
     it('creates a SALIDA per component (costed at the current average), an ENTRADA for the finished good (costed at total/quantity), and marks the order COMPLETADA', async () => {
@@ -366,17 +373,25 @@ describe('ProductionOrdersService', () => {
 
       const result = await service.complete('order-1', 'acting-user');
 
-      const calls = txClient.stockMovement.create.mock.calls as [
-        {
-          data: {
-            productId: string;
-            type: string;
-            quantity: Prisma.Decimal;
-            unitCost: Prisma.Decimal;
-          };
-        },
+      type MovementData = {
+        productId: string;
+        type: string;
+        quantity: Prisma.Decimal;
+        unitCost: Prisma.Decimal;
+      };
+      // Las SALIDA de componentes van en un solo createMany; la ENTRADA del
+      // terminado sigue siendo un create individual (una sola fila, nada
+      // que agrupar) — ver el comentario en production-orders.service.ts.
+      const createManyCalls = txClient.stockMovement.createMany.mock.calls as [
+        { data: MovementData[] },
       ][];
-      const movements = calls.map(([{ data }]) => ({
+      const createCalls = txClient.stockMovement.create.mock.calls as [
+        { data: MovementData },
+      ][];
+      const movements = [
+        ...createManyCalls[0][0].data,
+        createCalls[0][0].data,
+      ].map((data) => ({
         productId: data.productId,
         type: data.type,
         quantity: data.quantity.toString(),

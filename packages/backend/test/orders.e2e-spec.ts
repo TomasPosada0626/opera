@@ -17,6 +17,8 @@ describe('Orders (e2e)', () => {
   let prisma: PrismaService;
   let adminToken: string;
   let adminUserId: string;
+  let staffToken: string;
+  let staffUserId: string;
   let categoryId: string;
   let unitId: string;
   let warehouseId: string;
@@ -38,6 +40,12 @@ describe('Orders (e2e)', () => {
     });
     adminUserId = admin.id;
     adminToken = admin.token;
+
+    const staff = await createUserAndLogin(app, prisma, {
+      emailPrefix: 'orders-staff',
+    });
+    staffUserId = staff.id;
+    staffToken = staff.token;
 
     const unique = Date.now();
     const fixtures = await createCatalogFixtures(prisma, `orders-${unique}`);
@@ -83,8 +91,49 @@ describe('Orders (e2e)', () => {
       where: { id: { in: extraProductIds } },
     });
     await deleteCatalogFixtures(prisma, { categoryId, unitId, warehouseId });
-    await deleteUsers(prisma, [adminUserId]);
+    await deleteUsers(prisma, [adminUserId, staffUserId]);
     await app.close();
+  });
+
+  it('rejects creation by a non-ADMIN user', async () => {
+    await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId, quantity: 1, unitPrice: 10 }],
+      })
+      .expect(403);
+  });
+
+  it('rejects mark-production, mark-warehoused, and cancel by a non-ADMIN user', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        items: [{ productId, quantity: 1, unitPrice: 10 }],
+      })
+      .expect(201);
+    const created = createResponse.body as { id: string };
+    orderIds.push(created.id);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${created.id}/mark-production`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post(`/orders/${created.id}/mark-warehoused`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${created.id}/cancel`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(403);
   });
 
   it('rejects creation with an empty items array', async () => {

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -24,6 +25,8 @@ interface MovementRefs {
 
 @Injectable()
 export class InventoryService {
+  private readonly logger = new Logger(InventoryService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async assertProductExists(productId: string) {
@@ -218,6 +221,9 @@ export class InventoryService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2034'
       ) {
+        this.logger.warn(
+          `Conflicto de serialización registrando ${type} de ${refs.productId} en ${refs.warehouseId} — el cliente reintentará`,
+        );
         throw new ConflictException(
           `Conflicto al registrar el movimiento, intenta de nuevo`,
         );

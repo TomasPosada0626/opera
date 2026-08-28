@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -25,6 +26,8 @@ interface Shortage {
 
 @Injectable()
 export class ProductionOrdersService {
+  private readonly logger = new Logger(ProductionOrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
@@ -111,13 +114,24 @@ export class ProductionOrdersService {
       );
     }
 
+    // Un solo getStockForProducts agrupado para todos los componentes de la
+    // receta, en vez de un getStock por componente dentro del for — mismo
+    // batching que ya tiene complete() (señalado en la re-auditoría como
+    // inconsistencia entre los dos métodos que recorren el mismo BOM).
+    const componentIds = bom.items.map((item) => item.componentId);
+    const stockByComponent = await this.inventory.getStockForProducts(
+      componentIds,
+      dto.warehouseId,
+    );
+    const stockById = new Map(
+      stockByComponent.map(({ productId, stock }) => [productId, stock]),
+    );
+
     const shortages: Shortage[] = [];
     for (const item of bom.items) {
       const required = item.quantity.mul(dto.quantity);
-      const available = await this.inventory.getStock(
-        item.componentId,
-        dto.warehouseId,
-      );
+      const available =
+        stockById.get(item.componentId) ?? new Prisma.Decimal(0);
       if (available.lessThan(required)) {
         shortages.push({
           componentId: item.componentId,
@@ -128,6 +142,9 @@ export class ProductionOrdersService {
       }
     }
     if (shortages.length > 0) {
+      this.logger.warn(
+        `Orden de producción rechazada por stock insuficiente: producto ${dto.productId}, ${shortages.length} componente(s) en falta`,
+      );
       throw new BadRequestException({
         message: 'Stock insuficiente de materias primas para esta orden',
         shortages,
@@ -249,6 +266,9 @@ export class ProductionOrdersService {
             });
           }
           if (shortages.length > 0) {
+            this.logger.warn(
+              `Completado de la orden ${order.id} rechazado por stock insuficiente: ${shortages.length} componente(s) en falta`,
+            );
             throw new BadRequestException({
               message:
                 'Stock insuficiente de materias primas para completar esta orden',
@@ -261,18 +281,23 @@ export class ProductionOrdersService {
             totalCost = totalCost.plus(
               requirement.unitCost.times(requirement.required),
             );
-            await tx.stockMovement.create({
-              data: {
-                productId: requirement.componentId,
-                warehouseId: order.warehouseId,
-                type: 'SALIDA',
-                quantity: requirement.required.negated(),
-                unitCost: requirement.unitCost,
-                reason: `Consumo de orden de producción ${order.id}`,
-                userId: actingUserId,
-              },
-            });
           }
+          // Un solo createMany para todas las SALIDA de componentes en vez
+          // de un create por componente dentro del for — menos tiempo con
+          // locks abiertos dentro de la transacción Serializable, mismo
+          // motivo que el batching de lecturas de más arriba (señalado en
+          // la re-auditoría de escalabilidad).
+          await tx.stockMovement.createMany({
+            data: requirements.map((requirement) => ({
+              productId: requirement.componentId,
+              warehouseId: order.warehouseId,
+              type: 'SALIDA' as const,
+              quantity: requirement.required.negated(),
+              unitCost: requirement.unitCost,
+              reason: `Consumo de orden de producción ${order.id}`,
+              userId: actingUserId,
+            })),
+          });
           // Costo del producto terminado = costo total de lo consumido /
           // cantidad producida — el mismo promedio ponderado, ahora del lado
           // de la salida (ver ADR 0002).
@@ -335,6 +360,9 @@ export class ProductionOrdersService {
         // ("perdiste la carrera, reintenta"), no un 500 real.
         (error.code === 'P2034' || error.code === 'P2028')
       ) {
+        this.logger.warn(
+          `Conflicto de concurrencia completando la orden ${id} (${error.code}) — el cliente reintentará`,
+        );
         throw new ConflictException(
           'Conflicto al completar la orden, intenta de nuevo',
         );

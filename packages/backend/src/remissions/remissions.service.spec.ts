@@ -71,7 +71,7 @@ describe('RemissionsService', () => {
   function txStub(overrides: {
     alreadyDelivered?: Prisma.Decimal;
     remissionCreate?: unknown;
-    movementCreate?: jest.Mock;
+    movementCreateMany?: jest.Mock;
   }) {
     return {
       remissionItem: {
@@ -87,7 +87,7 @@ describe('RemissionsService', () => {
         ),
       },
       stockMovement: {
-        create: overrides.movementCreate ?? jest.fn(),
+        createMany: overrides.movementCreateMany ?? jest.fn(),
       },
       remission: {
         create: jest.fn().mockResolvedValue(overrides.remissionCreate),
@@ -227,12 +227,12 @@ describe('RemissionsService', () => {
     it('rejects when the product does not have enough real stock to dispatch', async () => {
       inventory.getStock.mockResolvedValue(new Prisma.Decimal(1));
       const remissionCreate = jest.fn();
-      const movementCreate = jest.fn();
+      const movementCreateMany = jest.fn();
       prisma.$transaction.mockImplementation(
         (callback: (tx: TxStub) => Promise<unknown>) => {
           const tx = txStub({
             alreadyDelivered: new Prisma.Decimal(0),
-            movementCreate,
+            movementCreateMany,
           });
           tx.remission.create = remissionCreate;
           return callback(tx);
@@ -249,18 +249,18 @@ describe('RemissionsService', () => {
           'acting-user',
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
-      expect(movementCreate).not.toHaveBeenCalled();
+      expect(movementCreateMany).not.toHaveBeenCalled();
       expect(remissionCreate).not.toHaveBeenCalled();
     });
 
     it('writes a SALIDA per product, creates the remission with its payment status, and logs CREATE', async () => {
       const remissionCreate = jest.fn().mockResolvedValue(baseRemission);
-      const movementCreate = jest.fn();
+      const movementCreateMany = jest.fn();
       prisma.$transaction.mockImplementation(
         (callback: (tx: TxStub) => Promise<unknown>) => {
           const tx = txStub({
             alreadyDelivered: new Prisma.Decimal(0),
-            movementCreate,
+            movementCreateMany,
           });
           tx.remission.create = remissionCreate;
           return callback(tx);
@@ -278,21 +278,25 @@ describe('RemissionsService', () => {
       );
 
       expect(result).toEqual(baseRemission);
-      const movementCalls = movementCreate.mock.calls as [
+      const movementCalls = movementCreateMany.mock.calls as [
         [
           {
-            data: { productId: string; type: string; quantity: Prisma.Decimal };
+            data: {
+              productId: string;
+              type: string;
+              quantity: Prisma.Decimal;
+            }[];
           },
         ],
       ];
-      expect(movementCalls[0][0].data).toEqual(
+      expect(movementCalls[0][0].data).toEqual([
         expect.objectContaining({
           productId: orderItem.productId,
           warehouseId: order.warehouseId,
           type: 'SALIDA',
         }),
-      );
-      expect(movementCalls[0][0].data.quantity.toString()).toBe('-4');
+      ]);
+      expect(movementCalls[0][0].data[0].quantity.toString()).toBe('-4');
 
       const remissionCreateCalls = remissionCreate.mock.calls as [
         [
@@ -453,7 +457,7 @@ describe('RemissionsService', () => {
     function voidTxStub(overrides: {
       updateManyCount?: number;
       findUniqueOrThrow?: unknown;
-      movementCreate?: jest.Mock;
+      movementCreateMany?: jest.Mock;
     }) {
       return {
         remission: {
@@ -464,7 +468,9 @@ describe('RemissionsService', () => {
             .fn()
             .mockResolvedValue(overrides.findUniqueOrThrow),
         },
-        stockMovement: { create: overrides.movementCreate ?? jest.fn() },
+        stockMovement: {
+          createMany: overrides.movementCreateMany ?? jest.fn(),
+        },
       };
     }
 
@@ -515,7 +521,7 @@ describe('RemissionsService', () => {
 
     it('writes one reversing ENTRADA per product and marks the remission voided', async () => {
       prisma.remission.findUnique.mockResolvedValue(baseRemission);
-      const movementCreate = jest.fn();
+      const movementCreateMany = jest.fn();
       const voidedRemission = {
         ...baseRemission,
         voidedAt: new Date('2026-01-02'),
@@ -524,7 +530,10 @@ describe('RemissionsService', () => {
       prisma.$transaction.mockImplementation(
         (callback: (tx: unknown) => unknown) =>
           callback(
-            voidTxStub({ movementCreate, findUniqueOrThrow: voidedRemission }),
+            voidTxStub({
+              movementCreateMany,
+              findUniqueOrThrow: voidedRemission,
+            }),
           ),
       );
 
@@ -534,21 +543,25 @@ describe('RemissionsService', () => {
         'acting-user',
       );
 
-      const movementCalls = movementCreate.mock.calls as [
+      const movementCalls = movementCreateMany.mock.calls as [
         [
           {
-            data: { productId: string; type: string; quantity: Prisma.Decimal };
+            data: {
+              productId: string;
+              type: string;
+              quantity: Prisma.Decimal;
+            }[];
           },
         ],
       ];
-      expect(movementCalls[0][0].data).toEqual(
+      expect(movementCalls[0][0].data).toEqual([
         expect.objectContaining({
           productId: orderItem.productId,
           warehouseId: order.warehouseId,
           type: 'ENTRADA',
           quantity: new Prisma.Decimal(4),
         }),
-      );
+      ]);
       expect(result.voidedAt).not.toBeNull();
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'VOID', entity: 'Remission' }),
@@ -564,7 +577,7 @@ describe('RemissionsService', () => {
         (callback: (tx: TxStub) => unknown) =>
           callback({
             remissionItem: { groupBy },
-            stockMovement: { create: jest.fn() },
+            stockMovement: { createMany: jest.fn() },
             remission: { create: remissionCreate },
           }),
       );

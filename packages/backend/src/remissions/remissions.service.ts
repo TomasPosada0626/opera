@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -39,6 +40,8 @@ interface Shortage {
 
 @Injectable()
 export class RemissionsService {
+  private readonly logger = new Logger(RemissionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly inventory: InventoryService,
@@ -187,6 +190,9 @@ export class RemissionsService {
             }
           }
           if (overages.length > 0) {
+            this.logger.warn(
+              `Remisión del pedido ${order.id} rechazada: ${overages.length} línea(s) exceden lo pendiente por entregar`,
+            );
             throw new BadRequestException({
               message:
                 'La cantidad a remisionar excede lo pendiente por entregar',
@@ -226,24 +232,29 @@ export class RemissionsService {
             }
           }
           if (shortages.length > 0) {
+            this.logger.warn(
+              `Remisión del pedido ${order.id} rechazada por stock insuficiente: ${shortages.length} producto(s) en falta`,
+            );
             throw new BadRequestException({
               message: 'Stock insuficiente para despachar esta remisión',
               shortages,
             });
           }
 
-          for (const [productId, quantity] of quantityByProduct) {
-            await tx.stockMovement.create({
-              data: {
-                productId,
-                warehouseId: order.warehouseId,
-                type: 'SALIDA',
-                quantity: quantity.negated(),
-                reason: `Despacho, remisión del pedido ${order.id}`,
-                userId: actingUserId,
-              },
-            });
-          }
+          // Un solo createMany para todos los productos despachados en vez
+          // de un create por producto dentro del for — menos tiempo con
+          // locks abiertos dentro de la transacción Serializable (señalado
+          // en la re-auditoría de escalabilidad).
+          await tx.stockMovement.createMany({
+            data: Array.from(quantityByProduct, ([productId, quantity]) => ({
+              productId,
+              warehouseId: order.warehouseId,
+              type: 'SALIDA' as const,
+              quantity: quantity.negated(),
+              reason: `Despacho, remisión del pedido ${order.id}`,
+              userId: actingUserId,
+            })),
+          });
 
           return tx.remission.create({
             data: {
@@ -349,6 +360,9 @@ export class RemissionsService {
           data: { voidedAt: new Date(), voidReason: dto.reason },
         });
         if (result.count === 0) {
+          this.logger.warn(
+            `Guard atómico: la remisión ${id} ya fue anulada antes de esta solicitud`,
+          );
           throw new ConflictException(
             'La remisión ya fue anulada, intenta de nuevo',
           );
@@ -361,18 +375,18 @@ export class RemissionsService {
             quantityByProduct.get(productId) ?? new Prisma.Decimal(0);
           quantityByProduct.set(productId, current.plus(item.quantity));
         }
-        for (const [productId, quantity] of quantityByProduct) {
-          await tx.stockMovement.create({
-            data: {
-              productId,
-              warehouseId: remission.order.warehouseId,
-              type: 'ENTRADA',
-              quantity,
-              reason: `Anulación de remisión No. ${remission.number}: ${dto.reason}`,
-              userId: actingUserId,
-            },
-          });
-        }
+        // Mismo motivo que en create(): un solo createMany en vez de un
+        // create por producto dentro del for.
+        await tx.stockMovement.createMany({
+          data: Array.from(quantityByProduct, ([productId, quantity]) => ({
+            productId,
+            warehouseId: remission.order.warehouseId,
+            type: 'ENTRADA' as const,
+            quantity,
+            reason: `Anulación de remisión No. ${remission.number}: ${dto.reason}`,
+            userId: actingUserId,
+          })),
+        });
 
         return tx.remission.findUniqueOrThrow({
           where: { id },
