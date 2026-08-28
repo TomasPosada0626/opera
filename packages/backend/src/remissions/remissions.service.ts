@@ -147,22 +147,35 @@ export class RemissionsService {
     try {
       const remission = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
+          // Un solo groupBy para TODAS las líneas del request en vez de un
+          // aggregate por orderItemId dentro del for — mismo motivo que el
+          // batching en ProductionOrdersService.complete(): menos tiempo
+          // con locks abiertos dentro de la transacción Serializable, menos
+          // contención real entre despachos concurrentes (señalado en la
+          // auditoría de escalabilidad). remission.voidedAt: null excluye
+          // remisiones anuladas (#99) — una vez anulada, su cantidad deja
+          // de contar como "entregado" y el pedido vuelve a admitir un
+          // despacho correcto por esa cantidad.
+          const deliveredGrouped = await tx.remissionItem.groupBy({
+            by: ['orderItemId'],
+            where: {
+              orderItemId: { in: [...requestedByOrderItem.keys()] },
+              remission: { voidedAt: null },
+            },
+            _sum: { quantity: true },
+          });
+          const deliveredByOrderItem = new Map(
+            deliveredGrouped.map(({ orderItemId, _sum }) => [
+              orderItemId,
+              _sum.quantity ?? new Prisma.Decimal(0),
+            ]),
+          );
+
           const overages: Overage[] = [];
           for (const [orderItemId, requested] of requestedByOrderItem) {
             const orderItem = orderItemById.get(orderItemId)!;
-            // remission.voidedAt: null excluye remisiones anuladas (#99)
-            // — una vez anulada, su cantidad deja de contar como
-            // "entregado" y el pedido vuelve a admitir un despacho
-            // correcto por esa cantidad.
-            const delivered = await tx.remissionItem.aggregate({
-              where: {
-                orderItemId,
-                remission: { voidedAt: null },
-              },
-              _sum: { quantity: true },
-            });
             const alreadyDelivered =
-              delivered._sum.quantity ?? new Prisma.Decimal(0);
+              deliveredByOrderItem.get(orderItemId) ?? new Prisma.Decimal(0);
             const remaining = orderItem.quantity.minus(alreadyDelivered);
             if (requested.greaterThan(remaining)) {
               overages.push({

@@ -100,32 +100,72 @@ export class InventoryService {
     warehouseId?: string,
     client: TransactionClient | PrismaService = this.prisma,
   ): Promise<Prisma.Decimal> {
+    const byProduct = await this.getAverageCostForProducts(
+      [productId],
+      warehouseId,
+      client,
+    );
+    return byProduct.get(productId) ?? new Prisma.Decimal(0);
+  }
+
+  // Versión agrupada de getAverageCost — un solo findMany para N productos
+  // en vez de N llamadas secuenciales, cada replay de historial corre en
+  // memoria sobre el resultado ya agrupado por producto. Pensado para
+  // ProductionOrdersService.complete(): antes recorría cada línea del BOM
+  // preguntando stock/costo uno por uno dentro de la misma transacción
+  // Serializable, alargando la ventana de contención justo cuando más
+  // importa que sea corta (señalado en la auditoría de escalabilidad).
+  async getAverageCostForProducts(
+    productIds: string[],
+    warehouseId?: string,
+    client: TransactionClient | PrismaService = this.prisma,
+  ): Promise<Map<string, Prisma.Decimal>> {
+    if (productIds.length === 0) {
+      return new Map();
+    }
+
     const movements = await client.stockMovement.findMany({
-      where: { productId, ...(warehouseId ? { warehouseId } : {}) },
-      orderBy: { createdAt: 'asc' },
-      select: { quantity: true, unitCost: true },
+      where: {
+        productId: { in: productIds },
+        ...(warehouseId ? { warehouseId } : {}),
+      },
+      orderBy: [{ productId: 'asc' }, { createdAt: 'asc' }],
+      select: { productId: true, quantity: true, unitCost: true },
     });
 
-    let stock = new Prisma.Decimal(0);
-    let averageCost = new Prisma.Decimal(0);
-
+    const state = new Map<
+      string,
+      { stock: Prisma.Decimal; averageCost: Prisma.Decimal }
+    >();
     for (const movement of movements) {
+      const current = state.get(movement.productId) ?? {
+        stock: new Prisma.Decimal(0),
+        averageCost: new Prisma.Decimal(0),
+      };
       if (movement.quantity.greaterThan(0)) {
-        const entryCost = movement.unitCost ?? averageCost;
-        const newStock = stock.plus(movement.quantity);
-        averageCost = newStock.greaterThan(0)
-          ? stock
-              .times(averageCost)
+        const entryCost = movement.unitCost ?? current.averageCost;
+        const newStock = current.stock.plus(movement.quantity);
+        current.averageCost = newStock.greaterThan(0)
+          ? current.stock
+              .times(current.averageCost)
               .plus(movement.quantity.times(entryCost))
               .dividedBy(newStock)
           : entryCost;
-        stock = newStock;
+        current.stock = newStock;
       } else {
-        stock = stock.plus(movement.quantity);
+        current.stock = current.stock.plus(movement.quantity);
       }
+      state.set(movement.productId, current);
     }
 
-    return averageCost;
+    const result = new Map<string, Prisma.Decimal>();
+    for (const productId of productIds) {
+      result.set(
+        productId,
+        state.get(productId)?.averageCost ?? new Prisma.Decimal(0),
+      );
+    }
+    return result;
   }
 
   // SALIDA y AJUSTE (a diferencia de ENTRADA) pueden reducir el stock, y
@@ -228,13 +268,19 @@ export class InventoryService {
   }
 
   // Para listados (#42): un solo groupBy en vez de N llamadas a getStock, una
-  // por fila de la tabla — mismo patrón que getLowStockProducts.
-  async getStockForProducts(productIds: string[], warehouseId?: string) {
+  // por fila de la tabla — mismo patrón que getLowStockProducts. Acepta un
+  // `client` de transacción (igual que getStock) para poder usarse también
+  // dentro de un $transaction, no solo desde listados de solo lectura.
+  async getStockForProducts(
+    productIds: string[],
+    warehouseId?: string,
+    client: TransactionClient | PrismaService = this.prisma,
+  ) {
     if (productIds.length === 0) {
       return [];
     }
 
-    const grouped = await this.prisma.stockMovement.groupBy({
+    const grouped = await client.stockMovement.groupBy({
       by: ['productId'],
       where: {
         productId: { in: productIds },

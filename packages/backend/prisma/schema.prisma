@@ -2,12 +2,19 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // Habilita declarar índices GIN/trigram directamente en el schema (ver
+  // Product/Customer/Supplier más abajo) en vez de mantenerlos como SQL
+  // crudo fuera del control de `prisma migrate` — sigue siendo preview en
+  // Prisma 6, pero estable y ampliamente usado; no tiene relación con la
+  // migración a Prisma 7 (issue #104), que sigue pendiente aparte.
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pg_trgm]
 }
 
 model User {
@@ -164,6 +171,15 @@ model Product {
 
   @@index([categoryId])
   @@index([unitId])
+  // GIN/trigram: search.service.ts y products.service.ts buscan estos 5
+  // campos con `contains`/ILIKE — sin esto es un scan secuencial que
+  // degrada linealmente con el catálogo (señalado en la auditoría de
+  // escalabilidad). btree normal no sirve para "contiene", por eso GIN.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([finish(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([material(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([size(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 enum StockMovementType {
@@ -204,7 +220,13 @@ model StockMovement {
   // normal de Inventario obligatorio a tener una compra detrás.
   supplierPurchase SupplierPurchase?
 
-  @@index([productId, warehouseId])
+  // Compuesto con createdAt al final: cubre tanto el filtro
+  // (productId, warehouseId) como el ORDER BY createdAt que getAverageCost()
+  // y getKardex() ya hacían sobre ese mismo filtro (antes forzaba un
+  // filesort aparte, señalado en la auditoría) — reemplaza al índice de
+  // solo 2 columnas que había antes, que quedaba como un prefijo redundante
+  // de este.
+  @@index([productId, warehouseId, createdAt])
   @@index([warehouseId])
 }
 
@@ -313,6 +335,10 @@ model Customer {
   orders    Order[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Ver el mismo comentario en Product — búsqueda ILIKE por nombre en
+  // customers.service.ts y search.service.ts.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 model Supplier {
@@ -327,6 +353,10 @@ model Supplier {
   purchases        SupplierPurchase[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
+
+  // Ver el mismo comentario en Product — búsqueda ILIKE por nombre en
+  // suppliers.service.ts y search.service.ts.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 // Precio vigente de un producto para un proveedor — no versionado/histórico

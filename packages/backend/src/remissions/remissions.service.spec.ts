@@ -75,9 +75,16 @@ describe('RemissionsService', () => {
   }) {
     return {
       remissionItem: {
-        aggregate: jest.fn().mockResolvedValue({
-          _sum: { quantity: overrides.alreadyDelivered ?? null },
-        }),
+        groupBy: jest.fn().mockResolvedValue(
+          overrides.alreadyDelivered !== undefined
+            ? [
+                {
+                  orderItemId: orderItem.id,
+                  _sum: { quantity: overrides.alreadyDelivered },
+                },
+              ]
+            : [],
+        ),
       },
       stockMovement: {
         create: overrides.movementCreate ?? jest.fn(),
@@ -552,13 +559,11 @@ describe('RemissionsService', () => {
       const remissionCreate = jest
         .fn()
         .mockResolvedValue({ id: 'remission-2' });
-      const aggregate = jest
-        .fn()
-        .mockResolvedValue({ _sum: { quantity: null } });
+      const groupBy = jest.fn().mockResolvedValue([]);
       prisma.$transaction.mockImplementation(
         (callback: (tx: TxStub) => unknown) =>
           callback({
-            remissionItem: { aggregate },
+            remissionItem: { groupBy },
             stockMovement: { create: jest.fn() },
             remission: { create: remissionCreate },
           }),
@@ -573,10 +578,10 @@ describe('RemissionsService', () => {
         'acting-user',
       );
 
-      expect(aggregate).toHaveBeenCalledWith(
+      expect(groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            orderItemId: orderItem.id,
+            orderItemId: { in: [orderItem.id] },
             remission: { voidedAt: null },
           },
         }),

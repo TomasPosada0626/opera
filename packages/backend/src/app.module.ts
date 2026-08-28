@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import * as Joi from 'joi';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
@@ -37,6 +38,32 @@ import { HealthModule } from './health/health.module';
       // El .env raíz ya se carga en ./config/env (side effect en main.ts), antes de
       // que Nest resuelva ningún módulo — evita depender del orden de inicialización.
       ignoreEnvFile: true,
+      // Antes solo JWT_SECRET fallaba rápido y claro (getOrThrow en
+      // auth.module.ts) — el resto de variables fallaba tarde y de forma
+      // menos clara si estaban mal formadas (señalado en la auditoría).
+      // Esto hace que CUALQUIER variable mal formada tumbe el arranque con
+      // un mensaje directo, no un error a medio camino de la primera
+      // request que la necesite.
+      validationSchema: Joi.object({
+        DATABASE_URL: Joi.string()
+          .uri({ scheme: ['postgresql', 'postgres'] })
+          .required(),
+        JWT_SECRET: Joi.string().min(16).required(),
+        JWT_EXPIRES_IN: Joi.string().required(),
+        NODE_ENV: Joi.string()
+          .valid('development', 'production', 'test')
+          .default('development'),
+        PORT: Joi.number().port().default(3000),
+        SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
+        RATE_LIMIT_PER_MINUTE: Joi.number().positive().optional(),
+      }),
+      validationOptions: {
+        // Cualquier otra variable de entorno del sistema (PATH, HOME, etc.)
+        // convive en process.env sin que este schema tenga que enumerarlas
+        // todas — solo valida las que Opera realmente lee.
+        allowUnknown: true,
+        abortEarly: false,
+      },
     }),
     // Reemplaza el Logger por defecto de Nest en toda la app (main.ts hace
     // `app.useLogger(app.get(Logger))`) — logs estructurados (JSON) con un

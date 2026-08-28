@@ -27,7 +27,13 @@ jobs:
       # Solo para este job — nada que ver con el .env local (gitignorado),
       # que no existe en el runner de CI. JWT_SECRET no es un secreto real:
       # solo firma tokens que viven y mueren dentro de esta corrida de CI.
-      DATABASE_URL: postgresql://opera:opera@localhost:5432/opera?schema=public
+      # connection_limit explícito: los e2e de concurrencia disparan hasta 8
+      # llamadas genuinamente paralelas contra Serializable — un pool
+      # implícito demasiado chico en un runner de pocos vCPUs fue la causa
+      # raíz real de la falla intermitente que este mismo endurecimiento
+      # de sesión corrigió (ver commit del guard atómico en
+      # markWarehoused/complete).
+      DATABASE_URL: postgresql://opera:opera@localhost:5432/opera?schema=public&connection_limit=10&pool_timeout=20
       JWT_SECRET: ci-test-secret-not-for-production
       JWT_EXPIRES_IN: 1d
     steps:

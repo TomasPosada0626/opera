@@ -482,6 +482,16 @@ describe('InventoryService', () => {
   });
 
   describe('getAverageCost', () => {
+    const movement = (
+      quantity: number,
+      unitCost: number | null,
+      productId = 'product-1',
+    ) => ({
+      productId,
+      quantity: new Prisma.Decimal(quantity),
+      unitCost: unitCost === null ? null : new Prisma.Decimal(unitCost),
+    });
+
     it('returns zero when there are no movements yet', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([]);
 
@@ -491,9 +501,7 @@ describe('InventoryService', () => {
     });
 
     it('returns the unit cost of a single entrada', async () => {
-      prisma.stockMovement.findMany.mockResolvedValue([
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
-      ]);
+      prisma.stockMovement.findMany.mockResolvedValue([movement(10, 2)]);
 
       const result = await service.getAverageCost('product-1');
 
@@ -502,8 +510,8 @@ describe('InventoryService', () => {
 
     it('weights the average by quantity across multiple entradas', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(4) },
+        movement(10, 2),
+        movement(10, 4),
       ]);
 
       const result = await service.getAverageCost('product-1');
@@ -514,10 +522,10 @@ describe('InventoryService', () => {
 
     it('leaves the average unchanged after a salida, and recalculates on the next entrada', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(4) },
-        { quantity: new Prisma.Decimal(-5), unitCost: null },
-        { quantity: new Prisma.Decimal(5), unitCost: new Prisma.Decimal(9) },
+        movement(10, 2),
+        movement(10, 4),
+        movement(-5, null),
+        movement(5, 9),
       ]);
 
       const result = await service.getAverageCost('product-1');
@@ -529,9 +537,9 @@ describe('InventoryService', () => {
 
     it('treats an entrada with no declared unitCost as entering at the current average', async () => {
       prisma.stockMovement.findMany.mockResolvedValue([
-        { quantity: new Prisma.Decimal(10), unitCost: new Prisma.Decimal(2) },
+        movement(10, 2),
         // Ajuste positivo sin costo declarado: no debe distorsionar el promedio.
-        { quantity: new Prisma.Decimal(5), unitCost: null },
+        movement(5, null),
       ]);
 
       const result = await service.getAverageCost('product-1');
@@ -546,10 +554,62 @@ describe('InventoryService', () => {
 
       expect(prisma.stockMovement.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { productId: 'product-1', warehouseId: 'warehouse-1' },
-          orderBy: { createdAt: 'asc' },
+          where: {
+            productId: { in: ['product-1'] },
+            warehouseId: 'warehouse-1',
+          },
+          orderBy: [{ productId: 'asc' }, { createdAt: 'asc' }],
         }),
       );
+    });
+  });
+
+  describe('getAverageCostForProducts', () => {
+    const movement = (
+      productId: string,
+      quantity: number,
+      unitCost: number | null,
+    ) => ({
+      productId,
+      quantity: new Prisma.Decimal(quantity),
+      unitCost: unitCost === null ? null : new Prisma.Decimal(unitCost),
+    });
+
+    it('returns an empty map without querying when given no product ids', async () => {
+      const result = await service.getAverageCostForProducts([]);
+
+      expect(result.size).toBe(0);
+      expect(prisma.stockMovement.findMany).not.toHaveBeenCalled();
+    });
+
+    it("replays each product's history independently from a single batched query — the whole point of the BOM loop this replaces", async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        movement('component-a', 10, 2),
+        movement('component-a', 10, 4),
+        movement('component-b', 4, 5),
+      ]);
+
+      const result = await service.getAverageCostForProducts([
+        'component-a',
+        'component-b',
+      ]);
+
+      expect(result.get('component-a')?.toString()).toBe('3'); // (10*2+10*4)/20
+      expect(result.get('component-b')?.toString()).toBe('5');
+      expect(prisma.stockMovement.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults to zero for a requested product with no movements at all', async () => {
+      prisma.stockMovement.findMany.mockResolvedValue([
+        movement('component-a', 10, 2),
+      ]);
+
+      const result = await service.getAverageCostForProducts([
+        'component-a',
+        'component-never-moved',
+      ]);
+
+      expect(result.get('component-never-moved')?.toString()).toBe('0');
     });
   });
 });

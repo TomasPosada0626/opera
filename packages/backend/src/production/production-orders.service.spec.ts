@@ -53,7 +53,12 @@ describe('ProductionOrdersService', () => {
     };
     $transaction: jest.Mock;
   };
-  let inventory: { getStock: jest.Mock; getAverageCost: jest.Mock };
+  let inventory: {
+    getStock: jest.Mock;
+    getAverageCost: jest.Mock;
+    getStockForProducts: jest.Mock;
+    getAverageCostForProducts: jest.Mock;
+  };
   let audit: { log: jest.Mock };
   let service: ProductionOrdersService;
 
@@ -81,7 +86,12 @@ describe('ProductionOrdersService', () => {
         callback(txClient),
       ),
     };
-    inventory = { getStock: jest.fn(), getAverageCost: jest.fn() };
+    inventory = {
+      getStock: jest.fn(),
+      getAverageCost: jest.fn(),
+      getStockForProducts: jest.fn(),
+      getAverageCostForProducts: jest.fn(),
+    };
     audit = { log: jest.fn() };
     service = new ProductionOrdersService(
       prisma as unknown as PrismaService,
@@ -286,10 +296,16 @@ describe('ProductionOrdersService', () => {
     it('throws BadRequestException listing shortages when a component lacks stock', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
       txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
-      inventory.getStock
-        .mockResolvedValueOnce(new Prisma.Decimal(20))
-        .mockResolvedValueOnce(new Prisma.Decimal(5));
-      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(1));
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'component-a', stock: new Prisma.Decimal(20) },
+        { productId: 'component-b', stock: new Prisma.Decimal(5) },
+      ]);
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([
+          ['component-a', new Prisma.Decimal(1)],
+          ['component-b', new Prisma.Decimal(1)],
+        ]),
+      );
 
       await expect(
         service.complete('order-1', 'acting-user'),
@@ -304,13 +320,17 @@ describe('ProductionOrdersService', () => {
     it('creates a SALIDA per component (costed at the current average), an ENTRADA for the finished good (costed at total/quantity), and marks the order COMPLETADA', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
       txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
-      inventory.getStock
-        .mockResolvedValueOnce(new Prisma.Decimal(20))
-        .mockResolvedValueOnce(new Prisma.Decimal(10));
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'component-a', stock: new Prisma.Decimal(20) },
+        { productId: 'component-b', stock: new Prisma.Decimal(10) },
+      ]);
       // component-a cuesta 2/unidad, component-b cuesta 3/unidad.
-      inventory.getAverageCost
-        .mockResolvedValueOnce(new Prisma.Decimal(2))
-        .mockResolvedValueOnce(new Prisma.Decimal(3));
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([
+          ['component-a', new Prisma.Decimal(2)],
+          ['component-b', new Prisma.Decimal(3)],
+        ]),
+      );
       txClient.productionOrder.findUniqueOrThrow.mockResolvedValue({
         ...pendingOrder,
         status: 'COMPLETADA',
@@ -400,12 +420,16 @@ describe('ProductionOrdersService', () => {
     it('converts an atomic guard miss (count 0) into ConflictException', async () => {
       prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
       txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
-      inventory.getStock
-        .mockResolvedValueOnce(new Prisma.Decimal(20))
-        .mockResolvedValueOnce(new Prisma.Decimal(10));
-      inventory.getAverageCost
-        .mockResolvedValueOnce(new Prisma.Decimal(2))
-        .mockResolvedValueOnce(new Prisma.Decimal(3));
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'component-a', stock: new Prisma.Decimal(20) },
+        { productId: 'component-b', stock: new Prisma.Decimal(10) },
+      ]);
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([
+          ['component-a', new Prisma.Decimal(2)],
+          ['component-b', new Prisma.Decimal(3)],
+        ]),
+      );
       txClient.productionOrder.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(

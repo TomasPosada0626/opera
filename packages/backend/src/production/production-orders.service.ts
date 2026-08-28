@@ -186,6 +186,30 @@ export class ProductionOrdersService {
             );
           }
 
+          // Un solo par de consultas agrupadas para TODOS los componentes de
+          // la receta, en vez de leer stock/costo componente por componente
+          // dentro del for — con recetas de muchos ingredientes, el loop
+          // secuencial alargaba la ventana de la transacción Serializable
+          // justo cuando más importa que sea corta (más tiempo con locks
+          // abiertos = más contención real entre completados concurrentes,
+          // señalado en la auditoría de escalabilidad).
+          const componentIds = bom.items.map((item) => item.componentId);
+          const [stockByComponent, costByComponent] = await Promise.all([
+            this.inventory.getStockForProducts(
+              componentIds,
+              order.warehouseId,
+              tx,
+            ),
+            this.inventory.getAverageCostForProducts(
+              componentIds,
+              order.warehouseId,
+              tx,
+            ),
+          ]);
+          const stockById = new Map(
+            stockByComponent.map(({ productId, stock }) => [productId, stock]),
+          );
+
           const shortages: Shortage[] = [];
           const requirements: {
             componentId: string;
@@ -194,11 +218,8 @@ export class ProductionOrdersService {
           }[] = [];
           for (const item of bom.items) {
             const required = item.quantity.mul(order.quantity);
-            const available = await this.inventory.getStock(
-              item.componentId,
-              order.warehouseId,
-              tx,
-            );
+            const available =
+              stockById.get(item.componentId) ?? new Prisma.Decimal(0);
             if (available.lessThan(required)) {
               shortages.push({
                 componentId: item.componentId,
@@ -210,11 +231,8 @@ export class ProductionOrdersService {
             // Costo promedio ponderado vigente de este componente (ADR
             // 0002) — es lo que vale cada unidad consumida, no lo que costó
             // originalmente comprarla.
-            const unitCost = await this.inventory.getAverageCost(
-              item.componentId,
-              order.warehouseId,
-              tx,
-            );
+            const unitCost =
+              costByComponent.get(item.componentId) ?? new Prisma.Decimal(0);
             requirements.push({
               componentId: item.componentId,
               required,
