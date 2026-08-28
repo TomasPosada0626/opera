@@ -150,9 +150,16 @@ export class ProductionOrdersService {
   // creó la orden (BillOfMaterials no es versionada, ver #29) — si la receta
   // cambió o se desactivó entre crear y completar, esto lo revalida. Todo el
   // consumo (SALIDA por componente) + la entrada del terminado + el cambio
-  // de estado ocurren en una sola transacción Serializable: mismo patrón que
-  // protege salidas/ajustes contra sobregiro (ver ADR 0001 y #22/#23/#25),
-  // ahora también para no completar dos veces la misma orden bajo carrera.
+  // de estado ocurren en una sola transacción Serializable, mismo patrón que
+  // protege salidas/ajustes contra sobregiro (ver ADR 0001 y #22/#23/#25).
+  // El e2e de concurrencia real (#91) probó que Serializable solo no basta
+  // para no completar dos veces la misma orden: un `update` incondicional
+  // deja pasar más de una llamada cuando las transacciones no llegan a
+  // solaparse de verdad en Postgres (p.ej. bajo contención del pool de
+  // conexiones en CI), porque nunca releen el estado dentro de la
+  // transacción. El `updateMany` con `status: 'PENDIENTE'` en el where es
+  // el guard atómico real — Serializable queda como red adicional para
+  // conflictos genuinos de lectura concurrente (getStock, getAverageCost).
   async complete(id: string, actingUserId: string) {
     const order = await this.prisma.productionOrder.findUnique({
       where: { id },
@@ -256,14 +263,23 @@ export class ProductionOrdersService {
             },
           });
 
-          return tx.productionOrder.update({
-            where: { id: order.id },
+          const result = await tx.productionOrder.updateMany({
+            where: { id: order.id, status: 'PENDIENTE' },
             data: {
               status: 'COMPLETADA',
               completedAt: new Date(),
               totalCost,
               unitCost: finishedGoodUnitCost,
             },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'La orden cambió de estado antes de poder completarla, intenta de nuevo',
+            );
+          }
+
+          return tx.productionOrder.findUniqueOrThrow({
+            where: { id: order.id },
             include: orderInclude,
           });
         },

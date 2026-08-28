@@ -44,12 +44,18 @@ describe('OrdersService', () => {
   // contra un `tx` falso — mismo espíritu que el resto de specs de este
   // proyecto, no hace falta Postgres real para probar la lógica.
   function txStub(overrides: {
-    orderUpdate?: unknown;
+    orderUpdateMany?: unknown;
+    orderFindUniqueOrThrow?: unknown;
     movementCreate?: jest.Mock;
   }) {
     return {
       order: {
-        update: jest.fn().mockResolvedValue(overrides.orderUpdate),
+        updateMany: jest
+          .fn()
+          .mockResolvedValue(overrides.orderUpdateMany ?? { count: 1 }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue(overrides.orderFindUniqueOrThrow),
       },
       stockMovement: {
         create: overrides.movementCreate ?? jest.fn(),
@@ -318,7 +324,8 @@ describe('OrdersService', () => {
         status: 'EN_PRODUCCION',
       });
       const movementCreate = jest.fn();
-      const orderUpdate = jest.fn().mockResolvedValue({
+      const orderUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const orderFindUniqueOrThrow = jest.fn().mockResolvedValue({
         ...baseOrder,
         status: 'EN_ALMACEN',
         warehousedAt: new Date('2026-01-02'),
@@ -326,7 +333,8 @@ describe('OrdersService', () => {
       prisma.$transaction.mockImplementation(
         (callback: (tx: TxStub) => Promise<unknown>) => {
           const tx = txStub({ movementCreate });
-          tx.order.update = orderUpdate;
+          tx.order.updateMany = orderUpdateMany;
+          tx.order.findUniqueOrThrow = orderFindUniqueOrThrow;
           return callback(tx);
         },
       );
@@ -344,13 +352,31 @@ describe('OrdersService', () => {
           quantity: '2',
         }),
       );
-      const orderUpdateCalls = orderUpdate.mock.calls as [
-        [{ data: { status: string } }],
+      const orderUpdateManyCalls = orderUpdateMany.mock.calls as [
+        [{ where: { status: string }; data: { status: string } }],
       ];
-      expect(orderUpdateCalls[0][0].data.status).toBe('EN_ALMACEN');
+      expect(orderUpdateManyCalls[0][0].where.status).toBe('EN_PRODUCCION');
+      expect(orderUpdateManyCalls[0][0].data.status).toBe('EN_ALMACEN');
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'MARK_WAREHOUSED' }),
       );
+    });
+
+    it('converts an atomic guard miss (count 0) into ConflictException', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'EN_PRODUCCION',
+      });
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) => {
+          const tx = txStub({ orderUpdateMany: { count: 0 } });
+          return callback(tx);
+        },
+      );
+
+      await expect(
+        service.markWarehoused('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('converts a P2034/P2028 concurrency error into ConflictException', async () => {

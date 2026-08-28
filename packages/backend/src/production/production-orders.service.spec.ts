@@ -38,7 +38,7 @@ describe('ProductionOrdersService', () => {
   let txClient: {
     billOfMaterials: { findUnique: jest.Mock };
     stockMovement: { create: jest.Mock };
-    productionOrder: { update: jest.Mock };
+    productionOrder: { updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
   };
   let prisma: {
     product: { findUnique: jest.Mock };
@@ -61,7 +61,10 @@ describe('ProductionOrdersService', () => {
     txClient = {
       billOfMaterials: { findUnique: jest.fn() },
       stockMovement: { create: jest.fn() },
-      productionOrder: { update: jest.fn() },
+      productionOrder: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn(),
+      },
     };
     prisma = {
       product: { findUnique: jest.fn() },
@@ -308,7 +311,7 @@ describe('ProductionOrdersService', () => {
       inventory.getAverageCost
         .mockResolvedValueOnce(new Prisma.Decimal(2))
         .mockResolvedValueOnce(new Prisma.Decimal(3));
-      txClient.productionOrder.update.mockResolvedValue({
+      txClient.productionOrder.findUniqueOrThrow.mockResolvedValue({
         ...pendingOrder,
         status: 'COMPLETADA',
         completedAt: new Date('2026-01-01'),
@@ -356,9 +359,9 @@ describe('ProductionOrdersService', () => {
           },
         ]),
       );
-      const [[updateArgs]] = txClient.productionOrder.update.mock.calls as [
+      const [[updateArgs]] = txClient.productionOrder.updateMany.mock.calls as [
         {
-          where: { id: string };
+          where: { id: string; status: string };
           data: {
             status: string;
             totalCost: Prisma.Decimal;
@@ -366,7 +369,7 @@ describe('ProductionOrdersService', () => {
           };
         },
       ][];
-      expect(updateArgs.where).toEqual({ id: 'order-1' });
+      expect(updateArgs.where).toEqual({ id: 'order-1', status: 'PENDIENTE' });
       expect(updateArgs.data.status).toBe('COMPLETADA');
       expect(updateArgs.data.totalCost.toString()).toBe('70');
       expect(updateArgs.data.unitCost.toString()).toBe('7');
@@ -388,6 +391,22 @@ describe('ProductionOrdersService', () => {
           clientVersion: '6.19.3',
         }),
       );
+
+      await expect(
+        service.complete('order-1', 'acting-user'),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('converts an atomic guard miss (count 0) into ConflictException', async () => {
+      prisma.productionOrder.findUnique.mockResolvedValue(pendingOrder);
+      txClient.billOfMaterials.findUnique.mockResolvedValue(bomWithItems);
+      inventory.getStock
+        .mockResolvedValueOnce(new Prisma.Decimal(20))
+        .mockResolvedValueOnce(new Prisma.Decimal(10));
+      inventory.getAverageCost
+        .mockResolvedValueOnce(new Prisma.Decimal(2))
+        .mockResolvedValueOnce(new Prisma.Decimal(3));
+      txClient.productionOrder.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(
         service.complete('order-1', 'acting-user'),

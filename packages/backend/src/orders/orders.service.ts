@@ -195,15 +195,18 @@ export class OrdersService {
   }
 
   // El terminado entra al stock de verdad acá (ENTRADA por línea, cantidad
-  // completa pedida) — antes de esto no existía físicamente. Sí necesita
-  // Serializable + el mismo manejo de P2034/P2028 que el resto de
-  // transacciones del proyecto (ver ADR 0001): escribe N StockMovement más
-  // el cambio de estado como una sola unidad, y dos llamadas concurrentes
-  // sobre el mismo pedido (misma fila de Order) deben dejar pasar solo una
-  // — mismo mecanismo que protege a ProductionOrdersService.complete()
-  // contra un doble-completado (#91): el chequeo previo de estado atrapa el
-  // caso común sin carrera, y el conflicto de serialización de Postgres
-  // atrapa la carrera real bajo concurrencia genuina.
+  // completa pedida) — antes de esto no existía físicamente. Escribe N
+  // StockMovement más el cambio de estado como una sola unidad dentro de
+  // Serializable (ADR 0001) + el mismo manejo de P2034/P2028 que el resto
+  // de transacciones del proyecto. El e2e de concurrencia real (#91) probó
+  // que Serializable solo NO basta: un `update` incondicional deja pasar
+  // más de una llamada cuando las transacciones no llegan a solaparse de
+  // verdad en Postgres (p.ej. bajo contención del pool de conexiones en
+  // CI), porque nunca releen el estado dentro de la transacción. El
+  // `updateMany` con `status: 'EN_PRODUCCION'` en el where es el guard
+  // atómico real — mismo patrón que markProduction/cancel — y Serializable
+  // queda como red adicional para conflictos genuinos de lectura
+  // concurrente (getStock, etc.).
   async markWarehoused(id: string, actingUserId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
@@ -234,9 +237,18 @@ export class OrdersService {
             });
           }
 
-          return tx.order.update({
-            where: { id: order.id },
+          const result = await tx.order.updateMany({
+            where: { id: order.id, status: 'EN_PRODUCCION' },
             data: { status: 'EN_ALMACEN', warehousedAt: new Date() },
+          });
+          if (result.count === 0) {
+            throw new ConflictException(
+              'El pedido cambió de estado antes de poder marcarlo enviado a almacén, intenta de nuevo',
+            );
+          }
+
+          return tx.order.findUniqueOrThrow({
+            where: { id: order.id },
             include: orderInclude,
           });
         },
