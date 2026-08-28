@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import * as Joi from 'joi';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -125,13 +125,18 @@ import { HealthModule } from './health/health.module';
     // Configurable solo para poder correr load-tests/ contra un techo más
     // alto que el real de producción (ver load-tests/README.md) — el
     // default sin la variable de entorno sigue siendo 100, igual que antes.
-    ThrottlerModule.forRoot({
-      throttlers: [
-        {
-          ttl: 60_000,
-          limit: Number(process.env.RATE_LIMIT_PER_MINUTE) || 100,
-        },
-      ],
+    // forRootAsync + ConfigService (no process.env directo, señalado en la
+    // re-auditoría) para leer del mismo config ya validado por Joi arriba.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: 60_000,
+            limit: configService.get<number>('RATE_LIMIT_PER_MINUTE') ?? 100,
+          },
+        ],
+      }),
     }),
     PrismaModule,
     AuditModule,

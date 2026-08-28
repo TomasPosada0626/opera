@@ -1,6 +1,7 @@
 import './config/env';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
@@ -20,6 +21,11 @@ async function bootstrap() {
   // (ej. PrismaService.onModuleInit) se perdería en silencio.
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+  // Vía ConfigService (no process.env directo) para que los .default() del
+  // Joi schema en app.module.ts sean el único lugar donde vive cada default
+  // — antes PORT/SWAGGER_ENABLED se leían crudo acá, duplicando (y
+  // arriesgando desincronizar) el default que Joi ya declara.
+  const configService = app.get(ConfigService);
 
   // Nada capturaba esto antes — un fallo fuera del ciclo normal de
   // request/response (una promesa sin `await`, un error asíncrono suelto)
@@ -48,7 +54,7 @@ async function bootstrap() {
 
   // Apagado por defecto: solo se monta si SWAGGER_ENABLED=true en .env
   // (conveniencia de desarrollo local, nunca en un despliegue real de LAN).
-  if (process.env.SWAGGER_ENABLED === 'true') {
+  if (configService.get<string>('SWAGGER_ENABLED') === 'true') {
     const config = new DocumentBuilder()
       .setTitle('Opera API')
       .setDescription(
@@ -61,6 +67,6 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(configService.get<number>('PORT') ?? 3000);
 }
 void bootstrap();

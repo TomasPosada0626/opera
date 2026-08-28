@@ -84,8 +84,15 @@ model AuditLog {
   after     Json?
   timestamp DateTime @default(now())
 
-  @@index([entity, entityId])
-  @@index([userId])
+  // query() (#75/#78) siempre ordena por timestamp desc además de filtrar
+  // por entity+entityId o por userId — el índice cubre también ese ORDER BY
+  // para no necesitar un sort en memoria sobre el resultado ya filtrado
+  // (señalado en la re-auditoría: el índice viejo solo cubría el WHERE).
+  // @@index([timestamp]) por separado cubre el caso sin ningún filtro
+  // (getRecent(), el feed del dashboard).
+  @@index([entity, entityId, timestamp])
+  @@index([userId, timestamp])
+  @@index([timestamp])
 }
 
 // El stock por producto se calcula por bodega (StockMovement.warehouseId,
