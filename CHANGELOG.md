@@ -9,6 +9,15 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Recuperación de contraseña por correo (`POST /auth/forgot-password` +
+  `POST /auth/reset-password`): código de verificación de 6 dígitos,
+  hasheado con argon2 (nunca en claro), vence a los 15 minutos, un solo
+  uso. Respuesta siempre genérica exista o no el email (nunca revela qué
+  correos están registrados). `MailService` (nodemailer, SMTP genérico) es
+  best-effort a propósito, mismo criterio que `electron-updater`: sin
+  `SMTP_*` configurado, la app sigue funcionando igual, solo se pierde esa
+  función puntual. Flujo de dos pasos en la app de escritorio
+  (`/olvide-contrasena`, enlazado desde el login).
 - `PATCH /:id/reactivate` en los 6 módulos de catálogo (customers, suppliers,
   products, categories, units, warehouses) — antes desactivar no tenía vuelta
   atrás.

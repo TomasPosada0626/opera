@@ -122,4 +122,13 @@ describe('LoginPage', () => {
       await screen.findByText('No se pudo iniciar sesión. Intenta de nuevo.'),
     ).toBeInTheDocument();
   });
+
+  it('links to the forgot-password flow', () => {
+    renderWithRouter(<LoginPage />);
+
+    const link = screen.getByRole('link', {
+      name: '¿Olvidaste tu contraseña?',
+    });
+    expect(link).toHaveAttribute('href', '/olvide-contrasena');
+  });
 });

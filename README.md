@@ -137,6 +137,7 @@ mantenerse en dos lugares a la vez.
 | Testing                  | Jest (unitarios/integración), Playwright (end-to-end) |
 | Documentación de API     | Swagger / OpenAPI (`@nestjs/swagger`)                 |
 | Generación de documentos | PDF (`pdfkit`)                                        |
+| Envío de correo          | SMTP (`nodemailer`)                                   |
 | Calidad de código        | ESLint, Prettier, Husky, lint-staged                  |
 | CI/CD                    | GitHub Actions                                        |
 | Empaquetado desktop      | electron-builder                                      |
@@ -209,6 +210,8 @@ pnpm dev:desktop
 > Si el puerto 5432 ya está en uso en tu máquina (por ejemplo, otro PostgreSQL local), ajusta `POSTGRES_PORT` y el puerto de `DATABASE_URL` en tu `.env` — ambos los lee `docker-compose.yml` y Prisma respectivamente.
 
 Con el backend y el desktop corriendo, entra a la app y usa las credenciales que definiste en `ADMIN_EMAIL`/`ADMIN_PASSWORD` (las que `pnpm db:seed` usó para crear el Administrador inicial) en la pantalla de login. Es la única cuenta que existe hasta que crees más desde **Usuarios** dentro de la propia app.
+
+> **"¿Olvidaste tu contraseña?"** en la pantalla de login manda un código de verificación de 6 dígitos por correo (vence en 15 minutos, un solo uso). Necesita las variables `SMTP_*` configuradas en `.env` (ver `.env.example`) — sin ellas, el endpoint sigue respondiendo con éxito (nunca revela si un correo existe) pero no manda nada, y queda un warning en el log del backend.
 
 ## Pruebas
 

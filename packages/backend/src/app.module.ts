@@ -56,6 +56,16 @@ import { HealthModule } from './health/health.module';
         PORT: Joi.number().port().default(3000),
         SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
         RATE_LIMIT_PER_MINUTE: Joi.number().positive().optional(),
+        // SMTP para "olvidé mi contraseña" (MailService) — todas opcionales
+        // a propósito: Opera es LAN-first, sin depender de internet para su
+        // función real (mismo criterio que electron-updater). Sin estas, el
+        // arranque no falla; MailService detecta que no están y degrada en
+        // silencio (solo pierde ESA función puntual, no la app entera).
+        SMTP_HOST: Joi.string().optional(),
+        SMTP_PORT: Joi.number().port().optional(),
+        SMTP_USER: Joi.string().optional(),
+        SMTP_PASSWORD: Joi.string().optional(),
+        SMTP_FROM: Joi.string().optional(),
       }),
       validationOptions: {
         // Cualquier otra variable de entorno del sistema (PATH, HOME, etc.)

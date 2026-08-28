@@ -2,6 +2,7 @@ import { createHashRouter, redirect } from 'react-router';
 import RootLayout from './layouts/RootLayout';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './pages/LoginPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import DashboardPage from './pages/DashboardPage';
 import InventoryPage from './pages/InventoryPage';
 import KardexPage from './pages/KardexPage';
@@ -42,6 +43,16 @@ export const router = createHashRouter([
           return getAuthToken() ? redirect('/') : null;
         },
         element: <LoginPage />,
+      },
+      {
+        path: '/olvide-contrasena',
+        // Mismo criterio que /login: con sesión activa no tiene nada que
+        // hacer acá, manda al dashboard en vez de mostrar el flujo.
+        loader: async () => {
+          await initAuthToken();
+          return getAuthToken() ? redirect('/') : null;
+        },
+        element: <ForgotPasswordPage />,
       },
       {
         path: '/imprimir-remision',

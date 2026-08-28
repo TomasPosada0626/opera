@@ -2,7 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { LogIn } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
 import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
@@ -103,6 +103,15 @@ function LoginPage() {
             {loginMutation.isPending ? 'Ingresando…' : 'Ingresar'}
           </Button>
         </form>
+
+        <div className="mt-4 text-center">
+          <Link
+            to="/olvide-contrasena"
+            className="text-ink-muted hover:text-ink text-sm transition-colors"
+          >
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
       </div>
     </div>
   );
