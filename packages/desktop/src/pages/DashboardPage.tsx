@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Bell,
   ClipboardList,
   Factory,
   History,
@@ -109,7 +110,7 @@ function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KPICard
           icon={Wallet}
           label="Valor de inventario"
@@ -132,6 +133,12 @@ function DashboardPage() {
           icon={Factory}
           label="Producción en proceso"
           value={data ? data.production.EN_PROCESO : '—'}
+        />
+        <KPICard
+          icon={Bell}
+          label="Advertencias (24h)"
+          value={data ? data.recentWarnings : '—'}
+          variant={data && data.recentWarnings > 0 ? 'warning' : 'accent'}
         />
       </div>
 

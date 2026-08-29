@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ReportsService } from '../reports/reports.service';
+import { countRecentWarnings } from './recent-warnings.util';
 
 const RECENT_LIMIT = 5;
 const RECENT_ACTIVITY_LIMIT = 10;
@@ -113,6 +114,11 @@ export class DashboardService {
         userName: entry.user.name,
         timestamp: entry.timestamp,
       })),
+      // Sin Alertmanager para LAN-only (auditoría 2026-08-28) — cuenta
+      // warn/error/fatal de logs/opera-backend.log en las últimas 24h, lo
+      // mínimo para que "algo anda mal" se note acá en vez de exigir abrir
+      // el log a mano.
+      recentWarnings: countRecentWarnings(),
     };
   }
 }

@@ -44,4 +44,5 @@ export interface DashboardSummary {
     userName: string;
     timestamp: string;
   }[];
+  recentWarnings: number;
 }

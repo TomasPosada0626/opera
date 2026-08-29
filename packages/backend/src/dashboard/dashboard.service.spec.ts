@@ -4,6 +4,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
+import { countRecentWarnings } from './recent-warnings.util';
+
+// countRecentWarnings() lee el archivo de log real en disco (ver su propio
+// spec para el comportamiento de parseo) — mockeado acá para que este spec
+// no dependa de si logs/opera-backend.log existe en la máquina de quien
+// corre los tests.
+jest.mock('./recent-warnings.util', () => ({
+  countRecentWarnings: jest.fn(),
+}));
+const mockedCountRecentWarnings = countRecentWarnings as jest.Mock;
 
 describe('DashboardService', () => {
   let prisma: {
@@ -39,6 +49,7 @@ describe('DashboardService', () => {
     inventory.getLowStockProducts.mockResolvedValue([]);
     reports.getInventoryReport.mockResolvedValue([]);
     audit.getRecent.mockResolvedValue([]);
+    mockedCountRecentWarnings.mockReset().mockReturnValue(0);
   });
 
   it('sums the inventory report rows into a single stock value', async () => {
@@ -190,5 +201,13 @@ describe('DashboardService', () => {
         timestamp: new Date('2026-08-01'),
       },
     ]);
+  });
+
+  it('exposes recentWarnings from countRecentWarnings()', async () => {
+    mockedCountRecentWarnings.mockReturnValue(4);
+
+    const result = await service.getSummary();
+
+    expect(result.recentWarnings).toBe(4);
   });
 });

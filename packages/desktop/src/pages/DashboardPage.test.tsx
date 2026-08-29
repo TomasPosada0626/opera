@@ -38,6 +38,7 @@ function buildSummary(
     recentPurchases: [],
     recentSales: [],
     recentActivity: [],
+    recentWarnings: 0,
     ...overrides,
   };
 }
@@ -111,6 +112,18 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Order')).toBeInTheDocument();
     expect(screen.getByText('CREATE')).toBeInTheDocument();
     expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
+  });
+
+  it('shows the recent-warnings KPI, highlighted when there are any', async () => {
+    mockedApiFetch.mockResolvedValue(buildSummary({ recentWarnings: 3 }));
+
+    renderWithClient(<DashboardPage />);
+
+    // El label es estático (aparece ya en el primer render, antes de que
+    // la query resuelva) — hay que esperar por el valor, no por el label,
+    // para no leer el "—" del estado de loading.
+    expect(await screen.findByText('3')).toBeInTheDocument();
+    expect(screen.getByText('Advertencias (24h)')).toBeInTheDocument();
   });
 
   it('shows the low-stock product list only when there are critical products', async () => {
