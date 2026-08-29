@@ -13,16 +13,29 @@ updates:
         # prisma/@prisma/client bloqueaba TODAS las demás actualizaciones —
         # ahora quedan en su propio PR, que se puede ignorar/cerrar sin
         # frenar nada más.
+        #
+        # typescript: el PR #108 (25 paquetes agrupados) tumbó `pnpm lint`
+        # completo con "typescript-eslint does not support TS 7.0" al saltar
+        # de 5.9 a 7.0.2 — typescript-eslint@8.68.0 (la última versión
+        # disponible en ese mismo PR) todavía no soporta TS 7. Mismo
+        # tratamiento que Prisma: fuera del group, para que un bump que
+        # rompe el lint no bloquee las otras 24 actualizaciones reales.
         exclude-patterns:
           - 'prisma'
           - '@prisma/*'
-    # Nunca proponer el PR de major (v7) hasta que el trabajo de #104
-    # arranque — updates menores/parche de Prisma dentro de v6 sí siguen
-    # llegando (su propio PR, fuera del group de arriba).
+          - 'typescript'
+    # Nunca proponer el PR de major hasta que el ecosistema lo soporte —
+    # updates menores/parche siguen llegando (su propio PR, fuera del group
+    # de arriba). Prisma: bloqueado hasta que arranque #104. TypeScript:
+    # bloqueado hasta que typescript-eslint soporte TS 7 (revisar de nuevo
+    # entonces, no hay issue propio todavía porque no es trabajo planeado,
+    # solo una espera de compatibilidad upstream).
     ignore:
       - dependency-name: 'prisma'
         update-types: ['version-update:semver-major']
       - dependency-name: '@prisma/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'typescript'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
