@@ -93,7 +93,7 @@ jobs:
       - name: Build desktop (renderer + electron)
         run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
 
-      # Los 4 specs de Playwright (e2e/*.spec.ts) existían pero no corrían
+      # Los 5 specs de Playwright (e2e/*.spec.ts) existían pero no corrían
       # en CI — podían pudrirse sin que nadie se entere, a diferencia del
       # e2e de Jest del backend, que sí está gateado (y que ya demostró su
       # valor real atrapando un bug de concurrencia genuino). Corren contra
@@ -124,8 +124,14 @@ jobs:
         run: pnpm --filter desktop exec playwright install-deps chromium
 
       - name: Start backend server for Playwright (background)
+        # AUTH_LOGIN_RATE_LIMIT (ver .env.example y auth.controller.ts):
+        # los 5 specs de Playwright hacen login real de verdad contra este
+        # mismo backend en la misma corrida -- el total agregado supera el
+        # límite de producción (5/min) sin que ninguno individualmente
+        # abuse del endpoint. No afecta el límite real de producción, que
+        # sigue en 5 salvo que se fije esta variable explícitamente.
         run: |
-          nohup node packages/backend/dist/src/main.js > backend-server.log 2>&1 &
+          AUTH_LOGIN_RATE_LIMIT=30 nohup node packages/backend/dist/src/main.js > backend-server.log 2>&1 &
           echo $! > backend.pid
 
       - name: Wait for backend to be ready

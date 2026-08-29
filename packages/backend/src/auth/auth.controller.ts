@@ -7,6 +7,20 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordWithCodeDto } from './dto/reset-password-with-code.dto';
 
+// Configurable por env, no un ConfigService inyectado -- @Throttle() es un
+// decorador, se evalúa una sola vez al cargar el módulo, antes de que
+// exista cualquier instancia de Nest. Default 5 (el valor de producción de
+// siempre) sin tocar; AUTH_LOGIN_RATE_LIMIT solo existe para el runner de
+// Playwright (e2e/*.spec.ts), donde varios specs independientes hacen
+// login real de verdad contra el mismo backend en la misma corrida -- el
+// total agregado de esos logins (no cualquiera de ellos solo) puede
+// superar 5/min según cuántos specs corran, sin que ninguno abuse del
+// endpoint (encontrado agregando auth.spec.ts, que sumó 3 logins reales
+// más a los ~4 que ya hacían el resto de specs juntos). Mismo criterio que
+// RATE_LIMIT_PER_MINUTE (ver app.module.ts), pero acá solo afecta esta
+// ruta, no el límite global.
+const LOGIN_RATE_LIMIT = Number(process.env.AUTH_LOGIN_RATE_LIMIT) || 5;
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -18,10 +32,11 @@ export class AuthController {
   // Más estricto que el límite global (ThrottlerModule.forRoot en AppModule):
   // login es la única puerta de entrada, así que necesita su propio techo
   // bajo para hacer fuerza bruta impráctica sin bloquear el uso normal.
-  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Throttle({ default: { ttl: 60_000, limit: LOGIN_RATE_LIMIT } })
   @ApiOperation({
     summary: 'Login',
-    description: 'Limitado a 5 intentos/min por IP (ver @Throttle).',
+    description:
+      'Limitado a 5 intentos/min por IP en producción (ver @Throttle).',
   })
   @ApiResponse({ status: 200, description: 'JWT emitido.' })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas.' })
