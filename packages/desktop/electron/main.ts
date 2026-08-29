@@ -67,6 +67,11 @@ function applyContentSecurityPolicy() {
 function createWindow() {
   win = new BrowserWindow({
     title: 'Opera',
+    // Sin esto, nada impedía redimensionar a un tamaño donde el layout con
+    // sidebar se rompe (señalado en la auditoría 2026-08-28) — no es un
+    // tamaño de ventana inicial, solo el piso al que se puede achicar.
+    minWidth: 1024,
+    minHeight: 640,
     // En empaquetado, win.icon (electron-builder.json5) ya deja el ícono
     // grabado en el .exe — esto además cubre `pnpm dev` (sin empaquetar,
     // corriendo directo contra Electron), donde si no se pasa nada aquí

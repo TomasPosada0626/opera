@@ -48,7 +48,11 @@ import { HealthModule } from './health/health.module';
         DATABASE_URL: Joi.string()
           .uri({ scheme: ['postgresql', 'postgres'] })
           .required(),
-        JWT_SECRET: Joi.string().min(16).required(),
+        // 32, no 16 (señalado en la auditoría 2026-08-28): un HMAC de JWT
+        // con 16 caracteres no impide un secreto de baja entropía tipo
+        // "changeme12345678" — el .env.example ya recomienda generarlo con
+        // `openssl rand -base64 32`, el mínimo ahora lo refleja.
+        JWT_SECRET: Joi.string().min(32).required(),
         JWT_EXPIRES_IN: Joi.string().required(),
         NODE_ENV: Joi.string()
           .valid('development', 'production', 'test')
@@ -117,10 +121,20 @@ import { HealthModule } from './health/health.module';
                 ]),
           ],
         },
-        // Nunca loguear el JWT ni una contraseña en texto plano, ni por
-        // accidente vía el header Authorization o un body de /auth/login.
+        // Nunca loguear el JWT ni una contraseña/código en texto plano, ni
+        // por accidente vía el header Authorization o el body de
+        // /auth/login, /auth/reset-password (newPassword, code) o
+        // /users/:id/reset-password. Sin efecto hoy (no hay
+        // serializers.req custom, así que pino-http no serializa
+        // req.body) — pero es gratis dejarlo listo para si algún día se
+        // activa logging de body para debug.
         redact: {
-          paths: ['req.headers.authorization', 'req.body.password'],
+          paths: [
+            'req.headers.authorization',
+            'req.body.password',
+            'req.body.newPassword',
+            'req.body.code',
+          ],
           censor: '[redactado]',
         },
         customLogLevel: (_req, res, err) => {

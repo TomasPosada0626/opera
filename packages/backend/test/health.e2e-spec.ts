@@ -22,9 +22,16 @@ describe('Health (e2e)', () => {
 
     const body = response.body as {
       status: string;
-      info: { database: { status: string } };
+      info: {
+        database: { status: string };
+        smtp: { status: string; configured: boolean };
+      };
     };
     expect(body.status).toBe('ok');
     expect(body.info.database).toEqual({ status: 'up' });
+    // Nunca 'down' — SMTP sin configurar es un estado válido (MailService
+    // es best-effort), solo informativo vía `configured`.
+    expect(body.info.smtp.status).toBe('up');
+    expect(typeof body.info.smtp.configured).toBe('boolean');
   });
 });

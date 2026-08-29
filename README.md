@@ -50,6 +50,7 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 - [Estructura del monorepo](#estructura-del-monorepo)
 - [Roadmap](#roadmap)
 - [Puesta en marcha](#puesta-en-marcha)
+- [Respaldo y restauración](#respaldo-y-restauración)
 - [Pruebas](#pruebas)
 - [Compilación](#compilación)
 - [Solución de problemas comunes](#solución-de-problemas-comunes)
@@ -212,6 +213,35 @@ pnpm dev:desktop
 Con el backend y el desktop corriendo, entra a la app y usa las credenciales que definiste en `ADMIN_EMAIL`/`ADMIN_PASSWORD` (las que `pnpm db:seed` usó para crear el Administrador inicial) en la pantalla de login. Es la única cuenta que existe hasta que crees más desde **Usuarios** dentro de la propia app.
 
 > **"¿Olvidaste tu contraseña?"** en la pantalla de login manda un código de verificación de 6 dígitos por correo (vence en 15 minutos, un solo uso). Necesita las variables `SMTP_*` configuradas en `.env` (ver `.env.example`) — sin ellas, el endpoint sigue respondiendo con éxito (nunca revela si un correo existe) pero no manda nada, y queda un warning en el log del backend.
+
+## Respaldo y restauración
+
+`docker-compose.yml` guarda los datos de PostgreSQL en un volumen con nombre
+(`opera_postgres_data`), que sobrevive a reinicios del contenedor — pero no
+protege contra un disco dañado, un `docker volume rm` accidental o
+reinstalar el host. Opera es el sistema de registro real de
+inventario/producción/ventas de la empresa: respaldar la base es
+responsabilidad de quien la opera, no algo opcional.
+
+```bash
+# Respalda la base a backups/opera-<fecha>.sql.gz (comprimido, fuera del
+# repo — ver .gitignore) y borra respaldos locales de más de 30 días.
+pnpm --filter backend backup:db
+
+# Retención distinta (en días)
+pnpm --filter backend backup:db -- --retain-days=7
+```
+
+Córrelo con el contenedor `opera-postgres` arriba (`docker compose up -d`).
+No sube a ningún destino remoto a propósito — LAN-only, igual que el resto
+del proyecto; para retención real, programa este comando (cron, Task
+Scheduler) y copia `backups/` a donde ya respaldes el resto de la empresa.
+
+Restaurar un respaldo (sobrescribe la base actual):
+
+```bash
+gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
+```
 
 ## Pruebas
 

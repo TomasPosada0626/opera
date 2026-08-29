@@ -30,6 +30,10 @@ packages/backend/load-tests/.dataset.json
 # de una instalación puntual, nunca material para commitear al repo.
 packages/backend/scripts/*.jsonl
 
+# Respaldos generados por scripts/backup-db.ts — datos reales de negocio,
+# nunca material para commitear al repo.
+/backups/
+
 # Certificado de firma de código (generate-self-signed-cert.ps1) — la
 # clave privada nunca se commitea, cada máquina de build genera la suya.
 packages/desktop/certs/

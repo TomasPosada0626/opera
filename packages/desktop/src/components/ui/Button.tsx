@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react';
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost';
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -11,6 +11,10 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary:
     'border border-line text-ink hover:bg-surface-raised hover:border-line-strong',
   ghost: 'text-ink-muted hover:text-ink hover:bg-chrome-strong',
+  // Mismo par bg/on-accent que primary, con --color-danger en vez de
+  // --color-accent — reservado para el botón de confirmar dentro de
+  // ConfirmModal, nunca para una acción disparada directo desde una fila.
+  danger: 'bg-danger text-on-accent hover:opacity-90',
 };
 
 // El acento sólido (variant="primary") queda reservado para UN botón por
