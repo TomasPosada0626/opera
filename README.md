@@ -139,7 +139,7 @@ mantenerse en dos lugares a la vez.
 | Documentación de API     | Swagger / OpenAPI (`@nestjs/swagger`)                 |
 | Generación de documentos | PDF (`pdfkit`)                                        |
 | Envío de correo          | SMTP (`nodemailer`)                                   |
-| Calidad de código        | ESLint, Prettier, Husky, lint-staged                  |
+| Calidad de código        | ESLint (+ `jsx-a11y`), Prettier, Husky, lint-staged   |
 | CI/CD                    | GitHub Actions                                        |
 | Empaquetado desktop      | electron-builder                                      |
 | Infraestructura local    | Docker Compose                                        |

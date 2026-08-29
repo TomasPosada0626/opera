@@ -77,6 +77,24 @@ describe('ForgotPasswordPage', () => {
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
+  it('shows a generic error when requesting the code fails (step 1)', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<ForgotPasswordPage />);
+    mockedApiFetch.mockRejectedValueOnce(new Error('network down'));
+
+    await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+    await user.click(screen.getByRole('button', { name: 'Enviar código' }));
+
+    expect(
+      await screen.findByText(
+        'No se pudo procesar la solicitud. Intenta de nuevo.',
+      ),
+    ).toBeInTheDocument();
+    // Sigue en el paso 1 — un fallo al pedir el código no debe avanzar al
+    // paso de verificación.
+    expect(screen.queryByLabelText('Código')).not.toBeInTheDocument();
+  });
+
   it('requests a code and moves to the verify step on success', async () => {
     const user = userEvent.setup();
     renderWithRouter(<ForgotPasswordPage />);
@@ -149,6 +167,27 @@ describe('ForgotPasswordPage', () => {
       screen.getByRole('button', { name: 'Ir a iniciar sesión' }),
     );
     expect(navigateMock).toHaveBeenCalledWith('/login', { replace: true });
+  });
+
+  it('shows a generic error when the reset failure is not an ApiError', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<ForgotPasswordPage />);
+    await goToVerifyStep(user);
+    mockedApiFetch.mockRejectedValueOnce(new Error('network down'));
+
+    await user.type(screen.getByLabelText('Código'), '000000');
+    await user.type(screen.getByLabelText('Nueva contraseña'), 'password123');
+    await user.type(
+      screen.getByLabelText('Confirmar contraseña'),
+      'password123',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Actualizar contraseña' }),
+    );
+
+    expect(
+      await screen.findByText('No se pudo actualizar la contraseña.'),
+    ).toBeInTheDocument();
   });
 
   it('shows an error message when the code is invalid or expired', async () => {

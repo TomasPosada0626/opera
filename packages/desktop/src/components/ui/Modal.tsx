@@ -53,10 +53,18 @@ export function Modal({ title, onClose, children }: ModalProps) {
   }, []);
 
   return (
+    // role="presentation": el backdrop es puramente decorativo, no un
+    // control — el cierre por teclado ya existe vía Escape (handleKeyDown
+    // arriba), este onClick es solo la conveniencia de mouse equivalente.
     <div
+      role="presentation"
       className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
+      {/* onClick acá solo corta la propagación hacia el backdrop — no agrega
+          ninguna interacción nueva que un usuario de teclado necesite
+          replicar. */}
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
       <div
         ref={panelRef}
         role="dialog"
