@@ -24,7 +24,7 @@ describe('ReportsService', () => {
     order: { findMany: jest.Mock };
     orderItem: { findMany: jest.Mock };
   };
-  let inventory: { getAverageCost: jest.Mock };
+  let inventory: { getAverageCostForProducts: jest.Mock };
   let service: ReportsService;
 
   beforeEach(() => {
@@ -34,7 +34,7 @@ describe('ReportsService', () => {
       order: { findMany: jest.fn() },
       orderItem: { findMany: jest.fn() },
     };
-    inventory = { getAverageCost: jest.fn() };
+    inventory = { getAverageCostForProducts: jest.fn() };
     service = new ReportsService(
       prisma as unknown as PrismaService,
       inventory as unknown as InventoryService,
@@ -71,10 +71,16 @@ describe('ReportsService', () => {
       prisma.stockMovement.groupBy.mockResolvedValue([
         { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(8) } },
       ]);
-      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(10));
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([['product-1', new Prisma.Decimal(10)]]),
+      );
 
       const result = await service.getInventoryReport();
 
+      expect(inventory.getAverageCostForProducts).toHaveBeenCalledWith([
+        'product-1',
+        'product-2',
+      ]);
       expect(result[0]).toEqual(
         expect.objectContaining({
           id: 'product-1',
@@ -253,7 +259,9 @@ describe('ReportsService', () => {
       prisma.stockMovement.groupBy.mockResolvedValue([
         { productId: 'product-1', _sum: { quantity: new Prisma.Decimal(8) } },
       ]);
-      inventory.getAverageCost.mockResolvedValue(new Prisma.Decimal(10));
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([['product-1', new Prisma.Decimal(10)]]),
+      );
 
       const buffer = await service.getInventoryExcel();
 

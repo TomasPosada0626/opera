@@ -9,12 +9,16 @@ import {
 import { ReportsService } from './reports.service';
 import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
+import { AnyAuthenticated } from '../auth/decorators/any-authenticated.decorator';
 
 const XLSX_CONTENT_TYPE =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('reports')
 @ApiBearerAuth()
+// A propósito, no un @Roles olvidado: cualquier usuario autenticado puede
+// ver/exportar reportes, sin distinción de rol.
+@AnyAuthenticated()
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}

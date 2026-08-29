@@ -2,6 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 
+// El redact de pino-http (ver app.module.ts) no cubre estos logs — son
+// manuales, vía Logger de Nest, no pasan por el interceptor HTTP. Sin
+// enmascarar, logs/opera-backend.log terminaría siendo en la práctica un
+// padrón de correos de clientes/usuarios cada vez que SMTP falla o no está
+// configurado (señalado en la auditoría 2026-08-28).
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) {
+    return '***';
+  }
+  const masked = local.slice(0, 1) + '*'.repeat(Math.max(local.length - 1, 1));
+  return `${masked}@${domain}`;
+}
+
 // Best-effort a propósito, mismo criterio que electron-updater (ver
 // packages/desktop/electron/updater.ts): Opera es LAN-first, sin depender
 // de internet para su función real. Si SMTP no está configurado o el envío
@@ -42,7 +56,7 @@ export class MailService {
   async sendPasswordResetCode(to: string, code: string): Promise<void> {
     if (!this.isConfigured()) {
       this.logger.warn(
-        `No se pudo enviar el código de recuperación a ${to}: SMTP no está configurado (SMTP_HOST/SMTP_USER/SMTP_PASSWORD).`,
+        `No se pudo enviar el código de recuperación a ${maskEmail(to)}: SMTP no está configurado (SMTP_HOST/SMTP_USER/SMTP_PASSWORD).`,
       );
       return;
     }
@@ -63,7 +77,7 @@ export class MailService {
       // nunca debe convertirse en un 500 para el usuario. Queda como warning
       // para que quien opera la instalación pueda notar el problema.
       this.logger.warn(
-        `No se pudo enviar el código de recuperación a ${to}: ${
+        `No se pudo enviar el código de recuperación a ${maskEmail(to)}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );

@@ -12,7 +12,16 @@ function shouldRetry(failureCount: number, error: unknown): boolean {
 
 export const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: shouldRetry },
+    queries: {
+      retry: shouldRetry,
+      // Default de TanStack Query es 0 (siempre "stale"): cada refoco de
+      // ventana re-disparaba TODAS las queries montadas, dashboard incluido
+      // (señalado en la auditoría 2026-08-28). 60s alcanza para evitar ese
+      // re-fetch constante en una app de escritorio LAN de un solo usuario
+      // por sesión, sin sentirse desactualizado — cualquier mutación sigue
+      // invalidando su query al instante vía queryClient.
+      staleTime: 60_000,
+    },
     mutations: { retry: false },
   },
 });

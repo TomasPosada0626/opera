@@ -1,9 +1,13 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
+import { AnyAuthenticated } from '../auth/decorators/any-authenticated.decorator';
 
 @ApiTags('dashboard')
 @ApiBearerAuth()
+// A propósito, no un @Roles olvidado: cualquier usuario autenticado ve el
+// resumen del home screen, sin distinción de rol.
+@AnyAuthenticated()
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}

@@ -2,9 +2,13 @@ import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SearchService } from './search.service';
 import { SearchQueryDto } from './dto/search-query.dto';
+import { AnyAuthenticated } from '../auth/decorators/any-authenticated.decorator';
 
 @ApiTags('search')
 @ApiBearerAuth()
+// A propósito, no un @Roles olvidado: la búsqueda global es para cualquier
+// usuario autenticado, sin distinción de rol.
+@AnyAuthenticated()
 @Controller('search')
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}

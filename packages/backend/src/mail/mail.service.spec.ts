@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { MailService } from './mail.service';
 
@@ -81,6 +82,40 @@ describe('MailService', () => {
       await service.sendPasswordResetCode('b@opera.local', '222222');
 
       expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+    });
+
+    // El redact de pino-http (app.module.ts) no cubre logs manuales — sin
+    // esto, logs/opera-backend.log terminaría siendo en la práctica un
+    // padrón de correos reales (señalado en la auditoría 2026-08-28).
+    it('never logs the raw email — masks it in the "SMTP not configured" warning', async () => {
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockReturnValue();
+      config.get.mockReturnValue(undefined);
+
+      await service.sendPasswordResetCode('juan.perez@opera.local', '123456');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('j*********@opera.local'),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('juan.perez@opera.local'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('never logs the raw email — masks it in the send-failure warning', async () => {
+      withSmtpConfigured();
+      sendMail.mockRejectedValue(new Error('connection refused'));
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockReturnValue();
+
+      await service.sendPasswordResetCode('juan.perez@opera.local', '123456');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('j*********@opera.local'),
+      );
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining('juan.perez@opera.local'),
+      );
+      warnSpy.mockRestore();
     });
   });
 });

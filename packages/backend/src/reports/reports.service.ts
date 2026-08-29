@@ -31,10 +31,12 @@ export class ReportsService {
   // Mismo patrón de groupBy que InventoryService.getLowStockProducts, pero
   // sobre TODOS los productos activos, no solo los que tienen minStock
   // configurado — este es el inventario completo, no una alerta. El costo
-  // promedio (ver ADR 0002) se reutiliza de InventoryService en vez de
-  // reimplementar el recorrido cronológico del ledger; N llamadas está bien
-  // acá porque esto es un reporte (catálogo de una PyME, no un endpoint
-  // caliente), no el flujo de crear un movimiento.
+  // promedio (ver ADR 0002) se reutiliza de InventoryService.
+  // getAverageCostForProducts (un solo findMany para todos los productos,
+  // no N llamadas secuenciales) — antes hacía una llamada por producto,
+  // señalado como N+1 en la auditoría 2026-08-28 porque este reporte lo
+  // consume DashboardService.getSummary(), el home screen, no solo un
+  // export puntual.
   async getInventoryReport() {
     const products = await this.prisma.product.findMany({
       where: { isActive: true },
@@ -45,11 +47,15 @@ export class ReportsService {
       return [];
     }
 
-    const grouped = await this.prisma.stockMovement.groupBy({
-      by: ['productId'],
-      where: { productId: { in: products.map((product) => product.id) } },
-      _sum: { quantity: true },
-    });
+    const productIds = products.map((product) => product.id);
+    const [grouped, averageCostByProduct] = await Promise.all([
+      this.prisma.stockMovement.groupBy({
+        by: ['productId'],
+        where: { productId: { in: productIds } },
+        _sum: { quantity: true },
+      }),
+      this.inventory.getAverageCostForProducts(productIds),
+    ]);
     const stockByProduct = new Map(
       grouped.map(({ productId, _sum }) => [
         productId,
@@ -57,23 +63,22 @@ export class ReportsService {
       ]),
     );
 
-    return Promise.all(
-      products.map(async (product) => {
-        const stock = stockByProduct.get(product.id) ?? new Prisma.Decimal(0);
-        const averageCost = await this.inventory.getAverageCost(product.id);
+    return products.map((product) => {
+      const stock = stockByProduct.get(product.id) ?? new Prisma.Decimal(0);
+      const averageCost =
+        averageCostByProduct.get(product.id) ?? new Prisma.Decimal(0);
 
-        return {
-          id: product.id,
-          sku: product.sku,
-          name: product.name,
-          category: product.category.name,
-          unit: product.unit.name,
-          stock,
-          averageCost,
-          stockValue: stock.times(averageCost),
-        };
-      }),
-    );
+      return {
+        id: product.id,
+        sku: product.sku,
+        name: product.name,
+        category: product.category.name,
+        unit: product.unit.name,
+        stock,
+        averageCost,
+        stockValue: stock.times(averageCost),
+      };
+    });
   }
 
   // Los pedidos CANCELADO no cuentan como venta real (todavía no hay

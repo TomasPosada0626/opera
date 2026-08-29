@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import {
@@ -212,6 +212,11 @@ describe('SupplierDetailPage', () => {
     renderWithClient(<SupplierDetailPage />);
 
     await user.click(await screen.findByRole('button', { name: 'Eliminar' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
 
     expect(mockedApiFetch).toHaveBeenCalledWith('/supplier-products/sp-1', {
       method: 'DELETE',
