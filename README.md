@@ -366,6 +366,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0004 — NestJS + Prisma sobre otras alternativas de backend](docs/adr/0004-nestjs-prisma-sobre-alternativas.md)
 - [0005 — No migrar a Clean Architecture / DDD táctico](docs/adr/0005-no-clean-architecture.md)
 - [0006 — Retención y archivado de AuditLog y StockMovement](docs/adr/0006-retencion-auditlog-stockmovement.md)
+- [0007 — Sin TLS en HTTP local ni SSL en la conexión a Postgres](docs/adr/0007-sin-tls-lan-de-confianza.md)
 
 ## Changelog
 
