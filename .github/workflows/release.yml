@@ -1,0 +1,59 @@
+name: Release
+
+# Tagear con `git tag vX.Y.Z && git push origin vX.Y.Z` dispara este workflow.
+# El tag debe apuntar a un commit de main que ya pasó CI -- este workflow no
+# vuelve a correr lint/tests, solo empaqueta y publica.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+# El GITHUB_TOKEN automático de Actions (sin ningún secret que crear) alcanza
+# para crear el Release y subir el instalador en este mismo repo con este
+# permiso -- electron-builder lo toma vía GH_TOKEN más abajo.
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    # Mismo motivo que package-windows en ci.yml: NSIS necesita Wine en Linux
+    # y windows-latest lo construye nativo.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # electron-builder nombra el instalador con la versión de package.json,
+      # no con el tag de git -- sin este paso, publicar v1.2.0 empaquetaría
+      # igual "Opera-Windows-0.0.1-Setup.exe" si nadie bumpeó el package.json
+      # a mano antes de tagear.
+      - name: Sync package.json version with the tag
+        working-directory: packages/desktop
+        shell: bash
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+
+      # CSC_LINK/CSC_KEY_PASSWORD son opcionales de este lado: si todavía no
+      # hay certificado de firma de código configurado como secret,
+      # electron-builder publica igual un instalador sin firmar (SmartScreen
+      # lo marca "Editor desconocido", pero funciona) -- no hace falta
+      # resolver la firma antes de tener el pipeline andando.
+      - name: Build, sign and publish the Windows installer
+        working-directory: packages/desktop
+        run: pnpm release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
