@@ -15,6 +15,7 @@ import {
 import UsersPage from './UsersPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
+import type { PaginatedResult } from '../types/product';
 import type { Role } from '../types/role';
 import type { User } from '../types/user';
 
@@ -61,10 +62,17 @@ function buildUser(overrides: Partial<User> = {}): User {
   };
 }
 
+function usersResponse(data: User[]): PaginatedResult<User> {
+  return {
+    data,
+    meta: { page: 1, pageSize: 20, total: data.length, totalPages: 1 },
+  };
+}
+
 function mockEndpoints(users: User[], roles: Role[] = [adminRole]) {
   mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
-    if (path === '/users' && (!options || !options.method)) {
-      return Promise.resolve(users);
+    if (path.startsWith('/users?') && (!options || !options.method)) {
+      return Promise.resolve(usersResponse(users));
     }
     if (path === '/roles') {
       return Promise.resolve(roles);
@@ -177,8 +185,8 @@ describe('UsersPage', () => {
   it('creates a user with the selected role', async () => {
     mockEndpoints([]);
     mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === '/users' && (!options || options.method === undefined)) {
-        return Promise.resolve([]);
+      if (path.startsWith('/users?') && (!options || !options.method)) {
+        return Promise.resolve(usersResponse([]));
       }
       if (path === '/roles') {
         return Promise.resolve([adminRole]);
@@ -214,5 +222,28 @@ describe('UsersPage', () => {
       expect(body.email).toBe('carla@opera.local');
       expect(body.roleIds).toEqual([adminRole.id]);
     });
+  });
+
+  it('sends the debounced search term as a query param', async () => {
+    mockEndpoints([]);
+    const user = userEvent.setup();
+
+    renderWithClient(<UsersPage />);
+
+    await user.type(
+      screen.getByPlaceholderText('Buscar por nombre o correo…'),
+      'ana',
+    );
+
+    await waitFor(
+      () => {
+        const matched = mockedApiFetch.mock.calls.some((call: unknown[]) => {
+          const path = call[0] as string;
+          return path.startsWith('/users?') && path.includes('search=ana');
+        });
+        expect(matched).toBe(true);
+      },
+      { timeout: 2000 },
+    );
   });
 });

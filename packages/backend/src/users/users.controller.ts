@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+} from '@nestjs/common';
 import { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -8,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
+import { ListQueryDto } from '../common/dto/list-query.dto';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -31,9 +41,9 @@ export class UsersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar usuarios (ADMIN)' })
-  findAll() {
-    return this.usersService.findAll();
+  @ApiOperation({ summary: 'Listar usuarios (paginado/buscable, ADMIN)' })
+  findAll(@Query() query: ListQueryDto) {
+    return this.usersService.findAll(query);
   }
 
   @Get(':id')

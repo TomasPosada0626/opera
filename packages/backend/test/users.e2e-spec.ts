@@ -70,11 +70,11 @@ describe('Users (e2e)', () => {
 
     const list = await request(app.getHttpServer())
       .get('/users')
+      .query({ search: String(unique) })
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect((list.body as { id: string }[]).some((u) => u.id === user.id)).toBe(
-      true,
-    );
+    const listBody = list.body as { data: { id: string }[] };
+    expect(listBody.data.some((u) => u.id === user.id)).toBe(true);
 
     const found = await request(app.getHttpServer())
       .get(`/users/${user.id}`)
@@ -185,5 +185,62 @@ describe('Users (e2e)', () => {
     expect((response.body as { message: string }).message).toContain(
       'propia cuenta',
     );
+  });
+
+  describe('pagination, search and sort', () => {
+    const unique = Date.now();
+
+    beforeAll(async () => {
+      const names = ['PagA', 'PagB', 'PagC'];
+      for (const name of names) {
+        const response = await request(app.getHttpServer())
+          .post('/users')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            email: `users-pag-${name}-${unique}@opera.local`,
+            password: 'Test-password-123!',
+            name: `${name}-${unique}`,
+          })
+          .expect(201);
+        createdIds.push((response.body as { id: string }).id);
+      }
+    });
+
+    it('returns a paginated envelope with data and meta', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/users')
+        .query({ search: String(unique), pageSize: 2, page: 1 })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = response.body as {
+        data: unknown[];
+        meta: { page: number; pageSize: number; total: number };
+      };
+      expect(body.data.length).toBeLessThanOrEqual(2);
+      expect(body.meta).toEqual(
+        expect.objectContaining({ page: 1, pageSize: 2, total: 3 }),
+      );
+    });
+
+    it('filters by search on name or email', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/users')
+        .query({ search: `PagB-${unique}` })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      const body = response.body as { data: { name: string }[] };
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].name).toBe(`PagB-${unique}`);
+    });
+
+    it('rejects an invalid page number', async () => {
+      await request(app.getHttpServer())
+        .get('/users')
+        .query({ page: 0 })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(400);
+    });
   });
 });

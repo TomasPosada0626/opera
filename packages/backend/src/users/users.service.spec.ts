@@ -19,6 +19,7 @@ describe('UsersService', () => {
     user: {
       create: jest.Mock;
       findMany: jest.Mock;
+      count: jest.Mock;
       findUnique: jest.Mock;
       update: jest.Mock;
     };
@@ -31,6 +32,7 @@ describe('UsersService', () => {
       user: {
         create: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
       },
@@ -91,11 +93,74 @@ describe('UsersService', () => {
 
   it('strips the password from every user in findAll', async () => {
     prisma.user.findMany.mockResolvedValue([baseUser]);
+    prisma.user.count.mockResolvedValue(1);
 
-    const result = await service.findAll();
+    const result = await service.findAll({});
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).not.toHaveProperty('password');
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0]).not.toHaveProperty('password');
+  });
+
+  it('paginates users and orders by name by default', async () => {
+    prisma.user.findMany.mockResolvedValue([baseUser]);
+    prisma.user.count.mockResolvedValue(1);
+
+    const result = await service.findAll({});
+
+    expect(result.meta).toEqual({
+      page: 1,
+      pageSize: 20,
+      total: 1,
+      totalPages: 1,
+    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {},
+        orderBy: { name: 'asc' },
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('filters users by name or email when search is given', async () => {
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.count.mockResolvedValue(0);
+
+    await service.findAll({ search: 'test' });
+
+    const expectedWhere = {
+      OR: [
+        { name: { contains: 'test', mode: 'insensitive' } },
+        { email: { contains: 'test', mode: 'insensitive' } },
+      ],
+    };
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(prisma.user.count).toHaveBeenCalledWith({ where: expectedWhere });
+  });
+
+  it('falls back to sorting by name when sortBy is not an allowed field', async () => {
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.count.mockResolvedValue(0);
+
+    await service.findAll({ sortBy: 'password', sortOrder: 'desc' });
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { name: 'desc' } }),
+    );
+  });
+
+  it('honors sortBy when it is an allowed field', async () => {
+    prisma.user.findMany.mockResolvedValue([]);
+    prisma.user.count.mockResolvedValue(0);
+
+    await service.findAll({ sortBy: 'email', sortOrder: 'desc' });
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { email: 'desc' } }),
+    );
   });
 
   it('throws NotFoundException when findOne cannot find the user', async () => {

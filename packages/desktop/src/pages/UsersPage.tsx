@@ -1,28 +1,40 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
+import { Pagination } from '../components/ui/Pagination';
 import { ResetPasswordForm } from '../components/users/ResetPasswordForm';
 import { UserForm } from '../components/users/UserForm';
 import { UserRowActions } from '../components/users/UserRowActions';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useUsers } from '../hooks/useUsers';
 import { getCurrentUser } from '../lib/current-user';
 import type { User } from '../types/user';
+
+const PAGE_SIZE = 20;
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
 }
 
 function UsersPage() {
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [resettingUser, setResettingUser] = useState<User | null>(null);
+  const search = useDebouncedValue(searchInput, 300);
   const currentUserId = getCurrentUser()?.sub;
 
-  const usersQuery = useUsers();
-  const users = usersQuery.data ?? [];
+  const usersQuery = useUsers({ page, pageSize: PAGE_SIZE, search });
+  const users = usersQuery.data?.data ?? [];
+
+  function handleSearchChange(value: string) {
+    setSearchInput(value);
+    setPage(1);
+  }
 
   function openCreateModal() {
     setEditingUser(null);
@@ -103,6 +115,18 @@ function UsersPage() {
         </Button>
       </div>
 
+      <div className="relative w-full max-w-sm">
+        <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+        <input
+          type="search"
+          value={searchInput}
+          onChange={(event) => handleSearchChange(event.target.value)}
+          placeholder="Buscar por nombre o correo…"
+          aria-label="Buscar usuarios"
+          className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+        />
+      </div>
+
       <DataTable
         columns={columns}
         rows={users}
@@ -110,6 +134,14 @@ function UsersPage() {
         isLoading={usersQuery.isLoading}
         emptyMessage="No hay usuarios registrados."
       />
+
+      {usersQuery.data && (
+        <Pagination
+          page={usersQuery.data.meta.page}
+          totalPages={usersQuery.data.meta.totalPages}
+          onPageChange={setPage}
+        />
+      )}
 
       {isFormModalOpen && (
         <Modal

@@ -12,8 +12,11 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { HASH_OPTIONS } from '../auth/argon2-options';
+import { ListQueryDto } from '../common/dto/list-query.dto';
+import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 
 const userInclude = { roles: { include: { role: true } } };
+const sortableFields = ['name', 'email', 'createdAt'] as const;
 
 function toResponse(user: User & { roles: unknown[] }) {
   const { id, email, name, isActive, createdAt, updatedAt, roles } = user;
@@ -51,13 +54,43 @@ export class UsersService {
     return toResponse(user);
   }
 
-  async findAll() {
-    const users = await this.prisma.user.findMany({
-      include: userInclude,
-      orderBy: { name: 'asc' },
-    });
+  // Pagina igual que el resto de los catálogos (#20, auditoría) — antes
+  // traía todos los usuarios de una sola vez, la única lista sin paginar
+  // fuera de Roles (que se mantiene sin paginar a propósito, ver
+  // RolesService.findAll: alimenta un picker de checkboxes, no una tabla).
+  async findAll(query: ListQueryDto) {
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy,
+      sortOrder = 'asc',
+      search,
+    } = query;
+    const where = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+    const orderBy = resolveOrderBy(sortBy, sortOrder, sortableFields, 'name');
 
-    return users.map(toResponse);
+    const result = await paginate(
+      () => this.prisma.user.count({ where }),
+      ({ skip, take }) =>
+        this.prisma.user.findMany({
+          where,
+          include: userInclude,
+          orderBy,
+          skip,
+          take,
+        }),
+      page,
+      pageSize,
+    );
+
+    return { ...result, data: result.data.map(toResponse) };
   }
 
   async findOne(id: string) {
