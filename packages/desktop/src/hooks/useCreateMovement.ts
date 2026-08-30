@@ -32,5 +32,6 @@ export function useCreateMovement() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
+    meta: { successMessage: 'Movimiento registrado.' },
   });
 }

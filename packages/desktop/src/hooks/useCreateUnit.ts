@@ -19,5 +19,6 @@ export function useCreateUnit() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['units'] });
     },
+    meta: { successMessage: 'Unidad creada.' },
   });
 }

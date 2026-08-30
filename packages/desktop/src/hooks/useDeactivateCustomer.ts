@@ -11,5 +11,6 @@ export function useDeactivateCustomer() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
+    meta: { successMessage: 'Cliente desactivado.' },
   });
 }

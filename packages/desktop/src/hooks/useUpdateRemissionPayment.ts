@@ -28,5 +28,6 @@ export function useUpdateRemissionPayment() {
         queryKey: ['order', variables.orderId],
       });
     },
+    meta: { successMessage: 'Pago de remisión actualizado.' },
   });
 }

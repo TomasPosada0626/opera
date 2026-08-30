@@ -15,5 +15,6 @@ export function useUpdateCustomer() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
+    meta: { successMessage: 'Cliente actualizado.' },
   });
 }

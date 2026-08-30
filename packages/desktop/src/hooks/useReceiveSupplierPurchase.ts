@@ -19,5 +19,6 @@ export function useReceiveSupplierPurchase() {
       });
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
+    meta: { successMessage: 'Compra recibida — stock actualizado.' },
   });
 }

@@ -25,5 +25,6 @@ export function useCreateSupplierPurchase() {
         queryKey: ['supplier-purchases'],
       });
     },
+    meta: { successMessage: 'Compra a proveedor registrada.' },
   });
 }

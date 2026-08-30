@@ -11,5 +11,6 @@ export function useDeactivateWarehouse() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
     },
+    meta: { successMessage: 'Bodega desactivada.' },
   });
 }

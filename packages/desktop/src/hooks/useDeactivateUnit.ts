@@ -11,5 +11,6 @@ export function useDeactivateUnit() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['units'] });
     },
+    meta: { successMessage: 'Unidad desactivada.' },
   });
 }

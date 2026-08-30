@@ -18,5 +18,6 @@ export function useCreateCategory() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
+    meta: { successMessage: 'Categoría creada.' },
   });
 }

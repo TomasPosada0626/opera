@@ -11,5 +11,6 @@ export function useDeactivateSupplier() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['suppliers'] });
     },
+    meta: { successMessage: 'Proveedor desactivado.' },
   });
 }

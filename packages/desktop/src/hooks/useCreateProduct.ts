@@ -27,5 +27,6 @@ export function useCreateProduct() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
     },
+    meta: { successMessage: 'Producto creado.' },
   });
 }

@@ -11,5 +11,6 @@ export function useDeactivateProduct() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
     },
+    meta: { successMessage: 'Producto desactivado.' },
   });
 }

@@ -14,5 +14,6 @@ export function useCancelOrder() {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
     },
+    meta: { successMessage: 'Pedido cancelado.' },
   });
 }

@@ -19,5 +19,6 @@ export function useCreateProductionOrder() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['production-orders'] });
     },
+    meta: { successMessage: 'Orden de producción creada.' },
   });
 }

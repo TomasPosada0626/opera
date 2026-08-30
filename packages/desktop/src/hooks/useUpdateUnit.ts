@@ -15,5 +15,6 @@ export function useUpdateUnit() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['units'] });
     },
+    meta: { successMessage: 'Unidad actualizada.' },
   });
 }

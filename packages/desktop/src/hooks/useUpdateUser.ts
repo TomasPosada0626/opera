@@ -20,5 +20,6 @@ export function useUpdateUser() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
     },
+    meta: { successMessage: 'Usuario actualizado.' },
   });
 }

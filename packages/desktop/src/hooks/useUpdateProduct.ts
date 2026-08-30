@@ -15,5 +15,6 @@ export function useUpdateProduct() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['products'] });
     },
+    meta: { successMessage: 'Producto actualizado.' },
   });
 }

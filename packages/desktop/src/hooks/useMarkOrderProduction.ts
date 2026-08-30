@@ -17,5 +17,6 @@ export function useMarkOrderProduction() {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
     },
+    meta: { successMessage: 'Pedido enviado a producción.' },
   });
 }

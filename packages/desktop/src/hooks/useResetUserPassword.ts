@@ -12,5 +12,6 @@ export function useResetUserPassword() {
         method: 'PATCH',
         body: JSON.stringify({ newPassword }),
       }),
+    meta: { successMessage: 'Contraseña restablecida.' },
   });
 }

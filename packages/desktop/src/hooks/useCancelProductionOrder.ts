@@ -12,5 +12,6 @@ export function useCancelProductionOrder() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['production-orders'] });
     },
+    meta: { successMessage: 'Orden de producción cancelada.' },
   });
 }

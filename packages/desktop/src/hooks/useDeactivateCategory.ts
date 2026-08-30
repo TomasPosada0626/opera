@@ -11,5 +11,6 @@ export function useDeactivateCategory() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
+    meta: { successMessage: 'Categoría desactivada.' },
   });
 }

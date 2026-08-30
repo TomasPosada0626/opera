@@ -4,6 +4,7 @@ import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { queryClient } from './lib/query-client';
 import { UpdateBanner } from './components/ui/UpdateBanner';
+import { ToastContainer } from './components/ui/ToastContainer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
         <UpdateBanner />
+        <ToastContainer />
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
       </QueryClientProvider>
     </ErrorBoundary>

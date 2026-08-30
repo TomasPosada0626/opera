@@ -15,5 +15,6 @@ export function useUpdateWarehouse() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
     },
+    meta: { successMessage: 'Bodega actualizada.' },
   });
 }

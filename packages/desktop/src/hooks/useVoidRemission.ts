@@ -27,5 +27,6 @@ export function useVoidRemission() {
       });
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
+    meta: { successMessage: 'Remisión anulada.' },
   });
 }

@@ -22,5 +22,6 @@ export function useCreateSupplier() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['suppliers'] });
     },
+    meta: { successMessage: 'Proveedor creado.' },
   });
 }

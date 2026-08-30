@@ -19,5 +19,6 @@ export function useCreateWarehouse() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['warehouses'] });
     },
+    meta: { successMessage: 'Bodega creada.' },
   });
 }

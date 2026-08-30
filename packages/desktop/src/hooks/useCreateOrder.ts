@@ -24,5 +24,6 @@ export function useCreateOrder() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
+    meta: { successMessage: 'Pedido creado.' },
   });
 }

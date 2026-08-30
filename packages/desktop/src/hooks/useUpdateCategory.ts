@@ -15,5 +15,6 @@ export function useUpdateCategory() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['categories'] });
     },
+    meta: { successMessage: 'Categoría actualizada.' },
   });
 }

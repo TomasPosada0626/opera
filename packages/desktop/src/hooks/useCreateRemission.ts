@@ -29,5 +29,6 @@ export function useCreateRemission() {
       // ya no lo descuenta al crearse.
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
     },
+    meta: { successMessage: 'Remisión creada.' },
   });
 }

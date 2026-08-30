@@ -20,5 +20,6 @@ export function useCreateSupplierProduct() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['supplier-products'] });
     },
+    meta: { successMessage: 'Precio de proveedor agregado.' },
   });
 }

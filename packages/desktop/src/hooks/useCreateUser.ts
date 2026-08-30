@@ -21,5 +21,6 @@ export function useCreateUser() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['users'] });
     },
+    meta: { successMessage: 'Usuario creado.' },
   });
 }

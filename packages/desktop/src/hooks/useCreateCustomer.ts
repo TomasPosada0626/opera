@@ -22,5 +22,6 @@ export function useCreateCustomer() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
+    meta: { successMessage: 'Cliente creado.' },
   });
 }
