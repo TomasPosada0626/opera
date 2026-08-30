@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { UserRowActions } from './UserRowActions';
@@ -167,5 +167,113 @@ describe('UserRowActions', () => {
     expect(
       await screen.findByText('No se pudo desactivar el usuario.'),
     ).toBeInTheDocument();
+  });
+
+  it('hides "Borrar datos" while the user is still active', () => {
+    renderWithClient(
+      <UserRowActions
+        user={buildUser()}
+        isSelf={false}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Borrar datos' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides "Borrar datos" for the current user, even if inactive', () => {
+    renderWithClient(
+      <UserRowActions
+        user={buildUser({ isActive: false })}
+        isSelf={true}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Borrar datos' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens a confirmation dialog instead of calling the API directly when "Borrar datos" is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithClient(
+      <UserRowActions
+        user={buildUser({ isActive: false })}
+        isSelf={false}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Borrar datos personales' }),
+    ).toBeInTheDocument();
+    expect(mockedApiFetch).not.toHaveBeenCalled();
+  });
+
+  it('calls PATCH /users/:id/anonymize only after confirming', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildUser({ isActive: false, name: 'Usuario eliminado' }),
+    );
+    const user = userEvent.setup();
+    renderWithClient(
+      <UserRowActions
+        user={buildUser({ isActive: false })}
+        isSelf={false}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/users/user-1/anonymize',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('shows an inline error inside the dialog when anonymizing fails, without closing it', async () => {
+    mockedApiFetch.mockRejectedValue(
+      new ApiError(404, 'Usuario no encontrado'),
+    );
+    const user = userEvent.setup();
+    renderWithClient(
+      <UserRowActions
+        user={buildUser({ isActive: false })}
+        isSelf={false}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Usuario no encontrado'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

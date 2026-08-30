@@ -203,6 +203,56 @@ describe('CustomersService', () => {
     );
   });
 
+  it('anonymizes a customer by redacting PII and deactivating it, logging only "after"', async () => {
+    prisma.customer.findUnique.mockResolvedValue(baseCustomer);
+    const anonymized = {
+      ...baseCustomer,
+      name: 'Cliente eliminado',
+      taxId: null,
+      email: null,
+      phone: null,
+      address: null,
+      isActive: false,
+    };
+    prisma.customer.update.mockResolvedValue(anonymized);
+
+    const result = await service.anonymize('customer-1', 'acting-user');
+
+    expect(prisma.customer.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'customer-1' },
+        data: {
+          name: 'Cliente eliminado',
+          taxId: null,
+          email: null,
+          phone: null,
+          address: null,
+          isActive: false,
+        },
+      }),
+    );
+    expect(result).toEqual(anonymized);
+    // Objeto exacto (no objectContaining): también prueba que nunca se
+    // filtra un "before" con la PII real al audit trail -- ese es el punto
+    // entero del hallazgo #15.
+    expect(audit.log).toHaveBeenCalledWith({
+      userId: 'acting-user',
+      entity: 'Customer',
+      entityId: 'customer-1',
+      action: 'ANONYMIZE',
+      after: anonymized,
+    });
+  });
+
+  it('throws NotFoundException when anonymizing a customer that does not exist', async () => {
+    prisma.customer.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.anonymize('missing', 'acting-user'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.customer.update).not.toHaveBeenCalled();
+  });
+
   describe('getBalance', () => {
     it('throws NotFoundException when the customer does not exist', async () => {
       prisma.customer.findUnique.mockResolvedValue(null);

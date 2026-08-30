@@ -90,4 +90,16 @@ export class CustomersController {
   reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.customersService.reactivate(id, req.user.sub);
   }
+
+  @Patch(':id/anonymize')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Borrar los datos personales del cliente (ADMIN)',
+    description:
+      'Irreversible: sobreescribe nombre/email/teléfono/dirección y desactiva el registro. El pedido/historial de negocio no se borra.',
+  })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado.' })
+  anonymize(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.customersService.anonymize(id, req.user.sub);
+  }
 }

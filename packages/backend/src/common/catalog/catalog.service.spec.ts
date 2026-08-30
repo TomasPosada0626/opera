@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
 import { CatalogService } from './catalog.service';
 
@@ -66,6 +66,23 @@ class MultiFieldCatalogService extends CatalogService<
       searchFields: ['name', 'code'],
       sortableFields: ['name'] as const,
       defaultSortField: 'name',
+    });
+  }
+}
+
+class PiiCatalogService extends CatalogService<
+  FakeEntity,
+  { name: string },
+  { name?: string }
+> {
+  constructor(audit: AuditService) {
+    super(fakeDelegate, audit, {
+      entityName: 'FakeEntity',
+      notFoundMessage: 'No encontrado',
+      searchFields: ['name'],
+      sortableFields: ['name'] as const,
+      defaultSortField: 'name',
+      piiRedaction: { name: 'Redactado' },
     });
   }
 }
@@ -310,6 +327,54 @@ describe('CatalogService', () => {
       await expect(
         service.deactivate('missing', 'user-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(fakeDelegate.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('anonymize', () => {
+    it('redacts the configured fields, forces isActive false, and logs ANONYMIZE with only "after"', async () => {
+      const service = new PiiCatalogService(audit as unknown as AuditService);
+      fakeDelegate.findUnique.mockResolvedValue(baseEntity);
+      const anonymized = { ...baseEntity, name: 'Redactado', isActive: false };
+      fakeDelegate.update.mockResolvedValue(anonymized);
+
+      const result = await service.anonymize('entity-1', 'user-1');
+
+      expect(fakeDelegate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'entity-1' },
+          data: { name: 'Redactado', isActive: false },
+        }),
+      );
+      expect(result).toEqual(anonymized);
+      expect(audit.log).toHaveBeenCalledWith({
+        userId: 'user-1',
+        entity: 'FakeEntity',
+        entityId: baseEntity.id,
+        action: 'ANONYMIZE',
+        after: anonymized,
+      });
+    });
+
+    it('propagates NotFoundException and never calls update when missing', async () => {
+      const service = new PiiCatalogService(audit as unknown as AuditService);
+      fakeDelegate.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.anonymize('missing', 'user-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(fakeDelegate.update).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException when the subclass never configured piiRedaction', async () => {
+      const service = new MultiFieldCatalogService(
+        audit as unknown as AuditService,
+      );
+
+      await expect(
+        service.anonymize('entity-1', 'user-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(fakeDelegate.findUnique).not.toHaveBeenCalled();
       expect(fakeDelegate.update).not.toHaveBeenCalled();
     });
   });

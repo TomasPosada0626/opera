@@ -27,6 +27,13 @@ export class CustomersService extends CatalogService<
       searchFields: ['name'],
       sortableFields,
       defaultSortField: 'name',
+      piiRedaction: {
+        name: 'Cliente eliminado',
+        taxId: null,
+        email: null,
+        phone: null,
+        address: null,
+      },
     });
   }
 

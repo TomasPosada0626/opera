@@ -142,4 +142,48 @@ describe('Users (e2e)', () => {
       'propia cuenta',
     );
   });
+
+  it('anonymizes a user, redacting name/email and deactivating it', async () => {
+    const unique = Date.now();
+    const created = await request(app.getHttpServer())
+      .post('/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: `users-anonymize-${unique}@opera.local`,
+        password: 'Test-password-123!',
+        name: 'Usuario a borrar',
+      })
+      .expect(201);
+    const user = created.body as { id: string };
+    createdIds.push(user.id);
+
+    const response = await request(app.getHttpServer())
+      .patch(`/users/${user.id}/anonymize`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const anonymized = response.body as {
+      name: string;
+      email: string;
+      isActive: boolean;
+    };
+    expect(anonymized.name).toBe('Usuario eliminado');
+    expect(anonymized.email).toMatch(/^usuario-eliminado-.+@opera\.local$/);
+    expect(anonymized.isActive).toBe(false);
+
+    const auditEntries = await prisma.auditLog.findMany({
+      where: { entity: 'User', entityId: user.id, action: 'ANONYMIZE' },
+    });
+    expect(auditEntries).toHaveLength(1);
+    expect(auditEntries[0].before).toBeNull();
+  });
+
+  it('refuses to let an admin anonymize their own account', async () => {
+    const response = await request(app.getHttpServer())
+      .patch(`/users/${adminUserId}/anonymize`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(400);
+    expect((response.body as { message: string }).message).toContain(
+      'propia cuenta',
+    );
+  });
 });

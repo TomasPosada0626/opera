@@ -200,6 +200,52 @@ describe('UsersService', () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
+  it('anonymizes a user by redacting name/email and deactivating it, logging only "after"', async () => {
+    prisma.user.findUnique.mockResolvedValue(baseUser);
+    prisma.user.update.mockImplementation(
+      ({ data }: { data: Record<string, unknown> }) =>
+        Promise.resolve({ ...baseUser, ...data }),
+    );
+
+    const result = await service.anonymize('user-1', 'acting-user');
+
+    expect(result.name).toBe('Usuario eliminado');
+    expect(result.email).toMatch(/^usuario-eliminado-.+@opera\.local$/);
+    expect(result.isActive).toBe(false);
+    expect(result).not.toHaveProperty('password');
+
+    const [[auditArgs]] = audit.log.mock.calls as [Record<string, unknown>][];
+    expect(auditArgs).toEqual(
+      expect.objectContaining({
+        userId: 'acting-user',
+        entity: 'User',
+        entityId: 'user-1',
+        action: 'ANONYMIZE',
+      }),
+    );
+    const after = auditArgs.after as { name: string; isActive: boolean };
+    expect(after.name).toBe('Usuario eliminado');
+    expect(after.isActive).toBe(false);
+    expect(auditArgs).not.toHaveProperty('before');
+  });
+
+  it('refuses to let a user anonymize their own account', async () => {
+    await expect(
+      service.anonymize('acting-user', 'acting-user'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('throws NotFoundException when anonymizing a user that does not exist', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.anonymize('missing', 'acting-user'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundException when resetting the password of a user that does not exist', async () => {
     prisma.user.findUnique.mockResolvedValue(null);
 

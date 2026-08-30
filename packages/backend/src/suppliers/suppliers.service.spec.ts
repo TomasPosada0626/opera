@@ -198,4 +198,53 @@ describe('SuppliersService', () => {
       expect.objectContaining({ action: 'REACTIVATE' }),
     );
   });
+
+  it('anonymizes a supplier by redacting PII and deactivating it, logging only "after"', async () => {
+    prisma.supplier.findUnique.mockResolvedValue(baseSupplier);
+    const anonymized = {
+      ...baseSupplier,
+      name: 'Proveedor eliminado',
+      taxId: null,
+      email: null,
+      phone: null,
+      address: null,
+      isActive: false,
+    };
+    prisma.supplier.update.mockResolvedValue(anonymized);
+
+    const result = await service.anonymize('supplier-1', 'acting-user');
+
+    expect(prisma.supplier.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'supplier-1' },
+        data: {
+          name: 'Proveedor eliminado',
+          taxId: null,
+          email: null,
+          phone: null,
+          address: null,
+          isActive: false,
+        },
+      }),
+    );
+    expect(result).toEqual(anonymized);
+    // Objeto exacto (no objectContaining): también prueba que nunca se
+    // filtra un "before" con la PII real al audit trail.
+    expect(audit.log).toHaveBeenCalledWith({
+      userId: 'acting-user',
+      entity: 'Supplier',
+      entityId: 'supplier-1',
+      action: 'ANONYMIZE',
+      after: anonymized,
+    });
+  });
+
+  it('throws NotFoundException when anonymizing a supplier that does not exist', async () => {
+    prisma.supplier.findUnique.mockResolvedValue(null);
+
+    await expect(
+      service.anonymize('missing', 'acting-user'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.supplier.update).not.toHaveBeenCalled();
+  });
 });

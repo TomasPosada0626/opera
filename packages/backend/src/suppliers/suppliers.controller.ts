@@ -79,4 +79,16 @@ export class SuppliersController {
   reactivate(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.suppliersService.reactivate(id, req.user.sub);
   }
+
+  @Patch(':id/anonymize')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Borrar los datos personales del proveedor (ADMIN)',
+    description:
+      'Irreversible: sobreescribe nombre/email/teléfono/dirección y desactiva el registro. El historial de compras no se borra.',
+  })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
+  anonymize(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.suppliersService.anonymize(id, req.user.sub);
+  }
 }

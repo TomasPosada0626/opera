@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AuditService } from '../../audit/audit.service';
 import { ListQueryDto } from '../dto/list-query.dto';
 import { paginate, resolveOrderBy } from '../pagination/paginate';
@@ -58,6 +58,12 @@ interface CatalogOptions {
   sortableFields: readonly string[];
   defaultSortField: string;
   include?: Record<string, unknown>;
+  // Solo lo declaran Customer/Supplier (#15, auditoría de datos/legal) --
+  // valores que reemplazan cada campo de PII al anonimizar. isActive se
+  // fuerza a false aparte en anonymize(), sin importar lo que este mapa
+  // traiga, porque una entidad anonimizada no puede seguir usándose en
+  // transacciones nuevas.
+  piiRedaction?: Record<string, unknown>;
 }
 
 // Base compartida para los 6 módulos de catálogo (Category, Unit,
@@ -170,6 +176,41 @@ export abstract class CatalogService<
   // por un error de un click o un cambio de opinión del negocio.
   async reactivate(id: string, actingUserId: string): Promise<TEntity> {
     return this.setActive(id, true, 'REACTIVATE', actingUserId);
+  }
+
+  // Borrado de PII a pedido (#15, auditoría de datos/legal) -- no es un
+  // hard delete: la fila se conserva (Order/SupplierPurchase siguen
+  // apuntando a un id real) pero sus campos personales quedan
+  // irrecuperables, igual que reclama un derecho de supresión de terceros
+  // sin romper el historial de negocio.
+  async anonymize(id: string, actingUserId: string): Promise<TEntity> {
+    if (!this.options.piiRedaction) {
+      throw new BadRequestException(
+        `${this.options.entityName} no admite anonimización`,
+      );
+    }
+
+    // Se descarta a propósito: nunca se le pasa a audit.log como "before",
+    // porque guardar el estado previo dejaría la PII que se acaba de borrar
+    // viviendo para siempre en AuditLog (mismo criterio que
+    // UsersService.resetPassword, que tampoco guarda antes/después).
+    await this.findOne(id);
+
+    const entity = await this.delegate.update({
+      where: { id },
+      data: { ...this.options.piiRedaction, isActive: false },
+      include: this.options.include,
+    });
+
+    await this.audit.log({
+      userId: actingUserId,
+      entity: this.options.entityName,
+      entityId: entity.id,
+      action: 'ANONYMIZE',
+      after: entity,
+    });
+
+    return entity;
   }
 
   private async setActive(

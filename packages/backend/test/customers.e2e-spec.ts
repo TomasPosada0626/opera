@@ -94,6 +94,50 @@ describe('Customers (e2e)', () => {
     );
   });
 
+  it('anonymizes a customer, redacting its PII and deactivating it', async () => {
+    const unique = `E2E-ANON-${Date.now()}`;
+
+    const createResponse = await request(app.getHttpServer())
+      .post('/customers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: unique,
+        taxId: `${unique}-NIT`,
+        email: 'borrar@example.test',
+        phone: '3009998877',
+        address: 'Calle a borrar #1-1',
+      })
+      .expect(201);
+    const created = createResponse.body as { id: string };
+    createdIds.push(created.id);
+
+    const anonymizeResponse = await request(app.getHttpServer())
+      .patch(`/customers/${created.id}/anonymize`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const anonymized = anonymizeResponse.body as {
+      name: string;
+      taxId: string | null;
+      email: string | null;
+      phone: string | null;
+      address: string | null;
+      isActive: boolean;
+    };
+    expect(anonymized.name).toBe('Cliente eliminado');
+    expect(anonymized.taxId).toBeNull();
+    expect(anonymized.email).toBeNull();
+    expect(anonymized.phone).toBeNull();
+    expect(anonymized.address).toBeNull();
+    expect(anonymized.isActive).toBe(false);
+
+    const auditEntries = await prisma.auditLog.findMany({
+      where: { entity: 'Customer', entityId: created.id, action: 'ANONYMIZE' },
+    });
+    expect(auditEntries).toHaveLength(1);
+    // La PII borrada nunca debe quedar viviendo en el audit trail (#15).
+    expect(auditEntries[0].before).toBeNull();
+  });
+
   it('returns 404 for a customer that does not exist', async () => {
     await request(app.getHttpServer())
       .get('/customers/00000000-0000-0000-0000-000000000000')

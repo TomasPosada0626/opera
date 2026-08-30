@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { CustomerRowActions } from './CustomerRowActions';
@@ -111,5 +111,87 @@ describe('CustomerRowActions', () => {
     expect(
       await screen.findByText('No se pudo desactivar el cliente.'),
     ).toBeInTheDocument();
+  });
+
+  it('hides "Borrar datos" while the customer is still active', () => {
+    renderWithClient(
+      <CustomerRowActions customer={buildCustomer()} onEdit={vi.fn()} />,
+    );
+
+    expect(
+      screen.queryByRole('button', { name: 'Borrar datos' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens a confirmation dialog instead of calling the API directly when "Borrar datos" is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithClient(
+      <CustomerRowActions
+        customer={buildCustomer({ isActive: false })}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+
+    expect(
+      screen.getByRole('dialog', { name: 'Borrar datos personales' }),
+    ).toBeInTheDocument();
+    expect(mockedApiFetch).not.toHaveBeenCalled();
+  });
+
+  it('calls PATCH /customers/:id/anonymize only after confirming', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildCustomer({ isActive: false, name: 'Cliente eliminado' }),
+    );
+    const user = userEvent.setup();
+    renderWithClient(
+      <CustomerRowActions
+        customer={buildCustomer({ isActive: false })}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/customers/customer-1/anonymize',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    );
+  });
+
+  it('shows an inline error inside the dialog when anonymizing fails, without closing it', async () => {
+    mockedApiFetch.mockRejectedValue(
+      new ApiError(404, 'Cliente no encontrado'),
+    );
+    const user = userEvent.setup();
+    renderWithClient(
+      <CustomerRowActions
+        customer={buildCustomer({ isActive: false })}
+        onEdit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Borrar datos' }));
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Eliminar',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Cliente no encontrado'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

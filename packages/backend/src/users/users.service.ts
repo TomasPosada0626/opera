@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
 import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -137,6 +138,48 @@ export class UsersService {
       entityId: user.id,
       action: 'DEACTIVATE',
       before: toResponse(before),
+      after: toResponse(user),
+    });
+
+    return toResponse(user);
+  }
+
+  // Borrado de PII a pedido (#15, auditoría de datos/legal). Mismo criterio
+  // que deactivate: bloqueado también del lado del servidor, no solo
+  // ocultado en la UI. email es @unique y no nullable (a diferencia de
+  // Customer/Supplier) -- un placeholder con el propio id garantiza que
+  // anonimizar dos usuarios nunca choca entre sí.
+  async anonymize(id: string, actingUserId: string) {
+    if (id === actingUserId) {
+      throw new BadRequestException('No puedes anonimizar tu propia cuenta');
+    }
+
+    const before = await this.prisma.user.findUnique({
+      where: { id },
+      include: userInclude,
+    });
+    if (!before) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: {
+        name: 'Usuario eliminado',
+        email: `usuario-eliminado-${randomUUID()}@opera.local`,
+        isActive: false,
+      },
+      include: userInclude,
+    });
+
+    // Sin "before": guardarlo dejaría el email/nombre real que se acaba de
+    // borrar viviendo para siempre en AuditLog (mismo criterio que
+    // resetPassword, un poco más abajo).
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'User',
+      entityId: user.id,
+      action: 'ANONYMIZE',
       after: toResponse(user),
     });
 

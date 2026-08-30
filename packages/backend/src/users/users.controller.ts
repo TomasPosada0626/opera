@@ -61,6 +61,17 @@ export class UsersController {
     return this.usersService.deactivate(id, req.user.sub);
   }
 
+  @Patch(':id/anonymize')
+  @ApiOperation({
+    summary: 'Borrar los datos personales del usuario (ADMIN)',
+    description:
+      'Irreversible: sobreescribe nombre/email y desactiva la cuenta. No se puede anonimizar la propia cuenta.',
+  })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
+  anonymize(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    return this.usersService.anonymize(id, req.user.sub);
+  }
+
   @Patch(':id/reset-password')
   @ApiOperation({ summary: 'Resetear contraseña de un usuario (ADMIN)' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })

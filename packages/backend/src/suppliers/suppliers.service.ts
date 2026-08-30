@@ -24,6 +24,13 @@ export class SuppliersService extends CatalogService<
       searchFields: ['name'],
       sortableFields,
       defaultSortField: 'name',
+      piiRedaction: {
+        name: 'Proveedor eliminado',
+        taxId: null,
+        email: null,
+        phone: null,
+        address: null,
+      },
     });
   }
 }
