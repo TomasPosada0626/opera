@@ -66,6 +66,16 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit --audit-level=high
 
+      # #29 (auditoría): --audit-level=high de arriba cubre todo el árbol
+      # (incluidas devDependencies) para no bloquear CI por ruido de
+      # herramientas de build/test que nunca corren en producción real. Este
+      # segundo audit acota a moderate PERO solo sobre dependencias de
+      # producción (--prod) -- un CVE moderate en algo que sí corre en el
+      # backend/desktop empaquetado bloquea igual, sin reabrir el ruido que
+      # el primer audit evita a propósito.
+      - name: Audit production dependencies (moderate+)
+        run: pnpm audit --audit-level=moderate --prod
+
       - name: Lint
         run: pnpm lint
 
