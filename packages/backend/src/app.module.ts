@@ -30,6 +30,7 @@ import { ReportsModule } from './reports/reports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SearchModule } from './search/search.module';
 import { HealthModule } from './health/health.module';
+import { SetupModule } from './setup/setup.module';
 
 @Module({
   imports: [
@@ -183,6 +184,7 @@ import { HealthModule } from './health/health.module';
     DashboardModule,
     SearchModule,
     HealthModule,
+    SetupModule,
   ],
   controllers: [AppController],
   providers: [
