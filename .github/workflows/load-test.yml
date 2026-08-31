@@ -1,0 +1,113 @@
+name: Load test
+
+# Baseline de regresión programado (#31, auditoría) -- no corre en cada push
+# (tarda minutos y su valor es notar degradación a lo largo del tiempo, no
+# gatear cada PR). Semanal + disparo manual para correrlo bajo demanda.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: opera
+          POSTGRES_PASSWORD: opera
+          POSTGRES_DB: opera
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opera"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Mismo criterio que lint-test-build en ci.yml: nada que ver con el
+      # .env local (gitignorado, no existe en el runner).
+      DATABASE_URL: postgresql://opera:opera@localhost:5432/opera?schema=public&connection_limit=10&pool_timeout=20
+      JWT_SECRET: ci-test-secret-not-for-production
+      JWT_EXPIRES_IN: 1d
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1.2.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply database migrations
+        run: pnpm --filter backend exec prisma migrate deploy
+
+      - name: Build backend
+        run: pnpm --filter backend build
+
+      - name: Generate the load-test dataset
+        run: pnpm --filter backend loadtest:seed
+
+      - name: Start backend for k6 (background)
+        # RATE_LIMIT_PER_MINUTE alto: el límite de producción (100/min por
+        # IP, ver ThrottlerModule en app.module.ts) cortaría cualquier
+        # corrida de k6 con más de un puñado de VUs -- mismo ajuste que
+        # documenta load-tests/README.md para correrlo en local. Nunca subir
+        # esto en un despliegue real.
+        run: |
+          RATE_LIMIT_PER_MINUTE=100000 nohup node packages/backend/dist/src/main.js > backend-server.log 2>&1 &
+          echo $! > backend.pid
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "Backend listo"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "El backend no quedó listo a tiempo"
+          cat backend-server.log
+          exit 1
+
+      # Tres escenarios secuenciales (~90s, ver el script) contra
+      # /dashboard/resumen, /reports/*, /inventory/:id/{kardex,stock} --
+      # k6 sale con código distinto de cero si algún threshold de p95 o la
+      # tasa de fallos se viola (ver reports-and-kardex.js), lo que falla
+      # este job igual que cualquier otro test.
+      - name: Run k6 (dashboard, reportes, kardex/stock)
+        working-directory: packages/backend
+        run: k6 run load-tests/k6/reports-and-kardex.js
+
+      - name: Upload backend log on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: load-test-diagnostics
+          path: backend-server.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop backend server
+        if: always()
+        run: kill "$(cat backend.pid)" || true
+
+      - name: Tear down the load-test dataset
+        if: always()
+        run: pnpm --filter backend loadtest:teardown
