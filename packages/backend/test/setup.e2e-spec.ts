@@ -30,6 +30,13 @@ describe('Setup (e2e)', () => {
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { userId: { in: createdIds } } });
     await deleteUsers(prisma, createdIds);
+    // createAdmin() deja creada "Bodega principal" (igual que prisma/seed.ts)
+    // -- sin este borrado queda viva en el mismo Postgres compartido que
+    // corre después el suite de Playwright del desktop, rompiendo el
+    // supuesto de WarehouseSelect de "exactamente una bodega activa =
+    // auto-selecciona y oculta el campo" (encontrado en CI real: 3 specs
+    // de Playwright con selector de bodega fallaron en cadena por esto).
+    await prisma.warehouse.deleteMany({ where: { name: 'Bodega principal' } });
     await app.close();
   });
 
