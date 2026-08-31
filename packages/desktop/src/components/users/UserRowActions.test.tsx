@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { UserRowActions } from './UserRowActions';
 import { apiFetch, ApiError } from '../../lib/api-client';
+import { downloadFile } from '../../lib/download-file';
 import type { User } from '../../types/user';
 
 vi.mock('../../lib/api-client', async (importOriginal) => {
@@ -12,7 +13,12 @@ vi.mock('../../lib/api-client', async (importOriginal) => {
   return { ...actual, apiFetch: vi.fn() };
 });
 
+vi.mock('../../lib/download-file', () => ({
+  downloadFile: vi.fn(),
+}));
+
 const mockedApiFetch = apiFetch as unknown as Mock;
+const mockedDownloadFile = downloadFile as unknown as Mock;
 
 function renderWithClient(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -39,6 +45,7 @@ function buildUser(overrides: Partial<User> = {}): User {
 describe('UserRowActions', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    mockedDownloadFile.mockReset();
   });
 
   it('calls onEdit when "Editar" is clicked', async () => {
@@ -275,5 +282,24 @@ describe('UserRowActions', () => {
       await screen.findByText('Usuario no encontrado'),
     ).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('downloads the .xlsx export when "Exportar datos" is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithClient(
+      <UserRowActions
+        user={buildUser()}
+        isSelf={false}
+        onEdit={vi.fn()}
+        onResetPassword={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Exportar datos' }));
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/users/user-1/export',
+      'usuario-user-1.xlsx',
+    );
   });
 });

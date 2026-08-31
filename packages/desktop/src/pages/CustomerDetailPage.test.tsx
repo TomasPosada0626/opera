@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import CustomerDetailPage from './CustomerDetailPage';
 import { apiFetch } from '../lib/api-client';
+import { downloadFile } from '../lib/download-file';
 import type { PaginatedResult } from '../types/product';
 import type { Customer } from '../types/customer';
 import type { Order } from '../types/order';
@@ -14,7 +15,12 @@ vi.mock('../lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
+vi.mock('../lib/download-file', () => ({
+  downloadFile: vi.fn(),
+}));
+
 const mockedApiFetch = apiFetch as unknown as Mock;
+const mockedDownloadFile = downloadFile as unknown as Mock;
 
 function renderWithClient(
   ui: ReactElement,
@@ -95,6 +101,7 @@ function mockDetailGets(
 describe('CustomerDetailPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    mockedDownloadFile.mockReset();
   });
 
   it('shows the customer name and active badge', async () => {
@@ -141,5 +148,20 @@ describe('CustomerDetailPage', () => {
     expect(screen.getByText('75,00')).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /Ver detalle/ });
     expect(link).toHaveAttribute('href', '/pedidos/order-1');
+  });
+
+  it('downloads the .xlsx export when "Exportar datos" is clicked', async () => {
+    mockDetailGets();
+
+    renderWithClient(<CustomerDetailPage />);
+    const button = await screen.findByRole('button', {
+      name: 'Exportar datos',
+    });
+    button.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/customers/customer-1/export',
+      'cliente-customer-1.xlsx',
+    );
   });
 });

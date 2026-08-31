@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Customer, Prisma } from '@prisma/client';
+import { Workbook } from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -75,5 +76,56 @@ export class CustomersService extends CatalogService<
       totalPaid: totalPaid.toString(),
       balance: totalBilled.minus(totalPaid).toString(),
     };
+  }
+
+  // Portabilidad de datos a pedido del titular (#33, auditoría) — perfil
+  // completo + su historial de pedidos propio, no un reporte agregado como
+  // los de ReportsService. El total de cada pedido se recalcula igual que
+  // orderTotal en el frontend (quantity * unitPrice no es un _sum que
+  // Prisma pueda hacer solo, mismo motivo que ReportsService.getSalesReport).
+  async exportExcel(id: string): Promise<Buffer> {
+    const customer = await this.findOne(id);
+    const orders = await this.prisma.order.findMany({
+      where: { customerId: id },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const workbook = new Workbook();
+    const profileSheet = workbook.addWorksheet('Cliente');
+    profileSheet.columns = [
+      { header: 'Campo', key: 'field', width: 20 },
+      { header: 'Valor', key: 'value', width: 40 },
+    ];
+    profileSheet.addRows([
+      { field: 'Nombre', value: customer.name },
+      { field: 'NIT', value: customer.taxId ?? '' },
+      { field: 'Correo', value: customer.email ?? '' },
+      { field: 'Teléfono', value: customer.phone ?? '' },
+      { field: 'Dirección', value: customer.address ?? '' },
+      { field: 'Activo', value: customer.isActive ? 'Sí' : 'No' },
+      { field: 'Creado', value: customer.createdAt.toISOString() },
+    ]);
+
+    const ordersSheet = workbook.addWorksheet('Pedidos');
+    ordersSheet.columns = [
+      { header: 'Fecha', key: 'createdAt', width: 14 },
+      { header: 'Estado', key: 'status', width: 16 },
+      { header: 'Líneas', key: 'itemCount', width: 10 },
+      { header: 'Total', key: 'total', width: 14 },
+    ];
+    ordersSheet.addRows(
+      orders.map((order) => ({
+        createdAt: order.createdAt.toISOString().slice(0, 10),
+        status: order.status,
+        itemCount: order.items.length,
+        total: order.items.reduce(
+          (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
+          0,
+        ),
+      })),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 }

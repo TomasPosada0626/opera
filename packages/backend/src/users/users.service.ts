@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
+import { Workbook } from 'exceljs';
 import { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -217,6 +218,40 @@ export class UsersService {
     });
 
     return toResponse(user);
+  }
+
+  // Portabilidad de datos a pedido del titular (#33, auditoría) — perfil
+  // completo. Sin un sheet de historial propio como Customer/Supplier: no
+  // hay una tabla transaccional "del usuario" en el mismo sentido (sus
+  // acciones viven en AuditLog, un registro operativo de la empresa, no un
+  // dato personal del titular en sí).
+  async exportExcel(id: string): Promise<Buffer> {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      include: userInclude,
+    });
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Usuario');
+    sheet.columns = [
+      { header: 'Campo', key: 'field', width: 20 },
+      { header: 'Valor', key: 'value', width: 40 },
+    ];
+    sheet.addRows([
+      { field: 'Nombre', value: user.name },
+      { field: 'Correo', value: user.email },
+      { field: 'Activo', value: user.isActive ? 'Sí' : 'No' },
+      {
+        field: 'Roles',
+        value: user.roles.map(({ role }) => role.name).join(', '),
+      },
+      { field: 'Creado', value: user.createdAt.toISOString() },
+    ]);
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
   }
 
   async resetPassword(id: string, dto: ResetPasswordDto, actingUserId: string) {

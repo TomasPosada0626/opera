@@ -1,7 +1,21 @@
 import { NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { Workbook } from 'exceljs';
 import { SuppliersService } from './suppliers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+// Mismo patrón que reports.service.spec.ts: carga el buffer de vuelta con
+// exceljs y lee celdas reales en vez de confiar en que el buffer "existe".
+async function readSheet(buffer: Buffer, sheetName: string) {
+  const workbook = new Workbook();
+  await workbook.xlsx.load(buffer as never);
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  return sheet;
+}
 
 describe('SuppliersService', () => {
   const baseSupplier = {
@@ -24,6 +38,8 @@ describe('SuppliersService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    supplierProduct: { findMany: jest.Mock };
+    supplierPurchase: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: SuppliersService;
@@ -37,6 +53,8 @@ describe('SuppliersService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      supplierProduct: { findMany: jest.fn() },
+      supplierPurchase: { findMany: jest.fn() },
     };
     audit = { log: jest.fn() };
     service = new SuppliersService(
@@ -246,5 +264,85 @@ describe('SuppliersService', () => {
       service.anonymize('missing', 'acting-user'),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.supplier.update).not.toHaveBeenCalled();
+  });
+
+  describe('exportExcel', () => {
+    it('writes the profile, price list and purchase history to their own sheets', async () => {
+      prisma.supplier.findUnique.mockResolvedValue(baseSupplier);
+      prisma.supplierProduct.findMany.mockResolvedValue([
+        {
+          price: new Prisma.Decimal(125.5),
+          product: { sku: 'SKU-1', name: 'Tabla de pino' },
+        },
+      ]);
+      prisma.supplierPurchase.findMany.mockResolvedValue([
+        {
+          purchasedAt: new Date('2026-02-01'),
+          quantity: new Prisma.Decimal(10),
+          unitCost: new Prisma.Decimal(12),
+          receivedAt: new Date('2026-02-03'),
+          product: { sku: 'SKU-1', name: 'Tabla de pino' },
+        },
+      ]);
+
+      const buffer = await service.exportExcel('supplier-1');
+
+      const profileSheet = await readSheet(buffer, 'Proveedor');
+      expect(profileSheet.getRow(2).getCell(2).value).toBe(baseSupplier.name);
+
+      const pricesSheet = await readSheet(buffer, 'Precios');
+      expect(pricesSheet.getRow(2).getCell(1).value).toBe('SKU-1');
+      expect(pricesSheet.getRow(2).getCell(3).value).toBe(125.5);
+
+      const purchasesSheet = await readSheet(buffer, 'Compras');
+      expect(purchasesSheet.getRow(2).getCell(4).value).toBe(10);
+      expect(purchasesSheet.getRow(2).getCell(6).value).toBe('Sí');
+
+      expect(prisma.supplierProduct.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { supplierId: 'supplier-1' } }),
+      );
+      expect(prisma.supplierPurchase.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { supplierId: 'supplier-1' } }),
+      );
+    });
+
+    it('marks an unreceived purchase as "No" and writes empty strings for null optional fields', async () => {
+      prisma.supplier.findUnique.mockResolvedValue({
+        ...baseSupplier,
+        taxId: null,
+        email: null,
+        phone: null,
+        address: null,
+      });
+      prisma.supplierProduct.findMany.mockResolvedValue([]);
+      prisma.supplierPurchase.findMany.mockResolvedValue([
+        {
+          purchasedAt: new Date('2026-02-01'),
+          quantity: new Prisma.Decimal(5),
+          unitCost: new Prisma.Decimal(8),
+          receivedAt: null,
+          product: { sku: 'SKU-2', name: 'Tornillos' },
+        },
+      ]);
+
+      const buffer = await service.exportExcel('supplier-1');
+
+      const profileSheet = await readSheet(buffer, 'Proveedor');
+      const rows = profileSheet.getRows(1, profileSheet.rowCount) ?? [];
+      const taxIdRow = rows.find((row) => row.getCell(1).value === 'NIT');
+      expect(taxIdRow?.getCell(2).value).toBe('');
+
+      const purchasesSheet = await readSheet(buffer, 'Compras');
+      expect(purchasesSheet.getRow(2).getCell(6).value).toBe('No');
+    });
+
+    it('throws NotFoundException when exporting a supplier that does not exist', async () => {
+      prisma.supplier.findUnique.mockResolvedValue(null);
+
+      await expect(service.exportExcel('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.supplierProduct.findMany).not.toHaveBeenCalled();
+    });
   });
 });

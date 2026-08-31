@@ -15,6 +15,7 @@ import {
 import SupplierDetailPage from './SupplierDetailPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
+import { downloadFile } from '../lib/download-file';
 import type { PaginatedResult } from '../types/product';
 import type {
   Supplier,
@@ -27,7 +28,12 @@ vi.mock('../lib/api-client', () => ({
   ApiError: class ApiError extends Error {},
 }));
 
+vi.mock('../lib/download-file', () => ({
+  downloadFile: vi.fn(),
+}));
+
 const mockedApiFetch = apiFetch as unknown as Mock;
+const mockedDownloadFile = downloadFile as unknown as Mock;
 
 function renderWithClient(
   ui: ReactElement,
@@ -94,6 +100,7 @@ function mockDetailGets(
 describe('SupplierDetailPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    mockedDownloadFile.mockReset();
   });
 
   afterEach(() => {
@@ -358,5 +365,20 @@ describe('SupplierDetailPage', () => {
     expect(
       screen.queryByRole('dialog', { name: 'Registrar compra' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('downloads the .xlsx export when "Exportar datos" is clicked', async () => {
+    mockDetailGets();
+
+    renderWithClient(<SupplierDetailPage />);
+    const button = await screen.findByRole('button', {
+      name: 'Exportar datos',
+    });
+    button.click();
+
+    expect(mockedDownloadFile).toHaveBeenCalledWith(
+      '/suppliers/supplier-1/export',
+      'proveedor-supplier-1.xlsx',
+    );
   });
 });

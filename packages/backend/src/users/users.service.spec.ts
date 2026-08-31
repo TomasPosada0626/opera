@@ -1,7 +1,20 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Workbook } from 'exceljs';
 import { UsersService } from './users.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+// Mismo patrón que reports.service.spec.ts: carga el buffer de vuelta con
+// exceljs y lee celdas reales en vez de confiar en que el buffer "existe".
+async function readSheet(buffer: Buffer, sheetName: string) {
+  const workbook = new Workbook();
+  await workbook.xlsx.load(buffer as never);
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  return sheet;
+}
 
 describe('UsersService', () => {
   const baseUser = {
@@ -350,5 +363,30 @@ describe('UsersService', () => {
     );
     expect(auditArgs).not.toHaveProperty('before');
     expect(auditArgs).not.toHaveProperty('after');
+  });
+
+  describe('exportExcel', () => {
+    it('writes the profile, including joined role names, to a single sheet', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...baseUser,
+        roles: [{ role: { id: 'role-1', name: 'ADMIN' } }],
+      });
+
+      const buffer = await service.exportExcel('user-1');
+
+      const sheet = await readSheet(buffer, 'Usuario');
+      expect(sheet.getRow(2).getCell(2).value).toBe(baseUser.name);
+      const rows = sheet.getRows(1, sheet.rowCount) ?? [];
+      const rolesRow = rows.find((row) => row.getCell(1).value === 'Roles');
+      expect(rolesRow?.getCell(2).value).toBe('ADMIN');
+    });
+
+    it('throws NotFoundException when exporting a user that does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.exportExcel('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
   });
 });

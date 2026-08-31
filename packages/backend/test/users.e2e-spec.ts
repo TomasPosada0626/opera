@@ -3,6 +3,7 @@ import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
 import { createUserAndLogin, deleteUsers } from './support/fixtures';
+import { bufferParser } from './support/binary-response';
 
 // Sin cobertura e2e previa (encontrada al construir #96) — hasta ahora solo
 // tenía unit tests con Prisma mockeado, nunca se probó sobre HTTP/Postgres
@@ -140,6 +141,35 @@ describe('Users (e2e)', () => {
       .expect(400);
     expect((response.body as { message: string }).message).toContain(
       'propia cuenta',
+    );
+  });
+
+  it('exports a user as a real .xlsx workbook with its profile', async () => {
+    const unique = Date.now();
+    const created = await request(app.getHttpServer())
+      .post('/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: `users-export-${unique}@opera.local`,
+        password: 'Test-password-123!',
+        name: 'Usuario a exportar',
+      })
+      .expect(201);
+    const user = created.body as { id: string };
+    createdIds.push(user.id);
+
+    const exportResponse = await request(app.getHttpServer())
+      .get(`/users/${user.id}/export`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(bufferParser)
+      .expect(200);
+
+    expect(exportResponse.headers['content-type']).toContain(
+      'spreadsheetml.sheet',
+    );
+    expect((exportResponse.body as Buffer).subarray(0, 2).toString()).toBe(
+      'PK',
     );
   });
 

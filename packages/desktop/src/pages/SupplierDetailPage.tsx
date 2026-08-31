@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Plus } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -13,6 +13,7 @@ import { useSupplier } from '../hooks/useSupplier';
 import { useSupplierProducts } from '../hooks/useSupplierProducts';
 import { useSupplierPurchases } from '../hooks/useSupplierPurchases';
 import { getCurrentUser } from '../lib/current-user';
+import { downloadFile } from '../lib/download-file';
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
@@ -45,14 +46,30 @@ function SupplierDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           Volver a proveedores
         </Link>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-ink text-xl font-medium">
-            {supplier ? supplier.name : 'Proveedor'}
-          </h1>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-ink text-xl font-medium">
+              {supplier ? supplier.name : 'Proveedor'}
+            </h1>
+            {supplier && (
+              <Badge variant={supplier.isActive ? 'success' : 'danger'}>
+                {supplier.isActive ? 'Activo' : 'Inactivo'}
+              </Badge>
+            )}
+          </div>
           {supplier && (
-            <Badge variant={supplier.isActive ? 'success' : 'danger'}>
-              {supplier.isActive ? 'Activo' : 'Inactivo'}
-            </Badge>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void downloadFile(
+                  `/suppliers/${supplier.id}/export`,
+                  `proveedor-${supplier.id}.xlsx`,
+                )
+              }
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar datos
+            </Button>
           )}
         </div>
       </div>

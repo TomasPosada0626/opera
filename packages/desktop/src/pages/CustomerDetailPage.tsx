@@ -1,11 +1,13 @@
-import { ArrowLeft, Eye } from 'lucide-react';
+import { ArrowLeft, Eye, FileSpreadsheet } from 'lucide-react';
 import { Link, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { useCustomer } from '../hooks/useCustomer';
 import { useCustomerBalance } from '../hooks/useCustomerBalance';
 import { useOrders } from '../hooks/useOrders';
+import { downloadFile } from '../lib/download-file';
 import type { Order, OrderStatus } from '../types/order';
 
 const PAGE_SIZE = 20;
@@ -107,14 +109,30 @@ function CustomerDetailPage() {
           <ArrowLeft className="h-4 w-4" />
           Volver a clientes
         </Link>
-        <div className="mt-2 flex items-center gap-3">
-          <h1 className="text-ink text-xl font-medium">
-            {customer ? customer.name : 'Cliente'}
-          </h1>
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-ink text-xl font-medium">
+              {customer ? customer.name : 'Cliente'}
+            </h1>
+            {customer && (
+              <Badge variant={customer.isActive ? 'success' : 'danger'}>
+                {customer.isActive ? 'Activo' : 'Inactivo'}
+              </Badge>
+            )}
+          </div>
           {customer && (
-            <Badge variant={customer.isActive ? 'success' : 'danger'}>
-              {customer.isActive ? 'Activo' : 'Inactivo'}
-            </Badge>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void downloadFile(
+                  `/customers/${customer.id}/export`,
+                  `cliente-${customer.id}.xlsx`,
+                )
+              }
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar datos
+            </Button>
           )}
         </div>
       </div>

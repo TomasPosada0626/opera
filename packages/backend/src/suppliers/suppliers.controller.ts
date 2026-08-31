@@ -7,8 +7,9 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, type Response } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,6 +24,9 @@ import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
+
+const XLSX_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('suppliers')
 @ApiBearerAuth()
@@ -50,6 +54,25 @@ export class SuppliersController {
   @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
   findOne(@Param('id') id: string) {
     return this.suppliersService.findOne(id);
+  }
+
+  // @Res() de Express directo, mismo patrón que ReportsController — el
+  // .xlsx es contenido binario con sus propios headers.
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Exportar todos los datos del proveedor, como .xlsx',
+    description:
+      'Portabilidad de datos a pedido del titular (#33, auditoría) — perfil completo + precios y compras.',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx.' })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
+  async exportExcel(@Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.suppliersService.exportExcel(id);
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': `attachment; filename="proveedor-${id}.xlsx"`,
+    });
+    res.send(buffer);
   }
 
   @Patch(':id')

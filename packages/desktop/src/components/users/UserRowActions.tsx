@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Eraser, KeyRound, Pencil, UserX } from 'lucide-react';
+import { Eraser, FileSpreadsheet, KeyRound, Pencil, UserX } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { useDeactivateUser } from '../../hooks/useDeactivateUser';
 import { useAnonymizeUser } from '../../hooks/useAnonymizeUser';
 import { ApiError } from '../../lib/api-client';
+import { downloadFile } from '../../lib/download-file';
 import type { User } from '../../types/user';
 
 interface UserRowActionsProps {
@@ -48,6 +49,19 @@ export function UserRowActions({
         >
           <KeyRound className="h-4 w-4" />
           Resetear contraseña
+        </Button>
+        <Button
+          variant="ghost"
+          onClick={() =>
+            void downloadFile(
+              `/users/${user.id}/export`,
+              `usuario-${user.id}.xlsx`,
+            )
+          }
+          className="px-3 py-1.5"
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+          Exportar datos
         </Button>
         {!isSelf &&
           (user.isActive ? (

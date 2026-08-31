@@ -1,8 +1,21 @@
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Workbook } from 'exceljs';
 import { CustomersService } from './customers.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+
+// Mismo patrón que reports.service.spec.ts: carga el buffer de vuelta con
+// exceljs y lee celdas reales en vez de confiar en que el buffer "existe".
+async function readSheet(buffer: Buffer, sheetName: string) {
+  const workbook = new Workbook();
+  await workbook.xlsx.load(buffer as never);
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    throw new Error(`Sheet "${sheetName}" not found`);
+  }
+  return sheet;
+}
 
 describe('CustomersService', () => {
   const baseCustomer = {
@@ -26,6 +39,7 @@ describe('CustomersService', () => {
       update: jest.Mock;
     };
     remission: { findMany: jest.Mock };
+    order: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: CustomersService;
@@ -40,6 +54,7 @@ describe('CustomersService', () => {
         update: jest.fn(),
       },
       remission: { findMany: jest.fn() },
+      order: { findMany: jest.fn() },
     };
     audit = { log: jest.fn() };
     service = new CustomersService(
@@ -391,6 +406,65 @@ describe('CustomersService', () => {
           where: { order: { customerId: 'customer-1' } },
         }),
       );
+    });
+  });
+
+  describe('exportExcel', () => {
+    it('writes the profile and order history to their own sheets', async () => {
+      prisma.customer.findUnique.mockResolvedValue(baseCustomer);
+      prisma.order.findMany.mockResolvedValue([
+        {
+          createdAt: new Date('2026-02-01'),
+          status: 'EN_ALMACEN',
+          items: [
+            {
+              quantity: new Prisma.Decimal(2),
+              unitPrice: new Prisma.Decimal(50),
+            },
+          ],
+        },
+      ]);
+
+      const buffer = await service.exportExcel('customer-1');
+
+      const profileSheet = await readSheet(buffer, 'Cliente');
+      expect(profileSheet.getRow(2).getCell(1).value).toBe('Nombre');
+      expect(profileSheet.getRow(2).getCell(2).value).toBe(baseCustomer.name);
+
+      const ordersSheet = await readSheet(buffer, 'Pedidos');
+      expect(ordersSheet.getRow(2).getCell(2).value).toBe('EN_ALMACEN');
+      expect(ordersSheet.getRow(2).getCell(3).value).toBe(1);
+      expect(ordersSheet.getRow(2).getCell(4).value).toBe(100);
+      expect(prisma.order.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { customerId: 'customer-1' } }),
+      );
+    });
+
+    it('writes empty strings for null optional fields instead of literal "null"', async () => {
+      prisma.customer.findUnique.mockResolvedValue({
+        ...baseCustomer,
+        taxId: null,
+        email: null,
+        phone: null,
+        address: null,
+      });
+      prisma.order.findMany.mockResolvedValue([]);
+
+      const buffer = await service.exportExcel('customer-1');
+
+      const profileSheet = await readSheet(buffer, 'Cliente');
+      const rows = profileSheet.getRows(1, profileSheet.rowCount) ?? [];
+      const taxIdRow = rows.find((row) => row.getCell(1).value === 'NIT');
+      expect(taxIdRow?.getCell(2).value).toBe('');
+    });
+
+    it('throws NotFoundException when exporting a customer that does not exist', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+
+      await expect(service.exportExcel('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.order.findMany).not.toHaveBeenCalled();
     });
   });
 });

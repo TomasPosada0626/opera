@@ -3,6 +3,7 @@ import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
 import { createUserAndLogin, deleteUsers } from './support/fixtures';
+import { bufferParser } from './support/binary-response';
 
 describe('Suppliers (e2e)', () => {
   jest.setTimeout(30_000);
@@ -85,6 +86,32 @@ describe('Suppliers (e2e)', () => {
       .expect(200);
     expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
       true,
+    );
+  });
+
+  it('exports a supplier as a real .xlsx workbook with its own prices and purchases', async () => {
+    const unique = `E2E-EXPORT-${Date.now()}`;
+
+    const created = await request(app.getHttpServer())
+      .post('/suppliers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: unique, taxId: `${unique}-NIT` })
+      .expect(201);
+    const supplier = created.body as { id: string };
+    createdIds.push(supplier.id);
+
+    const exportResponse = await request(app.getHttpServer())
+      .get(`/suppliers/${supplier.id}/export`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(bufferParser)
+      .expect(200);
+
+    expect(exportResponse.headers['content-type']).toContain(
+      'spreadsheetml.sheet',
+    );
+    expect((exportResponse.body as Buffer).subarray(0, 2).toString()).toBe(
+      'PK',
     );
   });
 

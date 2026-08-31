@@ -9,6 +9,7 @@ import {
   deleteCatalogFixtures,
   deleteUsers,
 } from './support/fixtures';
+import { bufferParser } from './support/binary-response';
 
 describe('Customers (e2e)', () => {
   jest.setTimeout(30_000);
@@ -91,6 +92,34 @@ describe('Customers (e2e)', () => {
       .expect(200);
     expect((reactivateResponse.body as { isActive: boolean }).isActive).toBe(
       true,
+    );
+  });
+
+  it('exports a customer as a real .xlsx workbook with its own orders', async () => {
+    const unique = `E2E-EXPORT-${Date.now()}`;
+
+    const created = await request(app.getHttpServer())
+      .post('/customers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: unique, taxId: `${unique}-NIT` })
+      .expect(201);
+    const customer = created.body as { id: string };
+    createdIds.push(customer.id);
+
+    const exportResponse = await request(app.getHttpServer())
+      .get(`/customers/${customer.id}/export`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .buffer(true)
+      .parse(bufferParser)
+      .expect(200);
+
+    expect(exportResponse.headers['content-type']).toContain(
+      'spreadsheetml.sheet',
+    );
+    // Los .xlsx son ZIP -- "PK" son los primeros dos bytes de todo archivo
+    // ZIP válido, mismo chequeo que remissions.e2e-spec.ts hace con "%PDF".
+    expect((exportResponse.body as Buffer).subarray(0, 2).toString()).toBe(
+      'PK',
     );
   });
 

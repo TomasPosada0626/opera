@@ -7,8 +7,9 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, type Response } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -24,6 +25,9 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
+
+const XLSX_CONTENT_TYPE =
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -51,6 +55,24 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
+  }
+
+  // @Res() de Express directo, mismo patrón que ReportsController — el
+  // .xlsx es contenido binario con sus propios headers.
+  @Get(':id/export')
+  @ApiOperation({
+    summary: 'Exportar todos los datos del usuario, como .xlsx (ADMIN)',
+    description: 'Portabilidad de datos a pedido del titular (#33, auditoría).',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx.' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
+  async exportExcel(@Param('id') id: string, @Res() res: Response) {
+    const buffer = await this.usersService.exportExcel(id);
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': `attachment; filename="usuario-${id}.xlsx"`,
+    });
+    res.send(buffer);
   }
 
   @Patch(':id')
