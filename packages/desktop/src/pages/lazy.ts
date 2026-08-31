@@ -8,6 +8,7 @@ import { lazy } from 'react';
 // (react-refresh/only-export-components) -- este archivo solo exporta
 // componentes, así que sí puede hacer fast refresh.
 export const LoginPage = lazy(() => import('./LoginPage'));
+export const SetupPage = lazy(() => import('./SetupPage'));
 export const ForgotPasswordPage = lazy(() => import('./ForgotPasswordPage'));
 export const DashboardPage = lazy(() => import('./DashboardPage'));
 export const InventoryPage = lazy(() => import('./InventoryPage'));

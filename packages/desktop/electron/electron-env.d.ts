@@ -40,4 +40,19 @@ interface Window {
     onUpdateReady(callback: (version: string) => void): void;
     restartAndInstall(): Promise<void>;
   };
+  appBackend: {
+    getStatus(): Promise<BackendStatus>;
+    onStatusChange(callback: (status: BackendStatus) => void): void;
+    retry(): Promise<void>;
+  };
+}
+
+// Solo existe en el build empaquetado -- electron/backend-manager.ts (fase
+// Electron) levanta Postgres + el backend en segundo plano y reporta su
+// progreso por acá. 'starting' cubre tanto "arrancando Postgres" como
+// "corriendo migraciones" como "esperando /health" -- el mensaje distingue
+// el paso puntual, el estado en sí no necesita más granularidad que esa.
+interface BackendStatus {
+  state: 'starting' | 'ready' | 'error';
+  message?: string;
 }

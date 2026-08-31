@@ -5,6 +5,7 @@ import AppLayout from './layouts/AppLayout';
 import { PageFallback } from './components/ui/PageFallback';
 import { getAuthToken, initAuthToken } from './lib/auth-token';
 import { getCurrentUser } from './lib/current-user';
+import { apiFetch } from './lib/api-client';
 import {
   CategoriesPage,
   CustomerDetailPage,
@@ -21,12 +22,24 @@ import {
   ProductionOrdersPage,
   ProductsPage,
   ReportsPage,
+  SetupPage,
   SupplierDetailPage,
   SuppliersPage,
   UnitsPage,
   UsersPage,
   WarehousesPage,
 } from './pages/lazy';
+
+// Sin sesión previa alguna en esta instalación (GET /setup/status) -- ver
+// /configurar y el loader de /login más abajo. Si la llamada falla (backend
+// no alcanzable, hiccup de red) se asume que no hace falta configurar nada:
+// mejor mostrar el login normal (que ya sabe fallar con su propio mensaje
+// al enviarse) que dejar la ruta entera sin renderizar nada.
+async function needsSetup(): Promise<boolean> {
+  return apiFetch<{ needsSetup: boolean }>('/setup/status')
+    .then((response) => response.needsSetup)
+    .catch(() => false);
+}
 
 // Code-splitting por ruta (#21, auditoría) -- antes las ~20 páginas se
 // importaban de forma estática, un solo bundle de 567 KB cargado entero al
@@ -48,18 +61,37 @@ export const router = createHashRouter([
     children: [
       {
         path: '/login',
-        // Ya con sesión: /login no tiene nada que hacer, manda al dashboard.
-        // `createHashRouter` dispara el loader de la ruta inicial al
-        // crearse (import-time de este módulo), antes de que main.tsx
-        // termine de hidratar el token — hay que esperar esa hidratación
-        // aquí mismo, no basta con esperarla una vez en main.tsx.
+        // Primero needsSetup (instalación sin ningún usuario todavía manda
+        // directo a /configurar, sesión previa o no) y recién después la
+        // lógica ya existente: con sesión, /login no tiene nada que hacer,
+        // manda al dashboard. `createHashRouter` dispara el loader de la
+        // ruta inicial al crearse (import-time de este módulo), antes de
+        // que main.tsx termine de hidratar el token — hay que esperar esa
+        // hidratación aquí mismo, no basta con esperarla una vez en main.tsx.
         loader: async () => {
+          if (await needsSetup()) {
+            return redirect('/configurar');
+          }
           await initAuthToken();
           return getAuthToken() ? redirect('/') : null;
         },
         element: (
           <Suspense fallback={<PageFallback />}>
             <LoginPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/configurar',
+        // Ruta de una sola vez por instalación -- si ya hay un usuario
+        // (needsSetup: false), no tiene nada que hacer acá, misma idea que
+        // /login redirigiendo al dashboard con sesión activa.
+        loader: async () => {
+          return (await needsSetup()) ? null : redirect('/login');
+        },
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <SetupPage />
           </Suspense>
         ),
       },
