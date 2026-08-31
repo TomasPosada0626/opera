@@ -1,28 +1,43 @@
+import { Suspense } from 'react';
 import { createHashRouter, redirect } from 'react-router';
 import RootLayout from './layouts/RootLayout';
 import AppLayout from './layouts/AppLayout';
-import LoginPage from './pages/LoginPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import InventoryPage from './pages/InventoryPage';
-import KardexPage from './pages/KardexPage';
-import ProductsPage from './pages/ProductsPage';
-import CategoriesPage from './pages/CategoriesPage';
-import UnitsPage from './pages/UnitsPage';
-import WarehousesPage from './pages/WarehousesPage';
-import ProductionOrdersPage from './pages/ProductionOrdersPage';
-import OrdersPage from './pages/OrdersPage';
-import OrderDetailPage from './pages/OrderDetailPage';
-import CustomersPage from './pages/CustomersPage';
-import CustomerDetailPage from './pages/CustomerDetailPage';
-import SuppliersPage from './pages/SuppliersPage';
-import SupplierDetailPage from './pages/SupplierDetailPage';
-import PrintRemissionPage from './pages/PrintRemissionPage';
-import ReportsPage from './pages/ReportsPage';
-import UsersPage from './pages/UsersPage';
-import NotFoundPage from './pages/NotFoundPage';
+import { PageFallback } from './components/ui/PageFallback';
 import { getAuthToken, initAuthToken } from './lib/auth-token';
 import { getCurrentUser } from './lib/current-user';
+import {
+  CategoriesPage,
+  CustomerDetailPage,
+  CustomersPage,
+  DashboardPage,
+  ForgotPasswordPage,
+  InventoryPage,
+  KardexPage,
+  LoginPage,
+  NotFoundPage,
+  OrderDetailPage,
+  OrdersPage,
+  PrintRemissionPage,
+  ProductionOrdersPage,
+  ProductsPage,
+  ReportsPage,
+  SupplierDetailPage,
+  SuppliersPage,
+  UnitsPage,
+  UsersPage,
+  WarehousesPage,
+} from './pages/lazy';
+
+// Code-splitting por ruta (#21, auditoría) -- antes las ~20 páginas se
+// importaban de forma estática, un solo bundle de 567 KB cargado entero al
+// arrancar. pages/lazy.ts define un import() dinámico por página (su propio
+// chunk, descargado solo al visitar esa ruta) -- separado de este archivo
+// porque mezclar componentes lazy con `router` (no un componente) en el
+// mismo módulo rompe el Fast Refresh de Vite. Las rutas anidadas de
+// AppLayout comparten un único <Suspense> alrededor de su <Outlet> (ver
+// AppLayout.tsx) -- las tres rutas de nivel raíz (login, recuperar
+// contraseña, imprimir remisión) y NotFound necesitan el suyo propio porque
+// no viven dentro de ese Outlet.
 
 // HashRouter (no BrowserRouter): la app empaquetada carga desde file://, sin
 // servidor que resuelva rutas de historial en un refresh — el hash sí
@@ -42,7 +57,11 @@ export const router = createHashRouter([
           await initAuthToken();
           return getAuthToken() ? redirect('/') : null;
         },
-        element: <LoginPage />,
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <LoginPage />
+          </Suspense>
+        ),
       },
       {
         path: '/olvide-contrasena',
@@ -52,7 +71,11 @@ export const router = createHashRouter([
           await initAuthToken();
           return getAuthToken() ? redirect('/') : null;
         },
-        element: <ForgotPasswordPage />,
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <ForgotPasswordPage />
+          </Suspense>
+        ),
       },
       {
         path: '/imprimir-remision',
@@ -63,7 +86,11 @@ export const router = createHashRouter([
           await initAuthToken();
           return getAuthToken() ? null : redirect('/login');
         },
-        element: <PrintRemissionPage />,
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <PrintRemissionPage />
+          </Suspense>
+        ),
       },
       {
         element: <AppLayout />,
@@ -117,7 +144,14 @@ export const router = createHashRouter([
           },
         ],
       },
-      { path: '*', element: <NotFoundPage /> },
+      {
+        path: '*',
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <NotFoundPage />
+          </Suspense>
+        ),
+      },
     ],
   },
 ]);

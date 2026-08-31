@@ -1,4 +1,4 @@
-import { useState, type ComponentType } from 'react';
+import { Suspense, useState, type ComponentType } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -19,6 +19,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalSearch } from '../components/search/GlobalSearch';
 import { Logo } from '../components/ui/Logo';
+import { PageFallback } from '../components/ui/PageFallback';
 import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { UserMenu } from '../components/ui/UserMenu';
 import { clearAuthToken } from '../lib/auth-token';
@@ -216,7 +217,13 @@ function AppLayout() {
         <main className="flex-1 p-8">
           <div className="mx-auto max-w-6xl">
             <ErrorBoundary variant="inline" key={location.pathname}>
-              <Outlet />
+              {/* Un solo límite de Suspense para todas las rutas hijas
+                  (#21, auditoría) -- cada página está code-split con
+                  React.lazy (ver router.tsx), así que no hace falta
+                  envolver cada <Route> por separado. */}
+              <Suspense fallback={<PageFallback />}>
+                <Outlet />
+              </Suspense>
             </ErrorBoundary>
           </div>
         </main>
