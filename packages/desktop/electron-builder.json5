@@ -8,6 +8,27 @@
     output: 'release/${version}',
   },
   files: ['dist', 'dist-electron'],
+  // El backend real (NestJS + node_modules de producción resueltos) que deja
+  // `pnpm --filter backend deploy` -- ver el script `build` de este
+  // package.json. Vive en `resources/backend`, fuera del `.asar`, porque
+  // backend-manager.ts lo corre como un proceso Node de verdad (`spawn`), no
+  // como código cargado por Electron.
+  //
+  // El script `build` agrega `--config.node-linker=hoisted` a ese deploy a
+  // propósito -- sin eso, pnpm arma `node_modules/<paquete>` como junctions
+  // de Windows hacia su virtual store (`node_modules/.pnpm/...`).
+  //
+  // `from: 'resources'` (el padre de `resources/backend`), NO
+  // `resources/backend` directo -- app-builder-lib tiene un filtro
+  // hardcodeado (util/filter.js: `if (relative === 'node_modules') return
+  // false`) que descarta SIEMPRE la carpeta `node_modules` que sea hija
+  // DIRECTA del `from` de cualquier extraResources, sin loggear nada (el
+  // build queda "verde" pero el instalador sale sin `node_modules/`
+  // entero). Con `from: 'resources'`, ese `node_modules` queda a
+  // `backend/node_modules` relativo al `from` -- ya no matchea la regla
+  // exacta y se copia normal. Encontrado inspeccionando a mano
+  // `release/*/win-unpacked/resources` después del primer build de prueba.
+  extraResources: [{ from: 'resources' }],
   // Repo público (github.com/TomasPosada0626/opera) — el check/descarga de
   // actualizaciones no necesita ningún token embebido en la app (la API de
   // Releases es de lectura pública). GH_TOKEN solo hace falta del lado de
@@ -29,9 +50,17 @@
   },
   nsis: {
     oneClick: false,
-    perMachine: false,
+    // true (no false) a propósito, decidido con el usuario: dism.exe (activar
+    // WSL/Virtual Machine Platform) y el propio instalador de Docker Desktop
+    // necesitan admin sí o sí -- pedirlo de entrada (un solo UAC al arranque,
+    // igual que el instalador oficial de Docker) es más simple y confiable
+    // que tratar de elevar solo el paso de Docker a mitad de instalación.
+    perMachine: true,
     allowToChangeInstallationDirectory: true,
     deleteAppDataOnUninstall: false,
+    // Docker Desktop embebido + acceso directo de escritorio opcional -- ver
+    // build/installer.nsh.
+    include: 'build/installer.nsh',
   },
   linux: {
     target: ['AppImage'],

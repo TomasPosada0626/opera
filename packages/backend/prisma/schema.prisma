@@ -9,6 +9,12 @@ generator client {
   // Prisma 6, pero estable y ampliamente usado; no tiene relación con la
   // migración a Prisma 7 (issue #104), que sigue pendiente aparte.
   previewFeatures = ["postgresqlExtensions"]
+  // Sin `binaryTargets` a propósito: el instalador de Opera (electron-builder,
+  // NSIS) siempre se compila y empaqueta en Windows x64 para Windows x64 --
+  // el motor nativo que `pnpm --filter backend deploy` copia a
+  // packages/desktop/resources/backend ya coincide con la máquina de
+  // destino. Si algún día se compila en CI Linux para distribuir a Windows,
+  // hace falta agregar `binaryTargets = ["native", "windows"]` acá.
 }
 
 datasource db {

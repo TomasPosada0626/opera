@@ -41,8 +41,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
     // e2e/ son specs de Playwright (#57), no de Vitest — tienen su propio
-    // runner (playwright.config.ts) y su propio `test.beforeAll`.
-    exclude: ['e2e/**', 'node_modules/**'],
+    // runner (playwright.config.ts) y su propio `test.beforeAll`. resources/
+    // y release/ son artefactos de `pnpm build` (backend deployado + el
+    // instalador empaquetado) — traen sus propios *.test.js de dependencias
+    // vendidas (pino, sonic-boom...) que Vitest recogía por error.
+    exclude: ['e2e/**', 'node_modules/**', 'resources/**', 'release/**'],
     // Node 22+ trae su propio `localStorage` global experimental (detrás de
     // --localstorage-file, si no queda `undefined`) que tapa el de jsdom en
     // vez de dejarlo pasar — auth-token.ts necesita el de jsdom para

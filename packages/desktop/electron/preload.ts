@@ -38,3 +38,24 @@ contextBridge.exposeInMainWorld('appUpdater', {
   },
   restartAndInstall: (): Promise<void> => ipcRenderer.invoke('updater:restart'),
 });
+
+// A diferencia de los bloques de arriba, `appBackend` solo se expone fuera
+// de dev (backend-manager.ts, que orquesta Postgres+backend, tampoco corre
+// en dev — ver main.ts) -- si el bridge existiera siempre, App.tsx quedaría
+// esperando un `backend:status` de 'ready' que nunca llega en
+// `pnpm dev` (ahí el backend se levanta a mano de la forma de siempre).
+// `process.env` sí está disponible en un preload sandboxeado (a diferencia
+// del resto del Node API), a diferencia del renderer -- por eso el chequeo
+// vive acá y no en electron-env.d.ts/App.tsx.
+if (!process.env['VITE_DEV_SERVER_URL']) {
+  contextBridge.exposeInMainWorld('appBackend', {
+    getStatus: (): Promise<BackendStatus> =>
+      ipcRenderer.invoke('backend:get-status'),
+    onStatusChange: (callback: (status: BackendStatus) => void): void => {
+      ipcRenderer.on('backend:status', (_event, status: BackendStatus) =>
+        callback(status),
+      );
+    },
+    retry: (): Promise<void> => ipcRenderer.invoke('backend:retry'),
+  });
+}

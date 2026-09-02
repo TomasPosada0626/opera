@@ -15,12 +15,23 @@ export default tseslint.config(
       '**/release/**',
       '**/coverage/**',
       '**/node_modules/**',
+      // Carpeta de stage que deja `pnpm --filter backend deploy` (ver el
+      // script `build` del desktop) -- una copia generada del backend
+      // entero, incluido su propio código fuente sin tsconfig propio en
+      // esa ubicación (gitignored, ver .gitignore).
+      'packages/desktop/resources/**',
       '**/*.tsbuildinfo',
       'pnpm-lock.yaml',
       'eslint.config.mjs',
       // Scripts de k6 — corren en el runtime propio de k6 (goja), no en
       // Node, y no forman parte de ningún tsconfig del monorepo.
       'packages/backend/load-tests/k6/**',
+      // Scripts de build del desktop (limpiar resources/, descargar y
+      // verificar el instalador de Docker Desktop) — CommonJS plano
+      // corrido directo con `node`, fuera de packages/desktop/tsconfig.json
+      // (que solo incluye src/ y electron/), así que el linteo con
+      // información de tipos no tiene ningún proyecto que usar acá.
+      'packages/desktop/scripts/**',
     ],
   },
   eslint.configs.recommended,

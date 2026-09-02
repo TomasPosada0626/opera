@@ -15,6 +15,11 @@ coverage/
 !packages/desktop/build/
 !packages/desktop/build/**
 
+# Carpeta de stage que deja `pnpm --filter backend deploy` (ver script
+# `build` de packages/desktop/package.json) -- se regenera en cada build,
+# nunca se commitea.
+packages/desktop/resources/
+
 # Env
 .env
 .env.local

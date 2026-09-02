@@ -278,7 +278,9 @@ Kardex/reportes/dashboard a escala): ver
 pnpm build
 ```
 
-Compila ambos paquetes: `nest build` en el backend (`packages/backend/dist/`) y `tsc && vite build && electron-builder` en el desktop, que deja un instalador de escritorio listo para distribuir en `packages/desktop/release/`.
+Compila ambos paquetes y arma un instalador de Windows autocontenido en `packages/desktop/release/`: el script `build` del desktop primero empaqueta el backend entero (`pnpm --filter backend deploy`, con `node_modules` de producción resueltos) como recurso embebido, descarga y verifica (SHA256 contra el checksum que publica Docker) el instalador oficial de Docker Desktop la primera vez que se corre (después queda cacheado en `packages/desktop/resources/`, nunca se commitea), y recién ahí corre `tsc && vite build && electron-builder`.
+
+El instalador resultante pide permisos de administrador desde que arranca (necesarios para activar WSL/Virtual Machine Platform e instalar Docker Desktop si hace falta) y, al abrir Opera instalado, la propia app levanta y apaga Postgres y el backend en segundo plano — no hay `.env` ni `pnpm db:seed` que correr a mano en la máquina final: la primera vez que se abre sin ningún usuario todavía, muestra una pantalla para crear la cuenta de Administrador ahí mismo, guardada solo en esa base de datos local.
 
 ### Firmar el instalador
 

@@ -7,6 +7,7 @@ import {
   type LoggedError,
 } from './error-log-store';
 import { initAutoUpdater, restartAndInstall } from './updater';
+import { initBackendManager, shutdownBackend } from './backend-manager';
 
 // The built directory structure
 //
@@ -143,8 +144,20 @@ app.on('render-process-gone', (_event, _webContents, details) => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    app.quit();
-    win = null;
+    // Solo empaquetado -- backend-manager nunca se inicializó en dev (ahí
+    // el backend/Postgres se levantan a mano, ver app.whenReady más abajo),
+    // así que llamar shutdownBackend() ahí intentaría parar el
+    // opera-postgres de docker-compose que la persona desarrolladora
+    // levantó por su cuenta.
+    if (VITE_DEV_SERVER_URL) {
+      app.quit();
+      win = null;
+      return;
+    }
+    void shutdownBackend().finally(() => {
+      app.quit();
+      win = null;
+    });
   }
 });
 
@@ -210,5 +223,6 @@ void app.whenReady().then(() => {
   // `app-update.yml` que solo `electron-builder` genera al empaquetar.
   if (!VITE_DEV_SERVER_URL && win) {
     initAutoUpdater(win);
+    initBackendManager(win);
   }
 });

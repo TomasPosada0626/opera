@@ -8,8 +8,8 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder --publish never",
-    "release": "tsc && vite build && electron-builder --publish always",
+    "build": "node scripts/clean-resources.js && node scripts/fetch-docker-installer.js && pnpm --filter backend build && pnpm --filter backend deploy resources/backend --prod --config.node-linker=hoisted && tsc && vite build && electron-builder --publish never",
+    "release": "node scripts/clean-resources.js && node scripts/fetch-docker-installer.js && pnpm --filter backend build && pnpm --filter backend deploy resources/backend --prod --config.node-linker=hoisted && tsc && vite build && electron-builder --publish always",
     "preview": "vite preview",
     "test": "vitest run",
     "test:cov": "vitest run --coverage",

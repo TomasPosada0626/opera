@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readToken, writeToken, clearToken } from './secure-token-store';
 import { appendErrorLog, exportErrorLog } from './error-log-store';
 import { initAutoUpdater, restartAndInstall } from './updater';
+import { initBackendManager, shutdownBackend } from './backend-manager';
 
 // main.ts orquesta electron puro (ventana, IPC, ciclo de vida de la app) —
 // nada de esto se ejercitaba antes salvo indirectamente vía Playwright, que
@@ -61,6 +62,11 @@ vi.mock('./error-log-store', () => ({
 vi.mock('./updater', () => ({
   initAutoUpdater: vi.fn(),
   restartAndInstall: vi.fn(),
+}));
+
+vi.mock('./backend-manager', () => ({
+  initBackendManager: vi.fn(),
+  shutdownBackend: vi.fn().mockResolvedValue(undefined),
 }));
 
 function ipcHandler(channel: string) {
@@ -168,6 +174,10 @@ describe('electron/main (packaged, sin VITE_DEV_SERVER_URL)', () => {
 
   it('inicia el auto-updater fuera de dev', () => {
     expect(initAutoUpdater).toHaveBeenCalledWith(win);
+  });
+
+  it('inicia el backend-manager fuera de dev', () => {
+    expect(initBackendManager).toHaveBeenCalledWith(win);
   });
 
   it('deniega abrir ventanas nuevas', () => {
@@ -283,13 +293,21 @@ describe('electron/main (packaged, sin VITE_DEV_SERVER_URL)', () => {
     );
   });
 
-  it('window-all-closed cierra la app fuera de macOS', () => {
+  it('window-all-closed para el backend y después cierra la app fuera de macOS', async () => {
     const original = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32' });
+    vi.mocked(app.quit).mockClear();
+    vi.mocked(shutdownBackend).mockClear();
 
     const [windowAllClosed] = appOnHandlers('window-all-closed');
     windowAllClosed();
-    expect(app.quit).toHaveBeenCalled();
+    // shutdownBackend() es async -- app.quit() solo debe llamarse después de
+    // que resuelva, nunca antes (dejaría Postgres/el backend corriendo).
+    expect(app.quit).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(app.quit).toHaveBeenCalled();
+    });
+    expect(shutdownBackend).toHaveBeenCalled();
 
     Object.defineProperty(process, 'platform', { value: original });
   });
@@ -328,6 +346,7 @@ describe('electron/main (dev, con VITE_DEV_SERVER_URL)', () => {
     vi.mocked(BrowserWindow).mockClear();
     vi.mocked(session.defaultSession.webRequest.onHeadersReceived).mockClear();
     vi.mocked(initAutoUpdater).mockClear();
+    vi.mocked(initBackendManager).mockClear();
     setViteDevServerUrl('http://localhost:5173');
 
     await import('./main');
@@ -342,5 +361,32 @@ describe('electron/main (dev, con VITE_DEV_SERVER_URL)', () => {
       session.defaultSession.webRequest.onHeadersReceived,
     ).not.toHaveBeenCalled();
     expect(initAutoUpdater).not.toHaveBeenCalled();
+    expect(initBackendManager).not.toHaveBeenCalled();
+  });
+
+  it('window-all-closed cierra la app directo en dev, sin tocar el backend', async () => {
+    // Reimporta con VITE_DEV_SERVER_URL puesto (mismo patrón que el test de
+    // arriba) en vez de reusar el handler de un test anterior -- así este
+    // test sigue siendo correcto sin importar el orden en que corran.
+    vi.resetModules();
+    vi.mocked(app.quit).mockClear();
+    vi.mocked(shutdownBackend).mockClear();
+    setViteDevServerUrl('http://localhost:5173');
+
+    await import('./main');
+    await vi.waitFor(() => {
+      expect(BrowserWindow).toHaveBeenCalled();
+    });
+
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+
+    const handlers = appOnHandlers('window-all-closed');
+    handlers[handlers.length - 1]();
+
+    expect(app.quit).toHaveBeenCalled();
+    expect(shutdownBackend).not.toHaveBeenCalled();
+
+    Object.defineProperty(process, 'platform', { value: original });
   });
 });
