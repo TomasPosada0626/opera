@@ -79,12 +79,18 @@
     ${EndIf}
 
     ${If} $DockerAlreadyRunning == "0"
-      ${NSD_CreateLabel} 0 0 100% 50u "Opera necesita Docker Desktop para guardar su información. No lo encontramos instalado y funcionando en esta PC -- Opera puede instalarlo automáticamente (la descarga ya viene incluida en este instalador). Si hace falta, la PC se va a reiniciar sola durante la instalación para terminar de activarlo."
+      ; Consentimiento explícito de la licencia de Docker Desktop, no solo
+      ; de "instalar algo más" -- InstallDockerDesktop corre el instalador
+      ; oficial con --accept-license en nombre de quien tildó esta casilla
+      ; (auditoría 2026-09-01, ronda 2, datos/legal P2). Herrajes Toro (el
+      ; uso real de este instalador) califica como "empresa pequeña" bajo
+      ; esa licencia -- ver ADR 0008.
+      ${NSD_CreateLabel} 0 0 100% 66u "Opera necesita Docker Desktop para guardar su información. No lo encontramos instalado y funcionando en esta PC -- Opera puede instalarlo automáticamente (la descarga ya viene incluida en este instalador). Instalarlo desde acá acepta la licencia de Docker Desktop (docker.com/legal/docker-subscription-service-agreement). Si hace falta, la PC se va a reiniciar sola durante la instalación para terminar de activarlo."
       Pop $0
-      ${NSD_CreateCheckbox} 0 55u 100% 12u "Instalar Docker Desktop automáticamente"
+      ${NSD_CreateCheckbox} 0 70u 100% 12u "Instalar Docker Desktop automáticamente (acepta su licencia)"
       Pop $DockerCheckbox
       ${NSD_SetState} $DockerCheckbox ${BST_CHECKED}
-      ${NSD_CreateCheckbox} 0 80u 100% 12u "Crear acceso directo en el escritorio"
+      ${NSD_CreateCheckbox} 0 95u 100% 12u "Crear acceso directo en el escritorio"
       Pop $ShortcutCheckbox
       ${NSD_SetState} $ShortcutCheckbox ${BST_CHECKED}
     ${Else}

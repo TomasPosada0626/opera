@@ -39,7 +39,10 @@ Opera.
   persona con una cuenta en el sistema (empleados que operan Opera). Se usan
   para autenticación, control de acceso por rol y atribución de cada acción
   en `AuditLog` — el fundamento es la relación laboral/contractual con quien
-  opera la instalación.
+  opera la instalación. La primera cuenta (Administrador) se crea en una
+  pantalla propia la primera vez que se abre una instalación nueva, no por
+  un archivo `.env` — esos datos quedan solo en la base de datos local de
+  esa instalación.
 
 Opera es LAN-only y single-tenant por diseño (ADR 0003): estos datos no
 salen de la red de la empresa hacia ningún tercero ni proveedor en la nube.
