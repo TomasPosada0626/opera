@@ -51,6 +51,11 @@ async function bootstrap() {
   );
   app.use(helmet());
   app.enableCors({ origin: ALLOWED_ORIGINS });
+  // Sin esto, Nest nunca escucha SIGTERM/SIGINT ni corre onModuleDestroy()
+  // -- el SIGTERM que backend-manager.ts manda al cerrar Opera mataba el
+  // proceso en seco, sin que PrismaService.onModuleDestroy() llegara a
+  // cerrar el pool de conexiones (auditoría 2026-09-01, ronda 2).
+  app.enableShutdownHooks();
 
   // Apagado por defecto: solo se monta si SWAGGER_ENABLED=true en .env
   // (conveniencia de desarrollo local, nunca en un despliegue real de LAN).
