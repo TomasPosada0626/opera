@@ -1,21 +1,40 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { createServer } from 'node:net';
 import path from 'node:path';
 import { app, ipcMain, type BrowserWindow } from 'electron';
 import { appendErrorLog } from './error-log-store';
 
-// Mismo contenedor/imagen/volumen/puerto que docker-compose.yml (dev) —
-// nunca los dos al mismo tiempo en una misma máquina, pero comparten nombre
-// a propósito para que `docker ps`/`docker volume ls` se lean igual en
-// ambos contextos.
-const CONTAINER_NAME = 'opera-postgres';
+// Nombre/volumen/puerto DISTINTOS de los de `docker-compose.yml` (dev) --
+// antes compartían nombre a propósito, pero eso significaba que abrir la
+// app empaquetada en la misma PC donde ya existe (parada o corriendo) el
+// Postgres de desarrollo la hacía reusar esa base sin darse cuenta
+// (`docker inspect opera-postgres` la encontraba y `ensurePostgres()`
+// arrancaba esa, no una propia) -- mezclando datos de dev con los de una
+// instalación "real", o corriendo migraciones de un esquema adelantado
+// contra el otro. Sufijo `-app` y puerto propio para que ni el nombre ni el
+// puerto puedan colisionar nunca, sin importar qué esté corriendo en la
+// máquina de quien desarrolla (auditoría 2026-09-01, ronda 2).
+const CONTAINER_NAME = 'opera-postgres-app';
 const POSTGRES_IMAGE = 'postgres:16';
-const POSTGRES_VOLUME = 'opera_postgres_data';
+const POSTGRES_VOLUME = 'opera_postgres_data_app';
+// Usuario/contraseña fijos, iguales en toda instalación -- decisión
+// consciente, no un descuido (auditoría 2026-09-01, ronda 2): el contenedor
+// solo publica el puerto en `127.0.0.1` (ver `docker run` más abajo), nunca
+// en la LAN, así que la única forma de usar estas credenciales es tener ya
+// ejecución de código en la misma PC -- en ese escenario, el atacante ya
+// puede leer `opera-secrets.json` (JWT_SECRET) o el propio volumen de
+// Postgres directo, así que una contraseña distinta por instalación no
+// reduciría el riesgo real.
 const POSTGRES_USER = 'opera';
 const POSTGRES_PASSWORD = 'opera';
 const POSTGRES_DB = 'opera';
-const POSTGRES_PORT = '5432';
+// 5433, no 5432 -- mismo motivo que el nombre del contenedor: si alguna vez
+// coexisten (el Postgres de dev sigue corriendo mientras se prueba el
+// instalador empaquetado en la misma PC), que compitan por el mismo puerto
+// de loopback sería otra forma más de la misma colisión.
+const POSTGRES_PORT = '5433';
 const BACKEND_PORT = '3000';
 const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
 
@@ -184,6 +203,23 @@ async function runMigrations(databaseUrl: string): Promise<void> {
   }
 }
 
+// Chequeo previo, no reactivo al `spawn` en sí -- el backend real corre
+// dentro de Nest, que ya loguea y sigue vivo (sin escuchar) ante un
+// `EADDRINUSE` en vez de salir con un código distinguible. Detectarlo acá,
+// antes de spawnear nada, evita que quien instala vea el mensaje genérico de
+// "el servidor no respondió a tiempo" (BACKEND_READY_TIMEOUT_MS agotado)
+// cuando la causa real es un backend huérfano de una sesión anterior de
+// Opera que no cerró bien, todavía dueño del puerto (auditoría 2026-09-01,
+// ronda 2).
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = createServer();
+    tester.once('error', () => resolve(true));
+    tester.once('listening', () => tester.close(() => resolve(false)));
+    tester.listen(port, '127.0.0.1');
+  });
+}
+
 // No espera su salida a propósito -- corre en segundo plano mientras dure la
 // sesión de Opera. Un `exit` inesperado (crash real, no el `SIGTERM` de
 // stopBackendProcess) se reporta como error en vez de dejar la app colgada
@@ -257,36 +293,60 @@ function stopBackendProcess(): Promise<void> {
   });
 }
 
-async function start(): Promise<void> {
-  await stopBackendProcess();
-  try {
-    await ensurePostgres();
-    const jwtSecret = ensureJwtSecret();
-    const databaseUrl =
-      `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}` +
-      `@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}` +
-      `?schema=public&connection_limit=10&pool_timeout=20`;
-    await runMigrations(databaseUrl);
-    startBackendProcess({
-      DATABASE_URL: databaseUrl,
-      JWT_SECRET: jwtSecret,
-      JWT_EXPIRES_IN: '1d',
-      PORT: BACKEND_PORT,
-      NODE_ENV: 'production',
-      SWAGGER_ENABLED: 'false',
-    });
-    await waitForBackendHealth();
-    setStatus({ state: 'ready' });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    appendErrorLog({
-      source: 'main',
-      type: 'backend-manager',
-      message,
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-    setStatus({ state: 'error', message });
-  }
+// Encadena las corridas de `start()` en vez de dejarlas correr en paralelo --
+// `initBackendManager` dispara una al arrancar y `backend:retry` puede
+// disparar otra mientras esa primera sigue en curso (el usuario reintenta
+// apenas ve el error). Sin este encadenado, las dos podían llegar cada una a
+// su propio `startBackendProcess()` y dejar dos backends reales corriendo a
+// la vez, con `backendProcess` rastreando solo el último y el primero
+// huérfano (nunca recibe `SIGTERM`).
+let startChain: Promise<void> = Promise.resolve();
+
+function start(): Promise<void> {
+  const run = async (): Promise<void> => {
+    await stopBackendProcess();
+    try {
+      await ensurePostgres();
+      const jwtSecret = ensureJwtSecret();
+      const databaseUrl =
+        `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}` +
+        `@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}` +
+        `?schema=public&connection_limit=10&pool_timeout=20`;
+      await runMigrations(databaseUrl);
+      if (await isPortInUse(Number(BACKEND_PORT))) {
+        throw new Error(
+          `Ya hay otro programa usando el puerto ${BACKEND_PORT}. Cerrá cualquier otra ventana de Opera abierta (revisá también el Administrador de tareas) y volvé a intentar.`,
+        );
+      }
+      startBackendProcess({
+        DATABASE_URL: databaseUrl,
+        JWT_SECRET: jwtSecret,
+        JWT_EXPIRES_IN: '1d',
+        PORT: BACKEND_PORT,
+        NODE_ENV: 'production',
+        SWAGGER_ENABLED: 'false',
+      });
+      await waitForBackendHealth();
+      setStatus({ state: 'ready' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendErrorLog({
+        source: 'main',
+        type: 'backend-manager',
+        message,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      setStatus({ state: 'error', message });
+    }
+  };
+
+  const scheduled = startChain.then(run);
+  // `startChain` siempre debe seguir resuelta -- si `run` fallara de forma
+  // inesperada (no debería, atrapa todo arriba) no queremos que una
+  // excepción no prevista deje encadenadas para siempre las corridas
+  // futuras de `start()` sobre una promesa rechazada.
+  startChain = scheduled.catch(() => {});
+  return scheduled;
 }
 
 // Orquestado solo cuando !VITE_DEV_SERVER_URL (ver main.ts) -- en dev, el

@@ -17,6 +17,18 @@ vi.mock('node:child_process', () => ({
   default: { spawn: spawnMock },
 }));
 
+// `isPortInUse()` usa `node:net` directo (no `spawn`) para probar el puerto
+// del backend antes de levantarlo -- mockeado acá por el mismo motivo que
+// `spawn`: un test no puede depender de si el puerto 3000 real de la
+// máquina que corre el suite está libre o no.
+const { netCreateServerMock } = vi.hoisted(() => ({
+  netCreateServerMock: vi.fn(),
+}));
+vi.mock('node:net', () => ({
+  createServer: netCreateServerMock,
+  default: { createServer: netCreateServerMock },
+}));
+
 let userDataDir = '';
 vi.mock('electron', () => ({
   app: { getPath: () => userDataDir },
@@ -65,6 +77,30 @@ function fakeLongRunningProcess(): FakeChild {
     return true;
   });
   return child;
+}
+
+// Controla qué "resultado" da la próxima prueba de puerto de
+// `isPortInUse()` -- `true` (default en `beforeEach`) simula el puerto
+// libre, para que el resto de los tests (que no le interesa este chequeo)
+// no dependa de si el puerto 3000 real de la máquina del suite está libre.
+function fakePortAvailable(available: boolean): void {
+  netCreateServerMock.mockImplementation(() => {
+    const tester = new EventEmitter() as EventEmitter & {
+      listen: (port: number, host: string) => void;
+      close: (cb: () => void) => void;
+    };
+    tester.listen = () => {
+      queueMicrotask(() => {
+        if (available) {
+          tester.emit('listening');
+        } else {
+          tester.emit('error', new Error('EADDRINUSE'));
+        }
+      });
+    };
+    tester.close = (cb) => cb();
+    return tester;
+  });
 }
 
 function fakeResponse(ok: boolean): Response {
@@ -132,6 +168,8 @@ describe('backend-manager', () => {
       configurable: true,
     });
     spawnMock.mockReset();
+    netCreateServerMock.mockReset();
+    fakePortAvailable(true);
     appendErrorLogMock.mockClear();
     vi.mocked(ipcMain.handle).mockClear();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(true)));
@@ -168,7 +206,7 @@ describe('backend-manager', () => {
     expect(spawnMock).toHaveBeenNthCalledWith(
       3,
       'docker',
-      expect.arrayContaining(['run', '-d', '--name', 'opera-postgres']),
+      expect.arrayContaining(['run', '-d', '--name', 'opera-postgres-app']),
       undefined,
     );
   });
@@ -186,7 +224,7 @@ describe('backend-manager', () => {
     expect(spawnMock).toHaveBeenNthCalledWith(
       3,
       'docker',
-      ['start', 'opera-postgres'],
+      ['start', 'opera-postgres-app'],
       undefined,
     );
   });
@@ -254,7 +292,7 @@ describe('backend-manager', () => {
     expect(backendChild.kill).toHaveBeenCalledWith('SIGTERM');
     expect(spawnMock).toHaveBeenLastCalledWith(
       'docker',
-      ['stop', 'opera-postgres'],
+      ['stop', 'opera-postgres-app'],
       undefined,
     );
   });
@@ -294,6 +332,135 @@ describe('backend-manager', () => {
       expect(lastStatusSent(win).state).toBe('error');
     });
     expect(lastStatusSent(win).message).toMatch(/migraciones/);
+    expect(spawnMock).toHaveBeenCalledTimes(5);
+  });
+
+  // Ronda 2 de auditoría (2026-09-01), hallazgo P1 de testing: las 8 pruebas
+  // de arriba siempre resuelven al primer intento -- nada cubría las ramas
+  // de timeout/reintento real, que son justo las que importan cuando algo
+  // sale mal en la PC de un usuario real.
+  it('agota el timeout de Postgres si `pg_isready` nunca queda listo', async () => {
+    vi.useFakeTimers();
+    try {
+      spawnMock.mockImplementation((_command: unknown, args: unknown) => {
+        const argv = args as string[];
+        if (argv[0] === 'info') return fakeCommand({ exitCode: 0 });
+        if (argv[0] === 'inspect') return fakeCommand({ exitCode: 1 });
+        if (argv[0] === 'run') return fakeCommand({ exitCode: 0 });
+        if (argv.includes('pg_isready')) return fakeCommand({ exitCode: 1 });
+        throw new Error(`spawn inesperado en este test: ${argv.join(' ')}`);
+      });
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      expect(lastStatusSent(win)).toEqual({
+        state: 'error',
+        message: 'La base de datos no respondió a tiempo.',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('si el health check del backend rechaza (ECONNREFUSED simulado), sigue reintentando en vez de fallar de una', async () => {
+    vi.useFakeTimers();
+    try {
+      const backendChild = fakeLongRunningProcess();
+      queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockRejectedValueOnce(new Error('ECONNREFUSED'))
+        .mockResolvedValue(fakeResponse(true));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('el stderr real del proceso del backend llega a appendErrorLog con type "backend-stderr"', async () => {
+    const backendChild = fakeLongRunningProcess();
+    queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    backendChild.stderr.emit('data', Buffer.from('algo se rompió'));
+
+    expect(appendErrorLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'backend-stderr',
+        message: 'algo se rompió',
+      }),
+    );
+  });
+
+  it('backend:retry llamado mientras un start() anterior sigue en curso no deja dos backends corriendo a la vez', async () => {
+    const firstBackend = fakeLongRunningProcess();
+    const secondBackend = fakeLongRunningProcess();
+    queueSpawns([
+      ...happyPathSpawns({
+        containerExists: false,
+        backendChild: firstBackend,
+      }),
+      ...happyPathSpawns({
+        containerExists: true,
+        backendChild: secondBackend,
+      }),
+    ]);
+
+    const win = fakeWindow();
+    initBackendManager(win); // primer start(), todavía en curso
+
+    // Encolado detrás del primero (nunca en paralelo) -- ver `startChain` en
+    // backend-manager.ts.
+    await ipcHandler('backend:retry')();
+
+    expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    expect(firstBackend.kill).toHaveBeenCalledWith('SIGTERM');
+    expect(secondBackend.kill).not.toHaveBeenCalled();
+  });
+
+  // Hallazgo de arquitectura P2 (auditoría 2026-09-01, ronda 2): sin este
+  // chequeo, un backend huérfano de una sesión anterior de Opera todavía
+  // dueño del puerto 3000 se reportaba, 20 segundos después, como el mismo
+  // mensaje genérico que cualquier otro timeout -- nada distinguía la causa
+  // real.
+  it('si el puerto del backend ya está ocupado, reporta un mensaje específico sin spawnear el backend', async () => {
+    fakePortAvailable(false);
+    queueSpawns([
+      () => fakeCommand({ exitCode: 0 }), // docker info
+      () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
+      () => fakeCommand({ exitCode: 0 }), // docker run
+      () => fakeCommand({ exitCode: 0 }), // pg_isready
+      () => fakeCommand({ exitCode: 0 }), // prisma migrate deploy
+    ]);
+
+    const win = fakeWindow();
+    initBackendManager(win);
+
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win).state).toBe('error');
+    });
+    expect(lastStatusSent(win).message).toMatch(
+      /Ya hay otro programa usando el puerto/,
+    );
+    // Ni un spawn más allá de los 5 ya encolados -- nunca llegó a intentar
+    // levantar el backend.
     expect(spawnMock).toHaveBeenCalledTimes(5);
   });
 });
