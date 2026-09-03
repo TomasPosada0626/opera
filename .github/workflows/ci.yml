@@ -199,7 +199,14 @@ jobs:
     # verdad lo que se empaqueta.
     runs-on: windows-latest
     needs: lint-test-build
-    timeout-minutes: 20
+    # 20 -> 35: el instalador de Docker Desktop embebido (~624 MB, ver
+    # fetch-docker-installer.js) sin caché podía por sí solo acercarse al
+    # viejo límite de 20 min en una corrida con conexión lenta del runner
+    # (auditoría 2026-09-01, ronda 2) -- el cache de abajo hace que la
+    # mayoría de las corridas ni se acerquen, pero el margen sigue siendo
+    # para un colgado genuino, no para la variación normal de una descarga
+    # de esa magnitud en la primera corrida de cada mes.
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -216,5 +223,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # El instalador de Docker Desktop es ~624 MB y casi nunca cambia --
+      # fetch-docker-installer.js ya verifica su SHA256 contra el checksum
+      # que Docker publica en cada corrida (cache o no), así que cachear no
+      # relaja esa verificación, solo evita re-descargar cuando no hace
+      # falta. Clave por mes (no por versión, que no se conoce sin ya haber
+      # llamado a la red): dentro del mismo mes es un hit directo; al cambiar
+      # de mes cae a `restore-keys` (el cache más reciente que haya), el
+      # script decide solo si hace falta re-descargar, y al final de este
+      # job se guarda una entrada nueva bajo la clave del mes actual.
+      - name: Compute cache month
+        id: cache-month
+        shell: bash
+        run: echo "value=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Docker Desktop installer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/desktop/resources/docker
+          key: docker-desktop-installer-${{ steps.cache-month.outputs.value }}
+          restore-keys: |
+            docker-desktop-installer-
+
+      # Evaluado (auditoría 2026-09-01, ronda 2): no saltear el embebido de
+      # Docker acá para "ahorrar" en cada PR -- este job es la única red de
+      # seguridad que compila installer.nsh en CI, y el bug real de esta
+      # misma sesión (orden reinicio/Docker) vivía justo en ese script. Con
+      # el cache de arriba, el costo real ya baja casi siempre a "restaurar
+      # ~600 MB", no a "descargarlos".
       - name: Package Windows installer
         run: pnpm --filter desktop build

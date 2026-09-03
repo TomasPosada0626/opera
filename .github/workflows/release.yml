@@ -19,7 +19,11 @@ jobs:
     # Mismo motivo que package-windows en ci.yml: NSIS necesita Wine en Linux
     # y windows-latest lo construye nativo.
     runs-on: windows-latest
-    timeout-minutes: 20
+    # 20 -> 35: mismo motivo que package-windows en ci.yml -- el instalador
+    # de Docker Desktop embebido (~624 MB) sin caché podía por sí solo
+    # acercarse al viejo límite en una corrida con conexión lenta del
+    # runner (auditoría 2026-09-01, ronda 2).
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -35,6 +39,23 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Mismo cache que package-windows en ci.yml -- ver ese archivo para el
+      # razonamiento completo de por qué la clave es por mes y por qué
+      # cachear no relaja la verificación de SHA256 que ya hace
+      # fetch-docker-installer.js en cada corrida.
+      - name: Compute cache month
+        id: cache-month
+        shell: bash
+        run: echo "value=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Docker Desktop installer
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: packages/desktop/resources/docker
+          key: docker-desktop-installer-${{ steps.cache-month.outputs.value }}
+          restore-keys: |
+            docker-desktop-installer-
 
       # electron-builder nombra el instalador con la versión de package.json,
       # no con el tag de git -- sin este paso, publicar v1.2.0 empaquetaría
