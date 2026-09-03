@@ -18,13 +18,13 @@ const {
 const { mkdir, rename } = require('node:fs/promises');
 const https = require('node:https');
 const path = require('node:path');
+const { parseExpectedHash } = require('./parse-checksums.js');
 
 const CHECKSUMS_URL = 'https://desktop.docker.com/win/main/amd64/checksums.txt';
 const INSTALLER_URL =
   'https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe';
 const TARGET_DIR = path.join(__dirname, '..', 'resources', 'docker');
 const TARGET_FILE = path.join(TARGET_DIR, 'Docker Desktop Installer.exe');
-const FILE_NAME = 'Docker Desktop Installer.exe';
 
 function fetchText(url) {
   return fetchBuffer(url).then((buf) => buf.toString('utf-8'));
@@ -99,23 +99,6 @@ function downloadToFile(url, destPath, redirectsLeft = 5) {
 
 function sha256OfFile(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
-}
-
-function parseExpectedHash(checksumsText) {
-  const line = checksumsText
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.toLowerCase().endsWith(FILE_NAME.toLowerCase()));
-  if (!line) {
-    throw new Error(
-      `checksums.txt no tiene ninguna línea para "${FILE_NAME}" -- Docker pudo haber cambiado el formato del archivo.`,
-    );
-  }
-  const match = /^([0-9a-f]{64})\s+\*?.+$/i.exec(line);
-  if (!match) {
-    throw new Error(`No se pudo interpretar la línea de checksums: "${line}"`);
-  }
-  return match[1].toLowerCase();
 }
 
 async function main() {
