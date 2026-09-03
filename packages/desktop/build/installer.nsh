@@ -1,19 +1,32 @@
 ; Incluido por electron-builder (ver electron-builder.json5, nsis.include).
-; Agrega, sobre el wizard NSIS que arma electron-builder solo, dos pasos
-; aprobados en plan mode con el usuario:
+; Agrega, sobre el wizard NSIS que arma electron-builder solo:
 ;
 ;   1. Instalación silenciosa de Docker Desktop, solo si hace falta, con
 ;      consentimiento explícito en una página propia del wizard.
 ;   2. Casilla "crear acceso directo en el escritorio", marcada por defecto.
+;   3. Si Windows necesita reiniciar para activar WSL/Virtual Machine
+;      Platform, un reinicio automático que retoma la instalación solo --
+;      ver "Resumen tras reinicio" más abajo.
 ;
 ; `perMachine: true` (electron-builder.json5) ya fuerza que TODO el
 ; instalador corra elevado (UAC) desde el arranque -- dism.exe y el
 ; instalador de Docker Desktop necesitan admin sí o sí, así que nada de lo
 ; que sigue necesita su propia elevación anidada.
-
+;
+; Resumen tras reinicio: Docker Desktop necesita que WSL/Virtual Machine
+; Platform ya estén REALMENTE activos (no solo "marcados para activar tras
+; reinicio" por dism) antes de instalarse -- por eso el reinicio no puede
+; moverse a después de instalar Docker, tiene que ir en el medio. Para que
+; igual se sienta como una sola instalación continua, en vez de reabrir el
+; wizard completo tras el reinicio (que exigiría un UAC y varios clics más),
+; se programa una tarea de Windows (schtasks) que se ejecuta como SYSTEM al
+; arrancar -- SYSTEM ya cuenta como admin para UAC.nsh, así que no hay
+; ningún prompt ni ventana visible -- y retoma la instalación en modo
+; silencioso (/OperaResume /S) justo donde quedó.
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
 
 ; electron-builder compila este script dos veces -- una para el instalador,
 ; otra (con BUILD_UNINSTALLER definido) solo para el stub del desinstalador,
@@ -27,7 +40,23 @@
   Var ShortcutCheckbox
   Var ShortcutCheckboxState
   Var DockerAlreadyRunning
+  ; "1" cuando esta corrida es la tarea programada que retoma tras el
+  ; reinicio (línea de comandos con /OperaResume), "0"/vacío en la corrida
+  ; interactiva normal -- seteada en customInit, mucho antes de que exista
+  ; ninguna página del wizard.
+  Var IsResumeInstall
 !endif
+
+!macro customInit
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} "$R0" "/OperaResume" $R1
+  ${If} ${Errors}
+    StrCpy $IsResumeInstall "0"
+  ${Else}
+    StrCpy $IsResumeInstall "1"
+  ${EndIf}
+!macroend
 
 !macro customPageAfterChangeDir
   Page custom OperaOptionsPageCreate OperaOptionsPageLeave
@@ -80,12 +109,19 @@
 !macroend
 
 !macro customInstall
-  ${If} $ShortcutCheckboxState == ${BST_CHECKED}
-    CreateShortCut "$DESKTOP\Opera.lnk" "$INSTDIR\Opera.exe"
-  ${EndIf}
-
-  ${If} $DockerCheckboxState == ${BST_CHECKED}
+  ${If} $IsResumeInstall == "1"
+    ; Venimos de la tarea programada tras el reinicio -- el acceso directo
+    ; ya se creó en la corrida interactiva anterior, y la única razón por la
+    ; que existe esta tarea es que ya se había decidido instalar Docker.
     !insertmacro InstallDockerDesktop
+  ${Else}
+    ${If} $ShortcutCheckboxState == ${BST_CHECKED}
+      CreateShortCut "$DESKTOP\Opera.lnk" "$INSTDIR\Opera.exe"
+    ${EndIf}
+
+    ${If} $DockerCheckboxState == ${BST_CHECKED}
+      !insertmacro InstallDockerDesktop
+    ${EndIf}
   ${EndIf}
 
   ; El instalador de Docker Desktop embebido solo hace falta durante ESTA
@@ -101,6 +137,16 @@
 ; reiniciar para que quede activa" -- no es un error.
 !define DISM_REBOOT_REQUIRED "3010"
 
+; Nombre fijo de la tarea programada usada para retomar tras el reinicio --
+; el mismo nombre se usa para crearla acá y para borrarla en
+; CleanupResumeTask una vez que ya no hace falta.
+!define RESUME_TASK_NAME "OperaFinishSetup"
+
+; Copia estable del propio instalador para que la tarea programada tenga algo
+; que ejecutar después del reinicio aunque $EXEPATH (de dónde se lanzó
+; originalmente, ej. un pendrive) ya no esté disponible.
+!define RESUME_EXE_PATH "$INSTDIR\resources\OperaSetupResume.exe"
+
 !macro InstallDockerDesktop
   DetailPrint "Opera: activando Windows Subsystem for Linux..."
   nsExec::ExecToLog 'dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart'
@@ -110,27 +156,65 @@
   nsExec::ExecToLog 'dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart'
   Pop $0
 
+  ; Hay que reiniciar ANTES de instalar Docker Desktop, no después: hasta que
+  ; Windows no reinicia, las features recién activadas por dism no quedan
+  ; realmente funcionando -- instalar Docker con --backend=wsl2 en ese estado
+  ; (WSL "activado" en el registro pero no operativo todavía) es lo que hacía
+  ; fallar la instalación completa en una PC que nunca tuvo WSL.
+  ${If} $1 == ${DISM_REBOOT_REQUIRED}
+  ${OrIf} $0 == ${DISM_REBOOT_REQUIRED}
+    !insertmacro ScheduleResumeAndReboot
+    Return
+  ${EndIf}
+
   DetailPrint "Opera: instalando Docker Desktop (puede tardar varios minutos)..."
   ExecWait '"$INSTDIR\resources\docker\Docker Desktop Installer.exe" install --quiet --accept-license --backend=wsl2' $2
   DetailPrint "Opera: instalador de Docker Desktop terminó con código $2"
 
-  ${If} $1 == ${DISM_REBOOT_REQUIRED}
-  ${OrIf} $0 == ${DISM_REBOOT_REQUIRED}
-    ; $EXEPATH: el propio instalador de Opera, tal como se está ejecutando
-    ; ahora -- retoma la instalación completa (este mismo macro incluido)
-    ; después del reinicio. Se borra sola más abajo apenas Docker queda
-    ; funcionando (o definitivamente no puede).
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "OperaFinishSetup" '"$EXEPATH"'
-    MessageBox MB_OK|MB_ICONINFORMATION "Windows necesita reiniciarse para terminar de activar Docker Desktop. La PC se va a reiniciar sola -- cuando vuelva a iniciar sesión, la instalación de Opera continúa donde quedó."
-    Reboot
-    Return
-  ${EndIf}
-
-  DeleteRegValue HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "OperaFinishSetup"
+  !insertmacro CleanupResumeTask
 
   nsExec::ExecToLog 'docker info'
   Pop $0
   ${If} $0 != "0"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Docker Desktop no pudo iniciar. La causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI de esta PC -- buscá una opción llamada algo como 'Intel Virtualization Technology', 'AMD-V' o 'SVM Mode' y activala ahí, después abrí Opera de nuevo."
+    ; Si esta corrida es la tarea programada tras el reinicio, corre como
+    ; SYSTEM en la sesión 0 -- un MessageBox ahí no lo ve nadie y se queda
+    ; esperando un clic que nunca llega, colgando la tarea para siempre. La
+    ; app (backend-manager.ts) ya avisa en su propia UI si no encuentra
+    ; Docker corriendo, así que alcanza con loguearlo acá.
+    ${If} $IsResumeInstall == "1"
+      DetailPrint "Opera: Docker Desktop no pudo iniciar (código docker info: $0) -- probablemente falte activar virtualización (Intel VT-x/AMD-V) en el BIOS/UEFI. Opera lo va a informar desde la app."
+    ${Else}
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Docker Desktop no pudo iniciar. La causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI de esta PC -- buscá una opción llamada algo como 'Intel Virtualization Technology', 'AMD-V' o 'SVM Mode' y activala ahí, después abrí Opera de nuevo."
+    ${EndIf}
   ${EndIf}
+!macroend
+
+!macro ScheduleResumeAndReboot
+  ; Si ya estamos en la corrida de resume, $EXEPATH ya ES la copia estable --
+  ; copiarla sobre sí misma no hace falta (y podría fallar).
+  ${If} $IsResumeInstall != "1"
+    CopyFiles /SILENT "$EXEPATH" "${RESUME_EXE_PATH}"
+  ${EndIf}
+
+  ; /RU SYSTEM: sin contraseña que guardar, y SYSTEM ya cuenta como admin
+  ; para UAC.nsh (multiUser.nsh) -- retoma sin ningún prompt ni ventana.
+  ; /SC ONSTART: corre al arrancar Windows, sin depender de que alguien
+  ; inicie sesión.
+  nsExec::ExecToLog 'schtasks.exe /Create /F /RU SYSTEM /RL HIGHEST /SC ONSTART /TN "${RESUME_TASK_NAME}" /TR "\"${RESUME_EXE_PATH}\" /OperaResume /S"'
+  Pop $0
+
+  ${If} $IsResumeInstall != "1"
+    ; Solo se ve en la corrida interactiva -- si esto disparara durante el
+    ; propio resume (un segundo reinicio, rarísimo) correría como SYSTEM en
+    ; sesión 0 y este MessageBox se quedaría colgado para siempre sin nadie
+    ; que lo cierre.
+    MessageBox MB_OK|MB_ICONINFORMATION "Windows necesita reiniciarse para terminar de activar Docker Desktop. La PC se va a reiniciar sola -- cuando vuelva a iniciar sesión, la instalación de Opera continúa sola, sin que haga falta hacer nada más."
+  ${EndIf}
+  Reboot
+!macroend
+
+!macro CleanupResumeTask
+  nsExec::ExecToLog 'schtasks.exe /Delete /F /TN "${RESUME_TASK_NAME}"'
+  Pop $0
+  Delete "${RESUME_EXE_PATH}"
 !macroend
