@@ -16,7 +16,14 @@ import path from 'node:path';
 // falla en la máquina de la usuaria final, hoy no queda ningún rastro que
 // revisar después salvo lo que ella recuerde reportar. Con esto, al menos
 // hay un archivo real que exportar y mandar.
-const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+// 5 MB / 1 respaldo -> 10 MB / 2 respaldos (auditoría 2026-09-01, ronda 2):
+// el nuevo flujo de arranque empaquetado (backend-manager.ts) puede generar
+// bastantes más entradas que antes en una primera instalación con
+// problemas (BIOS sin virtualizar, reintentos manuales de `backend:retry`)
+// -- justo el escenario donde más importa no perder el principio del log
+// por una rotación demasiado agresiva.
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_BACKUPS = 2;
 
 function logFilePath(): string {
   return path.join(app.getPath('userData'), 'logs', 'opera-desktop.log');
@@ -24,7 +31,8 @@ function logFilePath(): string {
 
 // Rotación mínima por tamaño (no vale la pena traer pino/pino-roll al lado
 // de Electron por un solo archivo de errores, muchísimo más liviano que el
-// log de requests del backend) — un solo respaldo, no una serie completa.
+// log de requests del backend) — una serie corta de respaldos, no una
+// rotación completa con compresión.
 function rotateIfNeeded(filePath: string): void {
   if (!existsSync(filePath)) {
     return;
@@ -32,11 +40,17 @@ function rotateIfNeeded(filePath: string): void {
   if (statSync(filePath).size < MAX_SIZE_BYTES) {
     return;
   }
-  const rotatedPath = `${filePath}.1`;
-  if (existsSync(rotatedPath)) {
-    unlinkSync(rotatedPath);
+  const oldestPath = `${filePath}.${MAX_BACKUPS}`;
+  if (existsSync(oldestPath)) {
+    unlinkSync(oldestPath);
   }
-  renameSync(filePath, rotatedPath);
+  for (let n = MAX_BACKUPS - 1; n >= 1; n -= 1) {
+    const from = `${filePath}.${n}`;
+    if (existsSync(from)) {
+      renameSync(from, `${filePath}.${n + 1}`);
+    }
+  }
+  renameSync(filePath, `${filePath}.1`);
 }
 
 export interface LoggedError {
