@@ -132,7 +132,12 @@ async function ensurePostgres(): Promise<void> {
   setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
   if (!(await docker('info'))) {
     throw new Error(
-      'Docker Desktop no está corriendo. Abrilo y volvé a intentar.',
+      // Docker Desktop tarda en arrancar solo después de un reinicio de
+      // Windows -- sin esta primera sugerencia, alguien que acaba de
+      // reiniciar (p. ej. el propio instalador activando WSL) leía "abrí
+      // Docker Desktop" como si algo estuviera mal, cuando en realidad solo
+      // hacía falta esperar (auditoría 2026-09-01, ronda 2).
+      'Docker Desktop no está corriendo. Si acabás de reiniciar la PC, esperá un minuto y volvé a intentar -- si el problema sigue, abrí Docker Desktop manualmente.',
     );
   }
 
@@ -178,7 +183,11 @@ function backendResourcesDir(): string {
 }
 
 async function runMigrations(databaseUrl: string): Promise<void> {
-  setStatus({ state: 'starting', message: 'Aplicando migraciones…' });
+  // "Preparando la base de datos", no "aplicando migraciones" -- lenguaje
+  // llano, cero vocabulario de desarrollador (auditoría 2026-09-01, ronda
+  // 2, mismo criterio para el resto de los mensajes de setStatus() de este
+  // archivo).
+  setStatus({ state: 'starting', message: 'Preparando la base de datos…' });
   const prismaCli = path.join(
     backendResourcesDir(),
     'node_modules',
@@ -225,7 +234,7 @@ function isPortInUse(port: number): Promise<boolean> {
 // stopBackendProcess) se reporta como error en vez de dejar la app colgada
 // en "Iniciando Opera…" para siempre.
 function startBackendProcess(env: Record<string, string>): void {
-  setStatus({ state: 'starting', message: 'Iniciando el servidor…' });
+  setStatus({ state: 'starting', message: 'Iniciando Opera…' });
   const mainJsPath = path.join(backendResourcesDir(), 'dist', 'src', 'main.js');
   const child = spawn(process.execPath, [mainJsPath], {
     env: { ...process.env, ...env, ELECTRON_RUN_AS_NODE: '1' },
@@ -251,7 +260,7 @@ function startBackendProcess(env: Record<string, string>): void {
       });
       setStatus({
         state: 'error',
-        message: 'El servidor de Opera se detuvo inesperadamente.',
+        message: 'Opera se detuvo inesperadamente.',
       });
     }
   });
@@ -260,7 +269,7 @@ function startBackendProcess(env: Record<string, string>): void {
 async function waitForBackendHealth(): Promise<void> {
   setStatus({
     state: 'starting',
-    message: 'Esperando a que el servidor esté listo…',
+    message: 'Esperando a que Opera esté listo…',
   });
   await waitUntil(
     async () => {
@@ -272,7 +281,7 @@ async function waitForBackendHealth(): Promise<void> {
       }
     },
     BACKEND_READY_TIMEOUT_MS,
-    'El servidor no respondió a tiempo.',
+    'Opera no respondió a tiempo.',
   );
 }
 
