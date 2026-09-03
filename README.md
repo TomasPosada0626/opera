@@ -280,7 +280,7 @@ pnpm build
 
 Compila ambos paquetes y arma un instalador de Windows autocontenido en `packages/desktop/release/`: el script `build` del desktop primero empaqueta el backend entero (`pnpm --filter backend deploy`, con `node_modules` de producción resueltos) como recurso embebido, descarga y verifica (SHA256 contra el checksum que publica Docker) el instalador oficial de Docker Desktop la primera vez que se corre (después queda cacheado en `packages/desktop/resources/`, nunca se commitea), y recién ahí corre `tsc && vite build && electron-builder`.
 
-El instalador resultante pide permisos de administrador desde que arranca (necesarios para activar WSL/Virtual Machine Platform e instalar Docker Desktop si hace falta) y, al abrir Opera instalado, la propia app levanta y apaga Postgres y el backend en segundo plano — no hay `.env` ni `pnpm db:seed` que correr a mano en la máquina final: la primera vez que se abre sin ningún usuario todavía, muestra una pantalla para crear la cuenta de Administrador ahí mismo, guardada solo en esa base de datos local.
+El instalador resultante pide permisos de administrador desde que arranca (necesarios para activar WSL/Virtual Machine Platform e instalar Docker Desktop si hace falta) y, al abrir Opera instalado, la propia app levanta y apaga Postgres y el backend en segundo plano — no hay `.env` ni `pnpm db:seed` que correr a mano en la máquina final: la primera vez que se abre sin ningún usuario todavía, muestra una pantalla para crear la cuenta de Administrador ahí mismo, guardada solo en esa base de datos local. Pesa ~827 MB sin firmar (Docker Desktop embebido más el backend con `node_modules` de producción) — ver [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md).
 
 ### Firmar el instalador
 
@@ -369,6 +369,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0005 — No migrar a Clean Architecture / DDD táctico](docs/adr/0005-no-clean-architecture.md)
 - [0006 — Retención y archivado de AuditLog y StockMovement](docs/adr/0006-retencion-auditlog-stockmovement.md)
 - [0007 — Sin TLS en HTTP local ni SSL en la conexión a Postgres](docs/adr/0007-sin-tls-lan-de-confianza.md)
+- [0008 — Instalador autocontenido con Docker Desktop embebido](docs/adr/0008-instalador-autocontenido-docker-desktop.md)
 
 ## Changelog
 
