@@ -70,3 +70,7 @@ packages/backend/prisma/*.db
 # documentación del proyecto (eso vive en README.md/docs/adr), es solo
 # "dónde íbamos" para la próxima sesión.
 /NEXT_SESSION.md
+
+# Checklist de trabajo de una auditoría puntual -- mismo criterio que
+# NEXT_SESSION.md, se mantiene local mientras se van cerrando los ítems.
+/ROADMAP-AUDITORIA-*.md

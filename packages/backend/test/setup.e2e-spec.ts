@@ -47,6 +47,49 @@ describe('Setup (e2e)', () => {
     expect(response.body).toEqual({ needsSetup: true });
   });
 
+  // Regresión de la auditoría 2026-09-01 (ronda 2): antes de envolver
+  // createAdmin() en una transacción Serializable, dos POST /setup/admin
+  // concurrentes (dos dispositivos de la misma LAN, o un doble clic) podían
+  // leer user.count()===0 antes de que cualquiera escribiera, y ambos crear
+  // un administrador. Contra Postgres real (no mockeado): exactamente uno
+  // de los dos gana.
+  it('lets only one admin win when two requests race concurrently', async () => {
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/setup/admin')
+        .send({
+          name: 'Carrera A',
+          email: `race-a-${Date.now()}@opera.local`,
+          password: 'Test-password-123!',
+        }),
+      request(app.getHttpServer())
+        .post('/setup/admin')
+        .send({
+          name: 'Carrera B',
+          email: `race-b-${Date.now()}@opera.local`,
+          password: 'Test-password-123!',
+        }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([201, 409]);
+
+    const winner = first.status === 201 ? first : second;
+    const winnerBody = winner.body as { accessToken: string };
+    expect(typeof winnerBody.accessToken).toBe('string');
+
+    expect(await prisma.user.count()).toBe(1);
+
+    // Limpieza inmediata (no vía afterAll): el siguiente test de este mismo
+    // archivo espera la tabla User vacía para crear "el primer admin" de
+    // verdad.
+    const [createdUser] = await prisma.user.findMany();
+    await prisma.auditLog.deleteMany({ where: { userId: createdUser.id } });
+    await prisma.userRole.deleteMany({ where: { userId: createdUser.id } });
+    await prisma.user.delete({ where: { id: createdUser.id } });
+    await prisma.warehouse.deleteMany({ where: { name: 'Bodega principal' } });
+  });
+
   it('creates the first admin, issues a token, sets up the main warehouse, and then blocks a second attempt', async () => {
     const email = `setup-admin-${Date.now()}@opera.local`;
 
