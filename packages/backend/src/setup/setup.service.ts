@@ -8,8 +8,7 @@ import { HASH_OPTIONS } from '../auth/argon2-options';
 import { toRolesAndPermissions } from '../auth/roles-permissions.util';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateAdminDto } from './dto/create-admin.dto';
-
-const MAIN_WAREHOUSE_NAME = 'Bodega principal';
+import { upsertAdminRole, upsertMainWarehouse } from './bootstrap-defaults';
 
 @Injectable()
 export class SetupService {
@@ -62,11 +61,7 @@ export class SetupService {
             );
           }
 
-          const adminRole = await tx.role.upsert({
-            where: { name: 'ADMIN' },
-            update: {},
-            create: { name: 'ADMIN' },
-          });
+          const adminRole = await upsertAdminRole(tx);
 
           const createdUser = await tx.user.create({
             data: {
@@ -90,11 +85,7 @@ export class SetupService {
 
           // Sin esto, una instalación nueva queda con cero bodegas -- mismo
           // motivo que en prisma/seed.ts.
-          await tx.warehouse.upsert({
-            where: { name: MAIN_WAREHOUSE_NAME },
-            update: {},
-            create: { name: MAIN_WAREHOUSE_NAME },
-          });
+          await upsertMainWarehouse(tx);
 
           return createdUser;
         },

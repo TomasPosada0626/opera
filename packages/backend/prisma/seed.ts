@@ -1,14 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
+import {
+  MAIN_WAREHOUSE_NAME,
+  upsertAdminRole,
+  upsertMainWarehouse,
+} from '../src/setup/bootstrap-defaults';
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const adminRole = await prisma.role.upsert({
-    where: { name: 'ADMIN' },
-    update: {},
-    create: { name: 'ADMIN' },
-  });
+  const adminRole = await upsertAdminRole(prisma);
 
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
@@ -42,14 +43,10 @@ async function main() {
   // vacíos). La mayoría de negocios que usan Opera operan desde un solo
   // lugar (ver PRODUCT.md) — dejar una bodega lista de una vez cubre ese
   // caso común sin renunciar a soportar varias bodegas más adelante.
-  await prisma.warehouse.upsert({
-    where: { name: 'Bodega principal' },
-    update: {},
-    create: { name: 'Bodega principal' },
-  });
+  await upsertMainWarehouse(prisma);
 
   console.log(`Rol ADMIN y usuario administrador (${email}) listos.`);
-  console.log('Bodega principal lista.');
+  console.log(`${MAIN_WAREHOUSE_NAME} lista.`);
 }
 
 main()
