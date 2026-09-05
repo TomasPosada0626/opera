@@ -99,6 +99,16 @@ function fakeLongRunningProcess(): FakeChild {
   return child;
 }
 
+// A diferencia de fakeLongRunningProcess (cuyo kill() siempre "funciona",
+// emitiendo 'exit' solo), esto simula un proceso que no responde a SIGTERM
+// -- necesario para ejercitar la escalada a SIGKILL de stopBackendProcess().
+function fakeUnresponsiveProcess(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn(() => true);
+  return child;
+}
+
 // Controla qué "resultado" da la próxima prueba de puerto de
 // `isPortInUse()` -- `true` (default en `beforeEach`) simula el puerto
 // libre, para que el resto de los tests (que no le interesa este chequeo)
@@ -579,6 +589,32 @@ describe('backend-manager', () => {
       ['stop', 'opera-postgres-app'],
       undefined,
     );
+  });
+
+  // Arquitectura P3, auditoría 2026-09-05 (ronda 4): antes, si el backend no
+  // respondía al SIGTERM en 5s, stopBackendProcess() se rendía sin forzar
+  // nada -- el proceso quedaba huérfano, dueño del puerto, y hacía falta un
+  // reintento manual (isPortInUse() lo detectaba, pero no lo resolvía).
+  it('si el backend no responde al SIGTERM en 5s, lo fuerza con SIGKILL en vez de dejarlo huérfano', async () => {
+    vi.useFakeTimers();
+    try {
+      const backendChild = fakeUnresponsiveProcess();
+      queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+
+      spawnMock.mockImplementationOnce(() => fakeCommand({ exitCode: 0 })); // docker stop
+      const shutdownPromise = shutdownBackend();
+      await vi.advanceTimersByTimeAsync(7_000);
+      await shutdownPromise;
+
+      expect(backendChild.kill).toHaveBeenNthCalledWith(1, 'SIGTERM');
+      expect(backendChild.kill).toHaveBeenNthCalledWith(2, 'SIGKILL');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('si el backend se cae solo (no por un stop pedido), reporta error', async () => {

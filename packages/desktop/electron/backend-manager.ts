@@ -434,9 +434,34 @@ function stopBackendProcess(): Promise<void> {
   backendProcess = null;
   expectedExits.add(child);
   return new Promise((resolve) => {
-    child.once('exit', () => resolve());
+    // Cancelados en cuanto el proceso realmente sale (por el SIGTERM o,
+    // más abajo, por el SIGKILL de refuerzo) -- sin esto, un proceso que sí
+    // respondió a tiempo igual dejaba un `child.kill('SIGKILL')` fantasma
+    // pendiente 5s después, reemitiendo un 'exit' de más sobre un proceso
+    // que ya se había ido (y que `expectedExits` ya no reconocía, al ser un
+    // WeakSet de un solo uso) -- se reportaba como caída inesperada sin
+    // haber pasado nada.
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+    let forceResolveTimer: ReturnType<typeof setTimeout> | null = null;
+    child.once('exit', () => {
+      if (killTimer) clearTimeout(killTimer);
+      if (forceResolveTimer) clearTimeout(forceResolveTimer);
+      resolve();
+    });
     child.kill('SIGTERM');
-    setTimeout(resolve, 5_000);
+    killTimer = setTimeout(() => {
+      // Sigue vivo 5s después del SIGTERM -- no dejarlo huérfano dueño del
+      // puerto. Antes, este mismo timeout solo resolvía la promesa sin
+      // forzar nada: isPortInUse() (más abajo) sí detectaba el puerto
+      // ocupado en el intento siguiente, pero el síntoma real era "hay que
+      // reintentar a mano" en vez de resolverse solo (auditoría
+      // 2026-09-05, ronda 4, Arquitectura P3).
+      child.kill('SIGKILL');
+      // Igual, nunca colgar a quien llama para siempre si ni el SIGKILL
+      // llegara a producir un 'exit' -- mismo criterio de tope de antes,
+      // corrido 2s más.
+      forceResolveTimer = setTimeout(resolve, 2_000);
+    }, 5_000);
   });
 }
 
