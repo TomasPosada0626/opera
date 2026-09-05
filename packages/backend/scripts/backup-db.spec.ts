@@ -15,10 +15,12 @@ jest.mock('fs');
 jest.mock('child_process');
 jest.mock('zlib', () => ({ gzipSync: jest.fn((buf: Buffer) => buf) }));
 
+import * as path from 'path';
 import {
   main,
   parseArgs,
   pruneOldBackups,
+  resolveBackupDir,
   resolveContainerName,
 } from './backup-db';
 
@@ -43,6 +45,20 @@ describe('backup-db', () => {
     it('respeta POSTGRES_CONTAINER (Postgres del instalador empaquetado)', () => {
       process.env.POSTGRES_CONTAINER = 'opera-postgres-app';
       expect(resolveContainerName()).toBe('opera-postgres-app');
+    });
+  });
+
+  describe('resolveBackupDir', () => {
+    it('sin OPERA_BACKUP_DIR, usa <repo>/backups (relativo a este archivo)', () => {
+      delete process.env.OPERA_BACKUP_DIR;
+      expect(resolveBackupDir()).toBe(
+        path.join(__dirname, '..', '..', '..', 'backups'),
+      );
+    });
+
+    it('respeta OPERA_BACKUP_DIR (instalador empaquetado, ver backend-manager.ts)', () => {
+      process.env.OPERA_BACKUP_DIR = 'C:\\ProgramData\\Opera\\backups';
+      expect(resolveBackupDir()).toBe('C:\\ProgramData\\Opera\\backups');
     });
   });
 

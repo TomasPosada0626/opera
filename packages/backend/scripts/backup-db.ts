@@ -23,6 +23,14 @@
 //   pnpm --filter backend backup:db -- --retain-days=7
 //   POSTGRES_CONTAINER=opera-postgres-app pnpm --filter backend backup:db
 //
+// OPERA_BACKUP_DIR (opcional): dónde guardar los .sql.gz -- sin setear, cae
+// en `<repo>/backups`, pensado para correr desde el repo en dev. El
+// instalador empaquetado (ver runBackupIfDue() en
+// electron/backend-manager.ts, que invoca este mismo script compilado) lo
+// pisa con una carpeta en ProgramData -- el default relativo a este archivo
+// caería dentro de `resources/`, que electron-builder reemplaza entero en
+// cada actualización.
+//
 // Restaurar (ver README "Respaldo y restauración"):
 //   gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
 import { execFileSync } from 'child_process';
@@ -31,7 +39,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 
 const DEFAULT_CONTAINER_NAME = 'opera-postgres';
-const BACKUP_DIR = path.join(__dirname, '..', '..', '..', 'backups');
+const DEFAULT_BACKUP_DIR = path.join(__dirname, '..', '..', '..', 'backups');
 const DEFAULT_RETAIN_DAYS = 30;
 
 export function parseArgs(argv: string[]): { retainDays: number } {
@@ -50,13 +58,18 @@ export function resolveContainerName(): string {
   return process.env.POSTGRES_CONTAINER ?? DEFAULT_CONTAINER_NAME;
 }
 
+export function resolveBackupDir(): string {
+  return process.env.OPERA_BACKUP_DIR ?? DEFAULT_BACKUP_DIR;
+}
+
 export function pruneOldBackups(retainDays: number): void {
+  const backupDir = resolveBackupDir();
   const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
-  for (const file of fs.readdirSync(BACKUP_DIR)) {
+  for (const file of fs.readdirSync(backupDir)) {
     if (!file.startsWith('opera-') || !file.endsWith('.sql.gz')) {
       continue;
     }
-    const fullPath = path.join(BACKUP_DIR, file);
+    const fullPath = path.join(backupDir, file);
     if (fs.statSync(fullPath).mtimeMs < cutoff) {
       fs.unlinkSync(fullPath);
       console.log(`Borrado respaldo vencido (> ${retainDays} días): ${file}`);
@@ -69,11 +82,12 @@ export function main(): void {
   const user = process.env.POSTGRES_USER ?? 'opera';
   const db = process.env.POSTGRES_DB ?? 'opera';
   const container = resolveContainerName();
+  const backupDir = resolveBackupDir();
 
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  fs.mkdirSync(backupDir, { recursive: true });
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const outputFile = path.join(BACKUP_DIR, `opera-${timestamp}.sql.gz`);
+  const outputFile = path.join(backupDir, `opera-${timestamp}.sql.gz`);
 
   console.log(
     `Respaldando base "${db}" (contenedor ${container}) a ${outputFile}...`,
