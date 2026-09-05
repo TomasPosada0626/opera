@@ -422,6 +422,131 @@ describe('backend-manager', () => {
     });
   });
 
+  // Hallazgo Datos/Legal P2.2, auditoría 2026-09-05 (ronda 4): backup-db.ts
+  // por sí solo apuntaba al contenedor de dev por defecto y nada lo
+  // disparaba nunca en la app empaquetada -- estos tests cubren el
+  // disparador automático agregado acá (runBackupIfDue/BACKUP_CHECK_INTERVAL_MS).
+  describe('backups automáticos mientras la app sigue abierta', () => {
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+
+    function backupScriptPath(): string {
+      return path.join(
+        userDataDir,
+        'resources',
+        'backend',
+        'dist',
+        'scripts',
+        'backup-db.js',
+      );
+    }
+
+    function lastBackupMarkerPath(): string {
+      return path.join(programDataDir, 'Opera', 'last-backup-at.txt');
+    }
+
+    it('corre un backup 6 horas después de un arranque exitoso, con el contenedor y la carpeta correctos, y guarda cuándo', async () => {
+      vi.useFakeTimers();
+      try {
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // backup-db.js
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        expect(spawnMock).toHaveBeenCalledTimes(7);
+        const backupCall = spawnMock.mock.calls[6] as [
+          string,
+          string[],
+          { cwd: string; env: Record<string, string> },
+        ];
+        expect(backupCall[1]).toEqual([backupScriptPath()]);
+        expect(backupCall[2].env.ELECTRON_RUN_AS_NODE).toBe('1');
+        expect(backupCall[2].env.POSTGRES_CONTAINER).toBe('opera-postgres-app');
+        expect(backupCall[2].env.OPERA_BACKUP_DIR).toBe(
+          path.join(programDataDir, 'Opera', 'backups'),
+        );
+
+        const marker = readFileSync(lastBackupMarkerPath(), 'utf-8');
+        expect(Number.isFinite(Date.parse(marker))).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('no repite el backup si ya corrió uno hace menos de 24 horas', async () => {
+      vi.useFakeTimers();
+      try {
+        mkdirSync(path.dirname(lastBackupMarkerPath()), { recursive: true });
+        writeFileSync(lastBackupMarkerPath(), new Date().toISOString());
+        queueSpawns(happyPathSpawns({ containerExists: false }));
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        // Ninguno extra más allá de los 6 del arranque -- el chequeo de las
+        // 6 horas encontró la marca reciente y no llegó a spawnear nada.
+        expect(spawnMock).toHaveBeenCalledTimes(6);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('vuelve a respaldar si la última marca tiene más de 24 horas', async () => {
+      vi.useFakeTimers();
+      try {
+        mkdirSync(path.dirname(lastBackupMarkerPath()), { recursive: true });
+        writeFileSync(
+          lastBackupMarkerPath(),
+          new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+        );
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }),
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        expect(spawnMock).toHaveBeenCalledTimes(7);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('si backup-db.js falla, lo deja en el log de errores y no actualiza la marca (reintenta en el próximo chequeo)', async () => {
+      vi.useFakeTimers();
+      try {
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () =>
+            fakeCommand({
+              exitCode: 1,
+              stderr: 'docker exec: contenedor no encontrado',
+            }),
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        expect(appendErrorLogMock).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'backup-db-stderr',
+            message: 'docker exec: contenedor no encontrado',
+          }),
+        );
+        expect(existsSync(lastBackupMarkerPath())).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   it('backend:retry vuelve a intentar y llega a ready después de un error', async () => {
     queueSpawns([() => fakeCommand({ exitCode: 1 })]); // docker info falla
     const win = fakeWindow();

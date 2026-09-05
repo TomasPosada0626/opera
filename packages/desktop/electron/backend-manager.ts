@@ -127,16 +127,21 @@ function ensureJwtSecret(): string {
   return jwtSecret;
 }
 
-// $COMMONAPPDATA de NSIS (ProgramData) -- MISMA carpeta que
-// installer.nsh usa para provisionar el archivo, ver POSTGRES_SECRET_PATH
-// ahí. `process.env.ProgramData` es la forma de leer esa misma ruta desde
-// Node sin depender de ningún paquete nuevo.
-function machineSecretPath(): string {
-  const programData =
+// Misma carpeta que installer.nsh resuelve (ver el comentario de
+// ProvisionPostgresSecret ahí sobre por qué NO existe una constante NSIS
+// para esto) -- `process.env.ProgramData` es la forma de leer esa misma
+// ruta desde Node, con la misma cadena de respaldo, sin depender de ningún
+// paquete nuevo.
+function programDataDir(): string {
+  return (
     process.env['ProgramData'] ??
     process.env['ALLUSERSPROFILE'] ??
-    'C:\\ProgramData';
-  return path.join(programData, 'Opera', 'postgres-secret.json');
+    'C:\\ProgramData'
+  );
+}
+
+function machineSecretPath(): string {
+  return path.join(programDataDir(), 'Opera', 'postgres-secret.json');
 }
 
 // La contraseña real de Postgres tiene que ser UNA SOLA POR MÁQUINA,
@@ -435,6 +440,114 @@ function stopBackendProcess(): Promise<void> {
   });
 }
 
+// Cada cuánto se FIJA de nuevo si corresponde un backup mientras la app
+// sigue abierta. Deliberadamente NO atado al arranque/reintento de start()
+// (que ya tiene su propia secuencia de spawns, cuidadosamente ordenada y
+// testeada -- sumarle un spawn más ahí rompía esa cuenta en cada test
+// existente del archivo) ni a un intervalo corto: un backup no es
+// startup-crítico, y 6 horas alcanza para que un día de uso normal de
+// horario comercial dispare al menos un chequeo. BACKUP_MIN_GAP_MS es quien
+// realmente decide si corresponde repetir el backup, no este intervalo.
+const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// No repetir un backup si el último se completó hace menos de esto -- evita
+// respaldar de más si la app queda abierta muchas horas seguidas.
+const BACKUP_MIN_GAP_MS = 24 * 60 * 60 * 1000;
+
+function backupDir(): string {
+  return path.join(programDataDir(), 'Opera', 'backups');
+}
+
+function lastBackupMarkerPath(): string {
+  return path.join(programDataDir(), 'Opera', 'last-backup-at.txt');
+}
+
+function backupScriptPath(): string {
+  return path.join(backendResourcesDir(), 'dist', 'scripts', 'backup-db.js');
+}
+
+let backupInProgress = false;
+
+// Corre packages/backend/scripts/backup-db.ts ya compilado, como proceso
+// Node real -- mismo truco que runMigrations()/startBackendProcess()
+// (ELECTRON_RUN_AS_NODE en vez de exigir un Node del sistema instalado).
+// Se prefirió esto a una tarea de Windows programada por installer.nsh
+// (que sí funciona para ScheduleResumeAndReboot): Docker Desktop corre en
+// la sesión del usuario interactivo, y una tarea programada como SYSTEM
+// (la única forma de correr sin depender de qué cuenta esté logueada) no
+// tiene garantizado poder alcanzarlo -- hubiera arriesgado backups
+// "programados" que en silencio nunca corren. Corriendo esto DENTRO del
+// propio proceso de Electron mientras Opera está abierto, se comparte la
+// misma sesión que ya sabemos que puede hablarle a Docker (auditoría
+// 2026-09-05, ronda 4, Datos/Legal P2.2).
+//
+// Nunca relanza: una falla acá no debe tumbar Opera ni su UI, solo quedar
+// en el log de diagnóstico -- un backup es una red de seguridad, no un
+// requisito de arranque.
+async function runBackupIfDue(): Promise<void> {
+  if (backupInProgress) {
+    return;
+  }
+  const marker = lastBackupMarkerPath();
+  try {
+    if (existsSync(marker)) {
+      const lastRunAt = Date.parse(readFileSync(marker, 'utf-8').trim());
+      if (
+        Number.isFinite(lastRunAt) &&
+        Date.now() - lastRunAt < BACKUP_MIN_GAP_MS
+      ) {
+        return;
+      }
+    }
+  } catch {
+    // Marcador corrupto -- se trata igual que "nunca hubo backup" y se
+    // sigue abajo, no hay razón para bloquear el respaldo por esto.
+  }
+
+  backupInProgress = true;
+  try {
+    const { code, stderr } = await spawnAndWait(
+      process.execPath,
+      [backupScriptPath()],
+      {
+        cwd: backendResourcesDir(),
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          // El script asume por defecto el Postgres de DESARROLLO
+          // (`opera-postgres`, ver DEFAULT_CONTAINER_NAME en
+          // backup-db.ts) -- acá se pisa con el propio de esta app
+          // empaquetada.
+          POSTGRES_CONTAINER: CONTAINER_NAME,
+          // El default del script (relativo a su propio archivo
+          // compilado) cae dentro de resources/, que electron-builder
+          // reemplaza entero en cada actualización -- un backup
+          // "exitoso" ahí desaparecería con el próximo update.
+          OPERA_BACKUP_DIR: backupDir(),
+        },
+      },
+    );
+    if (code !== 0) {
+      appendRedactedErrorLog({
+        source: 'main',
+        type: 'backup-db-stderr',
+        message: stderr,
+      });
+      return;
+    }
+    mkdirSync(path.dirname(marker), { recursive: true });
+    writeFileSync(marker, new Date().toISOString());
+  } catch (error) {
+    appendRedactedErrorLog({
+      source: 'main',
+      type: 'backup-db-exception',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+  } finally {
+    backupInProgress = false;
+  }
+}
+
 // Encadena las corridas de `start()` en vez de dejarlas correr en paralelo --
 // `initBackendManager` dispara una al arrancar y `backend:retry` puede
 // disparar otra mientras esa primera sigue en curso (el usuario reintenta
@@ -498,6 +611,8 @@ function start(): Promise<void> {
   return scheduled;
 }
 
+let backupIntervalHandle: ReturnType<typeof setInterval> | null = null;
+
 // Orquestado solo cuando !VITE_DEV_SERVER_URL (ver main.ts) -- en dev, el
 // backend se levanta a mano de la forma de siempre.
 export function initBackendManager(window: BrowserWindow): void {
@@ -505,12 +620,24 @@ export function initBackendManager(window: BrowserWindow): void {
   ipcMain.handle('backend:get-status', () => currentStatus);
   ipcMain.handle('backend:retry', () => start());
   void start();
+
+  // `.unref()` -- no debe ser este timer quien mantenga vivo el proceso;
+  // Electron ya tiene su propio ciclo de vida (ventanas, IPC) para eso.
+  backupIntervalHandle = setInterval(() => {
+    if (currentStatus.state === 'ready') {
+      void runBackupIfDue();
+    }
+  }, BACKUP_CHECK_INTERVAL_MS).unref();
 }
 
 // Llamado desde el `window-all-closed` de main.ts antes de `app.quit()` --
 // nunca deja Postgres ni el proceso del backend corriendo en segundo plano
 // después de cerrar la ventana.
 export async function shutdownBackend(): Promise<void> {
+  if (backupIntervalHandle) {
+    clearInterval(backupIntervalHandle);
+    backupIntervalHandle = null;
+  }
   await stopBackendProcess();
   await docker('stop', CONTAINER_NAME);
 }
