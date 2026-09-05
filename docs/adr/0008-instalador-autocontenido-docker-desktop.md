@@ -81,9 +81,13 @@ primera vez que se abre, guardada solo en esa base de datos local.
 
 **En contra / costos aceptados:**
 
-- El instalador pesa ~671 MB sin firmar (Docker Desktop embebido más el
-  backend con `node_modules` de producción) — ver la sección
-  "Compilación" del README para el detalle.
+- El instalador pesa varios cientos de MB sin firmar (Docker Desktop
+  embebido más el backend con `node_modules` de producción) — el número
+  exacto varía de build a build (dejó de citarse un valor fijo en esta
+  documentación después de que el mismo número quedara desactualizado dos
+  veces seguidas sin que nadie lo remidiera); ver el tamaño real del `.exe`
+  publicado en cada Release de GitHub, y la sección "Compilación" del
+  README para el detalle de qué lo compone.
 - El ciclo de activar WSL → reiniciar → retomar solo puede verificarse
   del todo en una PC real sin WSL previo; no hay forma de probarlo
   end-to-end desde CI ni desde un entorno de shell sin un reinicio real de
