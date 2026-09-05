@@ -3,16 +3,25 @@
 // un ERP que es el sistema de registro real de inventario/producción/ventas
 // de la empresa, perder ese volumen es pérdida total e irrecuperable).
 //
-// Corre `pg_dump` DENTRO del propio contenedor `opera-postgres` en vez de
-// exigir herramientas de PostgreSQL instaladas en el host — el mismo motivo
-// por el que docker-compose.yml bindea el puerto a loopback: todo pasa por
-// la infraestructura ya definida ahí, sin dependencias nuevas. La conexión
-// del pg_dump interno usa el socket local del contenedor (trust), no
-// necesita contraseña.
+// Corre `pg_dump` DENTRO del propio contenedor de Postgres en vez de exigir
+// herramientas de PostgreSQL instaladas en el host — el mismo motivo por el
+// que docker-compose.yml bindea el puerto a loopback: todo pasa por la
+// infraestructura ya definida ahí, sin dependencias nuevas. La conexión del
+// pg_dump interno usa el socket local del contenedor (trust), no necesita
+// contraseña.
+//
+// Nombre de contenedor configurable por env var (no hardcodeado) -- el
+// instalador autocontenido usa un Postgres propio, namespaceado aparte del
+// de dev (`opera-postgres-app`, no `opera-postgres`, ver
+// electron/backend-manager.ts) justo para que nunca colisionen entre sí.
+// Este script no sabe cuál de los dos es sin que se lo digan (auditoría
+// 2026-09-03, ronda 3 -- el rename de esa sesión rompió este script en
+// silencio hasta que se detectó acá).
 //
 // Uso:
 //   pnpm --filter backend backup:db
 //   pnpm --filter backend backup:db -- --retain-days=7
+//   POSTGRES_CONTAINER=opera-postgres-app pnpm --filter backend backup:db
 //
 // Restaurar (ver README "Respaldo y restauración"):
 //   gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
@@ -21,11 +30,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 
-const CONTAINER_NAME = 'opera-postgres';
+const DEFAULT_CONTAINER_NAME = 'opera-postgres';
 const BACKUP_DIR = path.join(__dirname, '..', '..', '..', 'backups');
 const DEFAULT_RETAIN_DAYS = 30;
 
-function parseArgs(argv: string[]): { retainDays: number } {
+export function parseArgs(argv: string[]): { retainDays: number } {
   const retainArg = argv.find((arg) => arg.startsWith('--retain-days='));
   if (!retainArg) {
     return { retainDays: DEFAULT_RETAIN_DAYS };
@@ -37,7 +46,11 @@ function parseArgs(argv: string[]): { retainDays: number } {
   return { retainDays };
 }
 
-function pruneOldBackups(retainDays: number): void {
+export function resolveContainerName(): string {
+  return process.env.POSTGRES_CONTAINER ?? DEFAULT_CONTAINER_NAME;
+}
+
+export function pruneOldBackups(retainDays: number): void {
   const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
   for (const file of fs.readdirSync(BACKUP_DIR)) {
     if (!file.startsWith('opera-') || !file.endsWith('.sql.gz')) {
@@ -51,10 +64,11 @@ function pruneOldBackups(retainDays: number): void {
   }
 }
 
-function main(): void {
+export function main(): void {
   const { retainDays } = parseArgs(process.argv.slice(2));
   const user = process.env.POSTGRES_USER ?? 'opera';
   const db = process.env.POSTGRES_DB ?? 'opera';
+  const container = resolveContainerName();
 
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
@@ -62,12 +76,12 @@ function main(): void {
   const outputFile = path.join(BACKUP_DIR, `opera-${timestamp}.sql.gz`);
 
   console.log(
-    `Respaldando base "${db}" (contenedor ${CONTAINER_NAME}) a ${outputFile}...`,
+    `Respaldando base "${db}" (contenedor ${container}) a ${outputFile}...`,
   );
 
   const dump = execFileSync(
     'docker',
-    ['exec', CONTAINER_NAME, 'pg_dump', '-U', user, db],
+    ['exec', container, 'pg_dump', '-U', user, db],
     { maxBuffer: 1024 * 1024 * 1024 },
   );
   fs.writeFileSync(outputFile, zlib.gzipSync(dump));
@@ -78,9 +92,14 @@ function main(): void {
   pruneOldBackups(retainDays);
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error);
-  process.exit(1);
+// `require.main === module` -- no correr `main()` (docker/fs reales) cuando
+// este archivo se importa desde un test para ejercitar `parseArgs()`/
+// `pruneOldBackups()`/`resolveContainerName()`.
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
 }
