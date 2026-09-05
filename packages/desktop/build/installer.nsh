@@ -116,16 +116,31 @@
 
 !macro customInstall
   ${If} $IsResumeInstall == "1"
-    ; Venimos de la tarea programada tras el reinicio -- el acceso directo
-    ; ya se creó en la corrida interactiva anterior, y la única razón por la
-    ; que existe esta tarea es que ya se había decidido instalar Docker.
-    !insertmacro InstallDockerDesktop
+    ; Venimos de la tarea programada tras el reinicio -- confirmar que la
+    ; corrida interactiva anterior de verdad dejó el checkbox de Docker
+    ; tildado, no solo confiar en el flag de línea de comandos. Sin esto,
+    ; cualquiera que ya pueda ejecutar el instalador con UAC podía correr
+    ; "Opera-Setup.exe /OperaResume /S" directo, sin haber pasado nunca por
+    ; el wizard, y aceptar la licencia de Docker Desktop en silencio sin que
+    ; nadie la haya tildado (auditoría 2026-09-03, ronda 3).
+    ${If} ${FileExists} "${DOCKER_CONSENT_MARKER}"
+      !insertmacro InstallDockerDesktop
+    ${Else}
+      DetailPrint "Opera: se pidió retomar la instalación de Docker Desktop, pero no hay ningún consentimiento previo registrado -- se omite."
+      !insertmacro CleanupResumeTask
+    ${EndIf}
   ${Else}
     ${If} $ShortcutCheckboxState == ${BST_CHECKED}
       CreateShortCut "$DESKTOP\Opera.lnk" "$INSTDIR\Opera.exe"
     ${EndIf}
 
     ${If} $DockerCheckboxState == ${BST_CHECKED}
+      ; Se escribe ANTES de instalar -- es lo único que la corrida de resume
+      ; (potencialmente días después, tras un reinicio) puede consultar para
+      ; confirmar que esta decisión de verdad se tomó acá, tildando el
+      ; checkbox, y no llegó por otro camino.
+      FileOpen $0 "${DOCKER_CONSENT_MARKER}" w
+      FileClose $0
       !insertmacro InstallDockerDesktop
     ${EndIf}
   ${EndIf}
@@ -152,6 +167,12 @@
 ; que ejecutar después del reinicio aunque $EXEPATH (de dónde se lanzó
 ; originalmente, ej. un pendrive) ya no esté disponible.
 !define RESUME_EXE_PATH "$INSTDIR\resources\OperaSetupResume.exe"
+
+; Prueba de que la corrida interactiva tildó el checkbox de Docker antes de
+; programar el reinicio -- la corrida de resume la exige antes de instalar
+; Docker en silencio (ver customInstall). Vive junto al resto de los
+; artefactos temporales de esta instalación, se borra en CleanupResumeTask.
+!define DOCKER_CONSENT_MARKER "$INSTDIR\resources\.docker-consent-given"
 
 !macro InstallDockerDesktop
   DetailPrint "Opera: activando Windows Subsystem for Linux..."
@@ -200,6 +221,19 @@
   ; copiarla sobre sí misma no hace falta (y podría fallar).
   ${If} $IsResumeInstall != "1"
     CopyFiles /SILENT "$EXEPATH" "${RESUME_EXE_PATH}"
+
+    ; $INSTDIR es elegible por quien instala (allowToChangeInstallationDirectory
+    ; en electron-builder.json5) -- si se instala fuera de "Program Files" (p.
+    ; ej. una carpeta bajo Users\Public, escribible por cualquier cuenta local
+    ; por defecto), cualquier usuario sin privilegios podría reemplazar este
+    ; .exe antes del reinicio, y la tarea programada de más abajo lo ejecuta
+    ; como SYSTEM sin ningún prompt -- escalación de privilegios completa
+    ; (auditoría 2026-09-03, ronda 3). /inheritance:r corta la herencia de
+    ; permisos de la carpeta contenedora; los SID están en inglés (S-1-5-18 =
+    ; SYSTEM, S-1-5-32-544 = Administradores) para no depender del idioma de
+    ; Windows.
+    nsExec::ExecToLog 'icacls "${RESUME_EXE_PATH}" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F)'
+    Pop $0
   ${EndIf}
 
   ; /RU SYSTEM: sin contraseña que guardar, y SYSTEM ya cuenta como admin
@@ -223,4 +257,5 @@
   nsExec::ExecToLog 'schtasks.exe /Delete /F /TN "${RESUME_TASK_NAME}"'
   Pop $0
   Delete "${RESUME_EXE_PATH}"
+  Delete "${DOCKER_CONSENT_MARKER}"
 !macroend
