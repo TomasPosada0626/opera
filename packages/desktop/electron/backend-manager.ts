@@ -19,16 +19,17 @@ import { appendErrorLog } from './error-log-store';
 const CONTAINER_NAME = 'opera-postgres-app';
 const POSTGRES_IMAGE = 'postgres:16';
 const POSTGRES_VOLUME = 'opera_postgres_data_app';
-// Usuario/contraseña fijos, iguales en toda instalación -- decisión
-// consciente, no un descuido (auditoría 2026-09-01, ronda 2): el contenedor
-// solo publica el puerto en `127.0.0.1` (ver `docker run` más abajo), nunca
-// en la LAN, así que la única forma de usar estas credenciales es tener ya
-// ejecución de código en la misma PC -- en ese escenario, el atacante ya
-// puede leer `opera-secrets.json` (JWT_SECRET) o el propio volumen de
-// Postgres directo, así que una contraseña distinta por instalación no
-// reduciría el riesgo real.
+// Usuario fijo (nunca sale de loopback, no hace falta que sea secreto) --
+// la contraseña, en cambio, se genera una sola vez por instalación y se
+// persiste junto al JWT_SECRET (ver ensureSecrets() más abajo). Antes era
+// también fija ('opera'), asumiendo que el único riesgo real era un
+// atacante con ejecución de código ya en la misma PC -- pero el caso de
+// uso real de esta sesión es justo una PC COMPARTIDA (la de un familiar):
+// cualquier otra cuenta de Windows en esa PC podía conectarse directo con
+// pgAdmin/DBeaver a 127.0.0.1 y leer/escribir todo, saltándose RBAC y
+// AuditLog por completo, sin necesitar ejecutar código malicioso alguno
+// (auditoría 2026-09-03, ronda 3, datos/legal P2).
 const POSTGRES_USER = 'opera';
-const POSTGRES_PASSWORD = 'opera';
 const POSTGRES_DB = 'opera';
 // 5433, no 5432 -- mismo motivo que el nombre del contenedor: si alguna vez
 // coexisten (el Postgres de dev sigue corriendo mientras se prueba el
@@ -107,28 +108,50 @@ function secretsFilePath(): string {
   return path.join(app.getPath('userData'), 'opera-secrets.json');
 }
 
-function ensureJwtSecret(): string {
+interface Secrets {
+  jwtSecret: string;
+  postgresPassword: string;
+}
+
+// Ambos secretos viven en el mismo archivo -- se leen y regeneran juntos
+// (nunca por separado) para que generar uno nunca pise al otro que ya
+// existía. `postgresPassword` solo importa para el `docker run` inicial
+// (Postgres fija la contraseña en el `initdb` del volumen la primera vez
+// que se crea, ver ensurePostgres()); si el archivo se corrompe después de
+// que el volumen ya existe con una contraseña vieja, seguir generando una
+// nueva acá dejaría al backend sin poder conectarse -- caso límite aceptado
+// por ahora, mismo criterio que ya se acepta para el JWT_SECRET (invalida
+// sesiones existentes, no compromete datos).
+function ensureSecrets(): Secrets {
   const file = secretsFilePath();
   if (existsSync(file)) {
     try {
-      const parsed = JSON.parse(readFileSync(file, 'utf-8')) as {
-        jwtSecret?: string;
-      };
-      if (parsed.jwtSecret) {
-        return parsed.jwtSecret;
+      const parsed = JSON.parse(
+        readFileSync(file, 'utf-8'),
+      ) as Partial<Secrets>;
+      if (parsed.jwtSecret && parsed.postgresPassword) {
+        return {
+          jwtSecret: parsed.jwtSecret,
+          postgresPassword: parsed.postgresPassword,
+        };
       }
     } catch {
-      // Archivo corrupto -- se pisa con un secreto nuevo abajo en vez de
-      // tumbar el arranque. Invalida cualquier sesión existente, pero eso
-      // ya pasa igual cada vez que se genera un secreto nuevo.
+      // Archivo corrupto -- se pisa con secretos nuevos abajo en vez de
+      // tumbar el arranque.
     }
   }
-  const jwtSecret = randomBytes(48).toString('base64');
-  writeFileSync(file, JSON.stringify({ jwtSecret }));
-  return jwtSecret;
+  const secrets: Secrets = {
+    jwtSecret: randomBytes(48).toString('base64'),
+    // Alfanumérica (sin +/=) para que entre sin escapar en la URL de
+    // conexión (`postgresql://user:pass@...`) y en el argumento de
+    // `docker run` de más abajo.
+    postgresPassword: randomBytes(24).toString('base64url'),
+  };
+  writeFileSync(file, JSON.stringify(secrets));
+  return secrets;
 }
 
-async function ensurePostgres(): Promise<void> {
+async function ensurePostgres(postgresPassword: string): Promise<void> {
   setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
   if (!(await docker('info'))) {
     throw new Error(
@@ -156,7 +179,7 @@ async function ensurePostgres(): Promise<void> {
       '-e',
       `POSTGRES_USER=${POSTGRES_USER}`,
       '-e',
-      `POSTGRES_PASSWORD=${POSTGRES_PASSWORD}`,
+      `POSTGRES_PASSWORD=${postgresPassword}`,
       '-e',
       `POSTGRES_DB=${POSTGRES_DB}`,
       '-p',
@@ -327,10 +350,10 @@ function start(): Promise<void> {
   const run = async (): Promise<void> => {
     await stopBackendProcess();
     try {
-      await ensurePostgres();
-      const jwtSecret = ensureJwtSecret();
+      const { jwtSecret, postgresPassword } = ensureSecrets();
+      await ensurePostgres(postgresPassword);
       const databaseUrl =
-        `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}` +
+        `postgresql://${POSTGRES_USER}:${postgresPassword}` +
         `@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}` +
         `?schema=public&connection_limit=10&pool_timeout=20`;
       await runMigrations(databaseUrl);

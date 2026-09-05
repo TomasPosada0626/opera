@@ -259,7 +259,7 @@ describe('backend-manager', () => {
     );
   });
 
-  it('genera el JWT_SECRET una sola vez y lo persiste entre reinicios', async () => {
+  it('genera el JWT_SECRET y la contraseña de Postgres una sola vez, y los persiste entre reinicios', async () => {
     queueSpawns(happyPathSpawns({ containerExists: false }));
     const win = fakeWindow();
     initBackendManager(win);
@@ -277,10 +277,25 @@ describe('backend-manager', () => {
 
     const persisted = JSON.parse(
       readFileSync(path.join(userDataDir, 'opera-secrets.json'), 'utf-8'),
-    ) as { jwtSecret: string };
+    ) as { jwtSecret: string; postgresPassword: string };
     expect(persisted.jwtSecret).toBe(firstSecret);
+    expect(persisted.postgresPassword).toBeTruthy();
+    // Regresión de la auditoría 2026-09-03 (ronda 3): antes era el literal
+    // fijo 'opera' en toda instalación -- ahora tiene que ser aleatoria.
+    expect(persisted.postgresPassword).not.toBe('opera');
 
-    // Reintento (simula un segundo arranque de la app) -- mismo secreto.
+    // El `docker run` que crea el contenedor (llamada 3 de las 6 de
+    // happyPathSpawns) y el DATABASE_URL que arma el backend (llamada 6)
+    // tienen que usar exactamente la misma contraseña recién generada.
+    const dockerRunCall = spawnMock.mock.calls[2] as [string, string[]];
+    expect(dockerRunCall[1]).toContain(
+      `POSTGRES_PASSWORD=${persisted.postgresPassword}`,
+    );
+    expect(firstBackendCall[2].env.DATABASE_URL).toContain(
+      `:${persisted.postgresPassword}@`,
+    );
+
+    // Reintento (simula un segundo arranque de la app) -- mismos secretos.
     spawnMock.mockClear();
     queueSpawns(happyPathSpawns({ containerExists: true }));
     await ipcHandler('backend:retry')();
@@ -291,6 +306,9 @@ describe('backend-manager', () => {
       { env: Record<string, string> },
     ];
     expect(secondBackendCall[2].env.JWT_SECRET).toBe(firstSecret);
+    expect(secondBackendCall[2].env.DATABASE_URL).toContain(
+      `:${persisted.postgresPassword}@`,
+    );
   });
 
   it('backend:retry vuelve a intentar y llega a ready después de un error', async () => {
