@@ -19,6 +19,7 @@ const { mkdir, rename } = require('node:fs/promises');
 const https = require('node:https');
 const path = require('node:path');
 const { parseExpectedHash } = require('./parse-checksums.js');
+const { withRetry } = require('./retry.js');
 
 const CHECKSUMS_URL = 'https://desktop.docker.com/win/main/amd64/checksums.txt';
 const INSTALLER_URL =
@@ -101,9 +102,19 @@ function sha256OfFile(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
+function logRetry(what) {
+  return (error, attempt, delayMs) => {
+    console.log(
+      `${what} (intento ${attempt}) falló: ${error instanceof Error ? error.message : error} -- reintentando en ${delayMs / 1000}s...`,
+    );
+  };
+}
+
 async function main() {
   console.log('Consultando el checksum oficial de Docker Desktop...');
-  const checksumsText = await fetchText(CHECKSUMS_URL);
+  const checksumsText = await withRetry(() => fetchText(CHECKSUMS_URL), {
+    onRetry: logRetry('Descarga de checksums.txt'),
+  });
   const expectedHash = parseExpectedHash(checksumsText);
 
   if (existsSync(TARGET_FILE)) {
@@ -124,7 +135,9 @@ async function main() {
   console.log(
     'Descargando Docker Desktop Installer.exe (puede tardar varios minutos)...',
   );
-  await downloadToFile(INSTALLER_URL, tempFile);
+  await withRetry(() => downloadToFile(INSTALLER_URL, tempFile), {
+    onRetry: logRetry('Descarga de Docker Desktop Installer.exe'),
+  });
 
   const actualHash = sha256OfFile(tempFile);
   if (actualHash !== expectedHash) {
