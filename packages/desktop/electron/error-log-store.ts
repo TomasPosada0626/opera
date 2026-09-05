@@ -60,12 +60,32 @@ export interface LoggedError {
   stack?: string;
 }
 
+// `main.ts` llama a `appendErrorLog` de forma síncrona dentro de su propio
+// handler de `uncaughtException` -- en Windows el locking de archivos es
+// obligatorio (antivirus, indexador, OneDrive), así que un `EBUSY`/`EPERM`
+// acá (mkdir, la rotación, o el propio append) sería una segunda excepción
+// sin atrapar DENTRO de ese handler, y Node aborta el proceso con esa
+// excepción nueva antes de que el error original quedara logueado (auditoría
+// 2026-09-03, ronda 3). Cada paso atrapa por separado y sigue adelante en
+// vez de dejar escapar nada -- si la rotación falla, igual se intenta
+// escribir la entrada nueva (aunque el archivo exceda el tamaño máximo por
+// esta vez) en vez de perderla también.
 export function appendErrorLog(entry: LoggedError): void {
   const filePath = logFilePath();
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  rotateIfNeeded(filePath);
   const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
-  appendFileSync(filePath, line + '\n', 'utf8');
+  try {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    rotateIfNeeded(filePath);
+  } catch {
+    // Best-effort -- se sigue igual al append de abajo.
+  }
+  try {
+    appendFileSync(filePath, line + '\n', 'utf8');
+  } catch {
+    // Si esto también falla (p. ej. el mkdir de arriba tampoco pudo crear
+    // la carpeta), no queda nada más seguro por hacer que resignar esta
+    // entrada puntual.
+  }
 }
 
 // "Exportar" en vez de "ver": la usuaria no necesita leer JSON crudo, solo

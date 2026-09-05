@@ -87,6 +87,27 @@ describe('error-log-store', () => {
     expect(existsSync(`${logFilePath()}.1`)).toBe(false);
   });
 
+  // Regresión de la auditoría 2026-09-03 (ronda 3): `main.ts` llama a esto
+  // de forma síncrona dentro de su propio handler de `uncaughtException` --
+  // si escribir el log fallara (Windows con locking obligatorio: antivirus,
+  // OneDrive, un editor con el archivo abierto) y la excepción escapara,
+  // Node abortaría el proceso con esa segunda excepción antes de loguear la
+  // original. Simulado acá con el caso más simple de reproducir en
+  // cualquier plataforma: el path del log ya existe como directorio, no
+  // como archivo.
+  it('no lanza si escribir el log falla en vez de dejar escapar la excepción', () => {
+    const filePath = logFilePath();
+    mkdirSync(filePath, { recursive: true });
+
+    expect(() =>
+      appendErrorLog({
+        source: 'main',
+        type: 'x',
+        message: 'no debería tirar',
+      }),
+    ).not.toThrow();
+  });
+
   it('exportErrorLog devuelve no-logs si todavía no se escribió nada', async () => {
     await expect(exportErrorLog()).resolves.toEqual({
       ok: false,
