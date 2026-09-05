@@ -7,6 +7,9 @@
 ;   3. Si Windows necesita reiniciar para activar WSL/Virtual Machine
 ;      Platform, un reinicio automático que retoma la instalación solo --
 ;      ver "Resumen tras reinicio" más abajo.
+;   4. La contraseña real de Postgres para esta máquina, generada una sola
+;      vez acá (antes de que exista cualquier contenedor) y guardada con
+;      permisos restringidos -- ver "Contraseña de Postgres" más abajo.
 ;
 ; `perMachine: true` (electron-builder.json5) ya fuerza que TODO el
 ; instalador corra elevado (UAC) desde el arranque -- dism.exe y el
@@ -23,6 +26,20 @@
 ; arrancar -- SYSTEM ya cuenta como admin para UAC.nsh, así que no hay
 ; ningún prompt ni ventana visible -- y retoma la instalación en modo
 ; silencioso (/OperaResume /S) justo donde quedó.
+;
+; Contraseña de Postgres: tiene que ser UNA SOLA POR MÁQUINA, coordinada con
+; el contenedor Docker (también por máquina) -- nunca generada por
+; electron/backend-manager.ts en el primer arranque de cada cuenta de
+; Windows, porque dos cuentas en una PC compartida generarían cada una la
+; suya, y ninguna coincidiría con la que el contenedor fija de verdad en su
+; `initdb`. Se genera y guarda ACÁ, en el instalador (que ya corre elevado,
+; antes de que exista cualquier contenedor todavía), en la carpeta
+; ProgramData de Windows (resuelta en runtime -- ver ProvisionPostgresSecret
+; más abajo, NSIS no tiene una constante fija para esa ruta), con permisos
+; restringidos vía icacls -- mismo patrón que RESUME_EXE_PATH más abajo. Ver
+; el comentario espejo en backend-manager.ts
+; (ensureMachineWidePostgresPassword) para el resto del razonamiento
+; (auditoría 2026-09-05, ronda 4).
 !include "nsDialogs.nsh"
 !include "WinMessages.nsh"
 !include "LogicLib.nsh"
@@ -115,6 +132,10 @@
 !macroend
 
 !macro customInstall
+  ; Idempotente (no pisa un secreto ya provisionado) -- segura de llamar acá
+  ; sin importar si esta corrida es interactiva o de resume.
+  !insertmacro ProvisionPostgresSecret
+
   ${If} $IsResumeInstall == "1"
     ; Venimos de la tarea programada tras el reinicio -- confirmar que la
     ; corrida interactiva anterior de verdad dejó el checkbox de Docker
@@ -173,6 +194,57 @@
 ; Docker en silencio (ver customInstall). Vive junto al resto de los
 ; artefactos temporales de esta instalación, se borra en CleanupResumeTask.
 !define DOCKER_CONSENT_MARKER "$INSTDIR\resources\.docker-consent-given"
+
+; Ver el comentario grande al principio del archivo ("Contraseña de
+; Postgres") para el razonamiento completo. Genera la contraseña real de
+; esta máquina UNA SOLA VEZ (idempotente -- si el archivo ya existe, no hace
+; nada) y la guarda con permisos restringidos.
+!macro ProvisionPostgresSecret
+  ; NSIS no tiene una constante $COMMONAPPDATA -- $APPDATA cambia de
+  ; significado según SetShellVarContext (current/all), un estado global que
+  ; no conviene asumir acá (el propio template de electron-builder lo toca
+  ; por su cuenta). Se resuelve %ProgramData% como variable de entorno en
+  ; vez de depender de eso -- mismo criterio y misma cadena de respaldo que
+  ; machineSecretPath() en backend-manager.ts, para que ambos lados calculen
+  ; exactamente la misma ruta en la misma máquina.
+  ExpandEnvStrings $R0 "%ProgramData%"
+  ${If} $R0 == "%ProgramData%"
+    ExpandEnvStrings $R0 "%ALLUSERSPROFILE%"
+    ${If} $R0 == "%ALLUSERSPROFILE%"
+      StrCpy $R0 "C:\ProgramData"
+    ${EndIf}
+  ${EndIf}
+  StrCpy $R1 "$R0\Opera"
+  StrCpy $R2 "$R1\postgres-secret.json"
+
+  ${IfNot} ${FileExists} "$R2"
+    CreateDirectory "$R1"
+
+    ; RNGCryptoServiceProvider vía PowerShell -- disponible en cualquier
+    ; Windows moderno sin depender de ningún plugin NSIS extra. "$$" escapa
+    ; el "$" para PowerShell (NSIS lo interpretaría como variable propia
+    ; si no). Base64 sin "+"/"/"/"=" (reemplazados) para que entre sin
+    ; escapar en una URL de conexión postgresql://user:pass@... y en un
+    ; argumento de `docker run`. "Write-Host -NoNewline" a propósito -- el
+    ; eco automático de una expresión de PowerShell agrega un salto de
+    ; línea al final, que rompería el JSON de abajo si quedara adentro del
+    ; valor.
+    nsExec::ExecToStack 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$b=New-Object byte[](24);[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($$b);$$p=([Convert]::ToBase64String($$b)).Replace(\"+\",\"A\").Replace(\"/\",\"B\").Replace(\"=\",\"\");Write-Host -NoNewline $$p"'
+    Pop $0 ; código de salida
+    Pop $1 ; stdout capturado -- la contraseña generada, sin salto de línea
+
+    FileOpen $2 "$R2" w
+    FileWrite $2 '{"postgresPassword":"$1"}'
+    FileClose $2
+
+    ; SYSTEM/Administradores control total, cuentas locales comunes (Users,
+    ; SID S-1-5-32-545) solo lectura -- necesitan poder leerlo para que
+    ; Opera arranque en esa cuenta, pero no para modificarlo. Mismo patrón
+    ; que RESUME_EXE_PATH más abajo.
+    nsExec::ExecToLog 'icacls "$R2" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F) *S-1-5-32-545:(R)'
+    Pop $0
+  ${EndIf}
+!macroend
 
 !macro InstallDockerDesktop
   DetailPrint "Opera: activando Windows Subsystem for Linux..."
