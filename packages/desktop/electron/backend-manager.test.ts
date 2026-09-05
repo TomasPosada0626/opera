@@ -208,6 +208,26 @@ function seedPostgresSecret(password = 'seeded-postgres-password'): void {
   );
 }
 
+// Qué NO cubre este archivo, y por qué (auditoría 2026-09-05, ronda 4,
+// Testing, mejora -- para que quede explícito en vez de descubrirse recién
+// cuando algo de esto falle en una PC real):
+// - Docker/`icacls`/`schtasks` reales: `spawn` está mockeado por completo
+//   (ver más arriba) -- ningún test corre contra un Docker Desktop, un
+//   Postgres o un sistema de permisos de Windows de verdad. Eso es
+//   responsabilidad de `installer.nsh` en una instalación real (ver el
+//   "Hueco de evidencia" del ROADMAP de auditoría) y no se puede simular
+//   acá sin perder la velocidad/determinismo de un suite unitario.
+// - Semántica real de señales en Windows: `child.kill('SIGTERM'/'SIGKILL')`
+//   siempre "funciona" en los fakes de este archivo salvo que un test lo
+//   simule explícitamente como no-responsivo -- el comportamiento real de
+//   `ChildProcess.kill()` en Windows (sin señales POSIX de verdad) queda sin
+//   ejercitar.
+// - Dos procesos de Electron REALES compitiendo por el mismo recurso (acá
+//   solo se prueba la concurrencia lógica dentro de un mismo proceso vía
+//   `startChain`, nunca dos procesos de SO distintos).
+// - Memory/handle leaks de mantener la app abierta por días/semanas
+//   (el intervalo de backups, por ejemplo, se prueba con timers fake, nunca
+//   en tiempo real prolongado).
 describe('backend-manager', () => {
   beforeEach(() => {
     userDataDir = mkdtempSync(path.join(os.tmpdir(), 'opera-secrets-'));

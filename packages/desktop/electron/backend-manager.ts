@@ -369,6 +369,20 @@ function isPortInUse(port: number): Promise<boolean> {
 // sesión de Opera. Un `exit` inesperado (crash real, no el `SIGTERM` de
 // stopBackendProcess) se reporta como error en vez de dejar la app colgada
 // en "Iniciando Opera…" para siempre.
+//
+// Si Electron muere de una forma que NUNCA llega a `shutdownBackend()`
+// (crash real, "Finalizar tarea" desde el Administrador de tareas, corte de
+// luz) este proceso queda huérfano, sin nadie que lo mate. Evaluado
+// (auditoría 2026-09-05, ronda 4, Arquitectura, mejora) usar un Job Object
+// de Windows (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) para que Windows mismo
+// lo mate en cuanto el proceso de Electron termine, sin importar cómo --
+// decisión consciente de NO hacerlo: Node no lo expone nativamente, exigiría
+// sumar una dependencia nativa/FFI solo para este caso, y el escenario ya
+// tiene una salida razonable sin eso -- `isPortInUse()` (más abajo) lo
+// detecta en el arranque siguiente y el mensaje de error ya dice
+// explícitamente "revisá también el Administrador de tareas". Si esto
+// cambia de costo/beneficio (por ejemplo, si el huérfano deja de ser un
+// evento raro), reconsiderar acá.
 function startBackendProcess(env: Record<string, string>): void {
   setStatus({ state: 'starting', message: 'Iniciando Opera…' });
   const mainJsPath = path.join(backendResourcesDir(), 'dist', 'src', 'main.js');
