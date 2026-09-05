@@ -306,6 +306,18 @@
     ; Windows.
     nsExec::ExecToLog 'icacls "${RESUME_EXE_PATH}" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F)'
     Pop $0
+    ; Riesgo residual ACEPTADO, no eliminado (auditoría 2026-09-05, ronda 4,
+    ; Seguridad P3): entre el CopyFiles de arriba y el icacls de acá, el
+    ; archivo existe brevemente con el ACL heredado de la carpeta
+    ; contenedora, sin restringir todavía -- una ventana TOCTOU real, aunque
+    ; angosta (milisegundos, sin ningún Sleep/yield entre las dos
+    ; instrucciones). AccessControl.nsh (que permitiría crear el archivo ya
+    ; con el ACL final, sin ventana) NO viene incluido en el NSIS que trae
+    ; electron-builder (nsis-3.0.4.1 -- confirmado revisando su carpeta
+    ; Include/, es un plugin aparte que no se descarga). Explotar esta
+    ; ventana exige monitorear activamente la creación de este archivo
+    ; durante un UAC que la mayoría ve terminar en segundos -- riesgo bajo,
+    ; documentado acá en vez de dejarlo implícito.
   ${EndIf}
 
   ; /RU SYSTEM: sin contraseña que guardar, y SYSTEM ya cuenta como admin
