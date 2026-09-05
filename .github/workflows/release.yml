@@ -41,19 +41,26 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Mismo cache que package-windows en ci.yml -- ver ese archivo para el
-      # razonamiento completo de por qué la clave es por mes y por qué
-      # cachear no relaja la verificación de SHA256 que ya hace
+      # razonamiento completo de por qué la clave es el hash real (no un mes)
+      # y por qué cachear no relaja la verificación de SHA256 que ya hace
       # fetch-docker-installer.js en cada corrida.
-      - name: Compute cache month
-        id: cache-month
+      - name: Compute Docker Desktop installer checksum
+        id: docker-checksum
         shell: bash
-        run: echo "value=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+        run: |
+          curl -sL --retry 3 https://desktop.docker.com/win/main/amd64/checksums.txt -o checksums.txt
+          hash=$(grep -i 'docker desktop installer\.exe$' checksums.txt | tail -1 | awk '{print $1}' | tr 'A-F' 'a-f')
+          if [ -z "$hash" ]; then
+            echo "No se encontró el hash de Docker Desktop Installer.exe en checksums.txt" >&2
+            exit 1
+          fi
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
 
       - name: Cache Docker Desktop installer
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/desktop/resources/docker
-          key: docker-desktop-installer-${{ steps.cache-month.outputs.value }}
+          key: docker-desktop-installer-${{ steps.docker-checksum.outputs.hash }}
           restore-keys: |
             docker-desktop-installer-
 

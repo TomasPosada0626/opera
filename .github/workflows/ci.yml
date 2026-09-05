@@ -227,21 +227,32 @@ jobs:
       # fetch-docker-installer.js ya verifica su SHA256 contra el checksum
       # que Docker publica en cada corrida (cache o no), así que cachear no
       # relaja esa verificación, solo evita re-descargar cuando no hace
-      # falta. Clave por mes (no por versión, que no se conoce sin ya haber
-      # llamado a la red): dentro del mismo mes es un hit directo; al cambiar
-      # de mes cae a `restore-keys` (el cache más reciente que haya), el
-      # script decide solo si hace falta re-descargar, y al final de este
-      # job se guarda una entrada nueva bajo la clave del mes actual.
-      - name: Compute cache month
-        id: cache-month
+      # falta. La clave del cache es ese mismo hash (no un mes, ver auditoría
+      # 2026-09-03 ronda 3): una clave por mes quedaba pegada al instalador
+      # viejo el resto del mes si Docker publicaba una versión nueva a mitad
+      # de camino (GitHub Actions Cache es inmutable por clave exacta, así
+      # que nunca se volvía a guardar) -- con el hash real como clave, el
+      # cache cambia exactamente cuando cambia la versión real, sin depender
+      # del calendario. Un fallo de red acá (curl) no compromete nada: en el
+      # peor caso el paso de abajo falla el `if`, cae a `restore-keys` y
+      # fetch-docker-installer.js verifica igual antes de aceptar el archivo.
+      - name: Compute Docker Desktop installer checksum
+        id: docker-checksum
         shell: bash
-        run: echo "value=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+        run: |
+          curl -sL --retry 3 https://desktop.docker.com/win/main/amd64/checksums.txt -o checksums.txt
+          hash=$(grep -i 'docker desktop installer\.exe$' checksums.txt | tail -1 | awk '{print $1}' | tr 'A-F' 'a-f')
+          if [ -z "$hash" ]; then
+            echo "No se encontró el hash de Docker Desktop Installer.exe en checksums.txt" >&2
+            exit 1
+          fi
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
 
       - name: Cache Docker Desktop installer
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: packages/desktop/resources/docker
-          key: docker-desktop-installer-${{ steps.cache-month.outputs.value }}
+          key: docker-desktop-installer-${{ steps.docker-checksum.outputs.hash }}
           restore-keys: |
             docker-desktop-installer-
 
