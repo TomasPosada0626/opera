@@ -402,3 +402,10 @@ Cambios notables por versión en [`CHANGELOG.md`](CHANGELOG.md).
 ## Licencia
 
 Distribuido bajo licencia [MIT](./LICENSE).
+
+El instalador de Windows, además, embebe e instala
+[Docker Desktop](https://www.docker.com/products/docker-desktop/), bajo su
+propia licencia (Docker Subscription Service Agreement) — Opera en sí no la
+cambia ni la reemplaza. Ver
+[ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md) para el
+detalle de qué acepta esa instalación y bajo qué condiciones.
