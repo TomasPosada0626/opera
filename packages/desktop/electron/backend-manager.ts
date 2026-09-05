@@ -208,7 +208,19 @@ async function runMigrations(databaseUrl: string): Promise<void> {
     },
   );
   if (code !== 0) {
-    throw new Error(`No se pudieron aplicar las migraciones: ${stderr}`);
+    // El stderr crudo de Prisma (rutas, códigos de error P1001/P3009, stack
+    // traces) va al log de diagnóstico, no al mensaje que ve quien instala
+    // -- meterlo en el Error.message rompía el propio criterio de "lenguaje
+    // llano" de este archivo, porque ese mensaje sube tal cual hasta
+    // BackendStartupScreen.tsx (auditoría 2026-09-03, ronda 3).
+    appendErrorLog({
+      source: 'main',
+      type: 'migrate-deploy-stderr',
+      message: stderr,
+    });
+    throw new Error(
+      'No se pudo preparar la base de datos. Volvé a intentar; si el problema sigue, revisá el registro de errores desde Opera.',
+    );
   }
 }
 

@@ -65,6 +65,19 @@ function fakeCommand(
   return child;
 }
 
+// A diferencia de fakeCommand (el proceso corre y sale con un código), esto
+// simula que `spawn` ni siquiera pudo lanzar el proceso -- el binario
+// `docker` no está en el PATH (ENOENT), no que `docker info` haya fallado.
+function fakeSpawnError(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  queueMicrotask(() => {
+    child.emit('error', new Error('spawn docker ENOENT'));
+  });
+  return child;
+}
+
 // Simula el proceso del backend real: nunca sale solo, solo cuando alguien
 // le manda kill() (stopBackendProcess/shutdownBackend) -- necesario para
 // distinguir una salida esperada de un crash real (ver `expectedExits` en
@@ -193,6 +206,23 @@ describe('backend-manager', () => {
     expect(spawnMock).toHaveBeenCalledTimes(1);
   });
 
+  // Rama sin cubrir señalada en la auditoría 2026-09-03 (ronda 3): los demás
+  // tests simulan que `docker info` corre y sale con código no-cero, nunca
+  // que `spawn` ni siquiera pudo lanzar el binario (docker no instalado / no
+  // está en el PATH). El resultado visible es el mismo mensaje, pero es la
+  // única rama de `docker()` que quedaba sin ejercitar.
+  it('si el binario docker no existe (ENOENT), reporta el mismo error que si no estuviera corriendo', async () => {
+    queueSpawns([fakeSpawnError]);
+
+    const win = fakeWindow();
+    initBackendManager(win);
+
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win).state).toBe('error');
+    });
+    expect(lastStatusSent(win).message).toMatch(/Docker Desktop/);
+  });
+
   it('camino feliz: crea el contenedor, migra, levanta el backend y queda ready', async () => {
     queueSpawns(happyPathSpawns({ containerExists: false }));
 
@@ -316,7 +346,7 @@ describe('backend-manager', () => {
     );
   });
 
-  it('si `prisma migrate deploy` falla, reporta error y nunca llega a spawnear el backend', async () => {
+  it('si `prisma migrate deploy` falla, reporta un mensaje genérico (el stderr crudo va al log, no a la UI) y nunca llega a spawnear el backend', async () => {
     queueSpawns([
       () => fakeCommand({ exitCode: 0 }), // docker info
       () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
@@ -331,7 +361,15 @@ describe('backend-manager', () => {
     await vi.waitFor(() => {
       expect(lastStatusSent(win).state).toBe('error');
     });
-    expect(lastStatusSent(win).message).toMatch(/migraciones/);
+    // Regresión de la auditoría 2026-09-03 (ronda 3): el mensaje visible no
+    // debe traer jerga/stderr de Prisma -- eso va aparte, a appendErrorLog.
+    expect(lastStatusSent(win).message).not.toMatch(/P3009|migraciones/);
+    expect(appendErrorLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'migrate-deploy-stderr',
+        message: 'P3009 migración fallida',
+      }),
+    );
     expect(spawnMock).toHaveBeenCalledTimes(5);
   });
 
