@@ -5,12 +5,14 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import { SetupService } from './setup.service';
 import { CreateAdminDto } from './dto/create-admin.dto';
+import { LoopbackOnlyGuard } from './guards/loopback-only.guard';
 
 // Todo público a propósito: se consulta/usa antes de que exista ningún
 // usuario con quien autenticar, en el primer arranque de una instalación
@@ -35,11 +37,14 @@ export class SetupController {
   }
 
   @Public()
+  @UseGuards(LoopbackOnlyGuard)
   @Post('admin')
   @HttpCode(HttpStatus.CREATED)
   // Bajo a propósito, igual que forgot-password: este endpoint solo debería
   // llamarse una vez por instalación real, así que un techo bajo alcanza
-  // sin estorbar el uso normal.
+  // sin estorbar el uso normal. LoopbackOnlyGuard es la barrera principal
+  // contra la carrera de la LAN (auditoría 2026-09-03); esto queda como
+  // segunda capa.
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @ApiOperation({
     summary: 'Crea la primera cuenta de administrador de esta instalación',
