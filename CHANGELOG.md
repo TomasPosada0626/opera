@@ -64,6 +64,10 @@ hacia atrás; este changelog arranca desde que se creó.
 - Workflow de CodeQL (análisis estático semanal + en cada push/PR a `main`).
 - [ADR 0005](docs/adr/0005-no-clean-architecture.md) documentando la decisión
   de no migrar a Clean Architecture/DDD táctico.
+- Backup automático de Postgres mientras Opera sigue abierto (antes,
+  `scripts/backup-db.ts` era manual/bajo demanda, y en el instalador
+  empaquetado ni siquiera apuntaba al contenedor correcto). Corre cada 6
+  horas mientras la app está abierta, sin repetir antes de 24 horas.
 
 ### Corregido
 
@@ -133,6 +137,21 @@ hacia atrás; este changelog arranca desde que se creó.
   línea de comandos.
 - CVEs `high`/`moderate` en `fast-uri`/`qs` (dependencias transitivas de
   `@nestjs/cli` y `express`) fijados por override a versiones parcheadas.
+- CVE `high` en `@xmldom/xmldom` (dependencia transitiva) fijado por
+  override a versión parcheada.
+- La contraseña de Postgres del instalador empaquetado ya no se genera por
+  cuenta de Windows (`app.getPath('userData')`) — una PC compartida entre
+  dos cuentas generaba una contraseña distinta por cuenta, que no coincidía
+  con la que el contenedor ya tenía fija desde su `initdb`, y un archivo de
+  secretos corrupto dejaba el negocio sin poder acceder a su propio
+  inventario/pedidos/clientes. El instalador NSIS ahora la genera una sola
+  vez por máquina, antes de que exista cualquier contenedor, y la guarda en
+  `ProgramData` con permisos restringidos (`icacls`); `backend-manager.ts`
+  pasa a ser lector, y falla con un mensaje distinguible (en vez de generar
+  una contraseña nueva a ciegas) si el contenedor ya existe pero el archivo
+  se perdió.
+- La contraseña de Postgres ya no puede filtrarse al log de errores
+  exportable: cualquier connection string se redacta antes de guardarse.
 
 ### Rendimiento
 
