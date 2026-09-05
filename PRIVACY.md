@@ -63,6 +63,8 @@ salen de la red de la empresa hacia ningún tercero ni proveedor en la nube.
   documentada y explícita, no un descuido (ver
   [ADR 0007](docs/adr/0007-sin-tls-lan-de-confianza.md)), condicionada a que
   esa LAN siga siendo de confianza.
+- Acceso a la base de datos protegido con contraseña — generada una sola
+  vez por instalación, nunca fija ni repetida entre instalaciones distintas.
 
 ## Cuánto tiempo se conservan los datos
 
