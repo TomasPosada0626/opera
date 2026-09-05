@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { app, ipcMain, type BrowserWindow } from 'electron';
-import { appendErrorLog } from './error-log-store';
+import { appendErrorLog, type LoggedError } from './error-log-store';
 
 // Nombre/volumen/puerto DISTINTOS de los de `docker-compose.yml` (dev) --
 // antes compartían nombre a propósito, pero eso significaba que abrir la
@@ -20,15 +20,9 @@ const CONTAINER_NAME = 'opera-postgres-app';
 const POSTGRES_IMAGE = 'postgres:16';
 const POSTGRES_VOLUME = 'opera_postgres_data_app';
 // Usuario fijo (nunca sale de loopback, no hace falta que sea secreto) --
-// la contraseña, en cambio, se genera una sola vez por instalación y se
-// persiste junto al JWT_SECRET (ver ensureSecrets() más abajo). Antes era
-// también fija ('opera'), asumiendo que el único riesgo real era un
-// atacante con ejecución de código ya en la misma PC -- pero el caso de
-// uso real de esta sesión es justo una PC COMPARTIDA (la de un familiar):
-// cualquier otra cuenta de Windows en esa PC podía conectarse directo con
-// pgAdmin/DBeaver a 127.0.0.1 y leer/escribir todo, saltándose RBAC y
-// AuditLog por completo, sin necesitar ejecutar código malicioso alguno
-// (auditoría 2026-09-03, ronda 3, datos/legal P2).
+// la contraseña real vive en ensureMachineWidePostgresPassword() más abajo,
+// deliberadamente NO junto al JWT_SECRET. Ver el comentario de esa función
+// para el porqué completo (auditoría 2026-09-05, ronda 4).
 const POSTGRES_USER = 'opera';
 const POSTGRES_DB = 'opera';
 // 5433, no 5432 -- mismo motivo que el nombre del contenedor: si alguna vez
@@ -103,55 +97,147 @@ async function docker(...args: string[]): Promise<boolean> {
 // `app.getPath('userData')/opera-secrets.json` en vez de un `.env` generado
 // (ver NEXT_SESSION.md) — `env.ts` del backend no encuentra ningún `.env` en
 // un build empaquetado y no hace nada, así que este es el único lugar donde
-// vive el secreto entre reinicios de la app.
+// vive el secreto entre reinicios de la app. Deliberadamente por PERFIL de
+// Windows (no por máquina): cada proceso de Electron solo necesita validar
+// tokens que él mismo firmó, nunca cruza sesiones entre cuentas -- a
+// diferencia de la contraseña de Postgres (ver más abajo), no hay ningún
+// recurso compartido con el que este secreto tenga que coordinarse.
 function secretsFilePath(): string {
   return path.join(app.getPath('userData'), 'opera-secrets.json');
 }
 
-interface Secrets {
-  jwtSecret: string;
-  postgresPassword: string;
-}
-
-// Ambos secretos viven en el mismo archivo -- se leen y regeneran juntos
-// (nunca por separado) para que generar uno nunca pise al otro que ya
-// existía. `postgresPassword` solo importa para el `docker run` inicial
-// (Postgres fija la contraseña en el `initdb` del volumen la primera vez
-// que se crea, ver ensurePostgres()); si el archivo se corrompe después de
-// que el volumen ya existe con una contraseña vieja, seguir generando una
-// nueva acá dejaría al backend sin poder conectarse -- caso límite aceptado
-// por ahora, mismo criterio que ya se acepta para el JWT_SECRET (invalida
-// sesiones existentes, no compromete datos).
-function ensureSecrets(): Secrets {
+function ensureJwtSecret(): string {
   const file = secretsFilePath();
   if (existsSync(file)) {
     try {
-      const parsed = JSON.parse(
-        readFileSync(file, 'utf-8'),
-      ) as Partial<Secrets>;
-      if (parsed.jwtSecret && parsed.postgresPassword) {
-        return {
-          jwtSecret: parsed.jwtSecret,
-          postgresPassword: parsed.postgresPassword,
-        };
+      const parsed = JSON.parse(readFileSync(file, 'utf-8')) as {
+        jwtSecret?: string;
+      };
+      if (parsed.jwtSecret) {
+        return parsed.jwtSecret;
       }
     } catch {
-      // Archivo corrupto -- se pisa con secretos nuevos abajo en vez de
-      // tumbar el arranque.
+      // Archivo corrupto -- se pisa con un secreto nuevo abajo en vez de
+      // tumbar el arranque. Invalida cualquier sesión existente, pero eso
+      // ya pasa igual cada vez que se genera un secreto nuevo.
     }
   }
-  const secrets: Secrets = {
-    jwtSecret: randomBytes(48).toString('base64'),
-    // Alfanumérica (sin +/=) para que entre sin escapar en la URL de
-    // conexión (`postgresql://user:pass@...`) y en el argumento de
-    // `docker run` de más abajo.
-    postgresPassword: randomBytes(24).toString('base64url'),
-  };
-  writeFileSync(file, JSON.stringify(secrets));
-  return secrets;
+  const jwtSecret = randomBytes(48).toString('base64');
+  writeFileSync(file, JSON.stringify({ jwtSecret }));
+  return jwtSecret;
 }
 
-async function ensurePostgres(postgresPassword: string): Promise<void> {
+// $COMMONAPPDATA de NSIS (ProgramData) -- MISMA carpeta que
+// installer.nsh usa para provisionar el archivo, ver POSTGRES_SECRET_PATH
+// ahí. `process.env.ProgramData` es la forma de leer esa misma ruta desde
+// Node sin depender de ningún paquete nuevo.
+function machineSecretPath(): string {
+  const programData =
+    process.env['ProgramData'] ??
+    process.env['ALLUSERSPROFILE'] ??
+    'C:\\ProgramData';
+  return path.join(programData, 'Opera', 'postgres-secret.json');
+}
+
+// La contraseña real de Postgres tiene que ser UNA SOLA POR MÁQUINA,
+// coordinada con el contenedor Docker (también por máquina, ver
+// CONTAINER_NAME arriba) -- nunca por perfil de usuario de Windows, como
+// se hizo en la ronda 3 (`opera-secrets.json` bajo `userData`). Postgres
+// fija la contraseña una sola vez, en el `initdb` del volumen, la primera
+// vez que se crea el contenedor; `docker start` en corridas posteriores
+// nunca la vuelve a aplicar. Con la contraseña por perfil, tres auditores
+// independientes (seguridad, testing, datos/legal) encontraron el mismo
+// choque desde tres ángulos: una segunda cuenta de Windows en una PC
+// compartida generaba la suya propia (rompía el caso de uso real del
+// proyecto), actualizar desde una versión anterior regeneraba una que no
+// coincidía con el volumen viejo, y un archivo corrupto dejaba el negocio
+// sin poder acceder a su propio inventario/pedidos/clientes (auditoría
+// 2026-09-05, ronda 4).
+//
+// `installer.nsh` ya provisiona este archivo -- con `icacls` restringiendo
+// permisos -- ANTES de que exista ningún contenedor todavía (ver
+// ProvisionPostgresSecret ahí). Este código es LECTOR en el camino normal;
+// solo escribe si el contenedor TODAVÍA NO EXISTE (autoaprovisionamiento
+// seguro para dev/testing corriendo win-unpacked/ directo, sin pasar por el
+// instalador -- no hay ningún volumen con datos que se le pueda
+// desincronizar). Si el contenedor YA existe pero el archivo no aparece,
+// es la señal exacta de que se perdió la contraseña real -- ahí NUNCA se
+// genera una nueva en silencio, porque dejaría la base inaccesible para
+// siempre sin que nadie se entere hasta que ya sea tarde.
+async function ensureMachineWidePostgresPassword(
+  containerAlreadyExists: boolean,
+): Promise<string> {
+  const file = machineSecretPath();
+  if (existsSync(file)) {
+    try {
+      const parsed = JSON.parse(readFileSync(file, 'utf-8')) as {
+        postgresPassword?: string;
+      };
+      if (parsed.postgresPassword) {
+        return parsed.postgresPassword;
+      }
+    } catch {
+      // Cae al mismo tratamiento que "no existe" de abajo.
+    }
+  }
+
+  if (containerAlreadyExists) {
+    throw new Error(
+      'No se pudo autenticar con la base de datos existente -- puede que se haya perdido la contraseña guardada. Contactá soporte antes de seguir; no se va a generar una contraseña nueva automáticamente para no arriesgar el acceso a los datos ya guardados.',
+    );
+  }
+
+  // Alfanumérica (sin +/=) para que entre sin escapar en la URL de conexión
+  // (`postgresql://user:pass@...`) y en el argumento de `docker run` de
+  // más abajo.
+  const password = randomBytes(24).toString('base64url');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify({ postgresPassword: password }));
+  await restrictToSystemAndAdmins(file);
+  return password;
+}
+
+// Mismo patrón de permisos que installer.nsh ya usa para
+// OperaSetupResume.exe: SYSTEM/Administradores con control total, cuentas
+// locales comunes (Users, S-1-5-32-545) solo lectura -- necesitan poder
+// leerlo para que Opera arranque en esa cuenta, pero no para modificarlo.
+// Best-effort: si `icacls` falla, no es motivo para tumbar el arranque, el
+// archivo sigue con los permisos que haya heredado la carpeta.
+async function restrictToSystemAndAdmins(file: string): Promise<void> {
+  try {
+    await spawnAndWait('icacls', [
+      file,
+      '/inheritance:r',
+      '/grant:r',
+      '*S-1-5-18:(F)',
+      '*S-1-5-32-544:(F)',
+      '*S-1-5-32-545:(R)',
+    ]);
+  } catch {
+    // best-effort, ver comentario de arriba.
+  }
+}
+
+// Redacta cualquier contraseña embebida en una connection string de
+// Postgres antes de que llegue al log de errores exportable -- ese archivo
+// existe justo para mandarse por WhatsApp/correo cuando algo falla
+// (error-log-store.ts), así que dejar pasar el stderr/mensaje crudo de
+// Prisma (que puede ecoar el DATABASE_URL completo en errores de conexión)
+// deshacía, por otra vía, la protección de la contraseña de arriba
+// (auditoría 2026-09-05, ronda 4).
+function redactConnectionStrings(text: string): string {
+  return text.replace(/(postgresql:\/\/[^:]+:)[^@]+(@)/gi, '$1***$2');
+}
+
+function appendRedactedErrorLog(entry: LoggedError): void {
+  appendErrorLog({
+    ...entry,
+    message: redactConnectionStrings(entry.message),
+    stack: entry.stack ? redactConnectionStrings(entry.stack) : undefined,
+  });
+}
+
+async function ensurePostgres(): Promise<string> {
   setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
   if (!(await docker('info'))) {
     throw new Error(
@@ -166,6 +252,11 @@ async function ensurePostgres(postgresPassword: string): Promise<void> {
 
   setStatus({ state: 'starting', message: 'Iniciando la base de datos…' });
   const exists = await docker('inspect', CONTAINER_NAME);
+  // Se resuelve ACÁ, no antes -- ensureMachineWidePostgresPassword()
+  // necesita saber si el contenedor ya existe para decidir si autoprovisionar
+  // es seguro o si hay que fallar con un mensaje distinguible (ver esa
+  // función).
+  const postgresPassword = await ensureMachineWidePostgresPassword(exists);
   if (exists) {
     await docker('start', CONTAINER_NAME);
   } else {
@@ -199,6 +290,8 @@ async function ensurePostgres(postgresPassword: string): Promise<void> {
     POSTGRES_READY_TIMEOUT_MS,
     'La base de datos no respondió a tiempo.',
   );
+
+  return postgresPassword;
 }
 
 function backendResourcesDir(): string {
@@ -235,8 +328,11 @@ async function runMigrations(databaseUrl: string): Promise<void> {
     // traces) va al log de diagnóstico, no al mensaje que ve quien instala
     // -- meterlo en el Error.message rompía el propio criterio de "lenguaje
     // llano" de este archivo, porque ese mensaje sube tal cual hasta
-    // BackendStartupScreen.tsx (auditoría 2026-09-03, ronda 3).
-    appendErrorLog({
+    // BackendStartupScreen.tsx (auditoría 2026-09-03, ronda 3). Redactado
+    // (no `appendErrorLog` directo): un stderr de conexión de Prisma puede
+    // ecoar el DATABASE_URL completo, contraseña incluida (auditoría
+    // 2026-09-05, ronda 4).
+    appendRedactedErrorLog({
       source: 'main',
       type: 'migrate-deploy-stderr',
       message: stderr,
@@ -277,7 +373,9 @@ function startBackendProcess(env: Record<string, string>): void {
   backendProcess = child;
 
   child.stderr?.on('data', (chunk: Buffer) => {
-    appendErrorLog({
+    // Redactado: el propio backend real puede imprimir el DATABASE_URL en
+    // sus logs de arranque de Nest/Prisma (auditoría 2026-09-05, ronda 4).
+    appendRedactedErrorLog({
       source: 'main',
       type: 'backend-stderr',
       message: chunk.toString(),
@@ -288,7 +386,7 @@ function startBackendProcess(env: Record<string, string>): void {
       backendProcess = null;
     }
     if (!expectedExits.delete(child)) {
-      appendErrorLog({
+      appendRedactedErrorLog({
         source: 'main',
         type: 'backend-exit',
         message: `El backend terminó inesperadamente (code=${code} signal=${signal})`,
@@ -350,8 +448,8 @@ function start(): Promise<void> {
   const run = async (): Promise<void> => {
     await stopBackendProcess();
     try {
-      const { jwtSecret, postgresPassword } = ensureSecrets();
-      await ensurePostgres(postgresPassword);
+      const jwtSecret = ensureJwtSecret();
+      const postgresPassword = await ensurePostgres();
       const databaseUrl =
         `postgresql://${POSTGRES_USER}:${postgresPassword}` +
         `@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}` +
@@ -373,8 +471,15 @@ function start(): Promise<void> {
       await waitForBackendHealth();
       setStatus({ state: 'ready' });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      appendErrorLog({
+      // Redactado como red de seguridad final -- ningún código de este
+      // archivo debería embeber la contraseña en un Error.message hoy, pero
+      // este es el único catch por el que pasa cualquier excepción futura
+      // antes de mostrarse en la UI (setStatus) y guardarse en el log
+      // exportable (auditoría 2026-09-05, ronda 4).
+      const message = redactConnectionStrings(
+        error instanceof Error ? error.message : String(error),
+      );
+      appendRedactedErrorLog({
         source: 'main',
         type: 'backend-manager',
         message,

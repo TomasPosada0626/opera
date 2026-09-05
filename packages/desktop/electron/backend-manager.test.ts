@@ -1,5 +1,12 @@
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
@@ -169,9 +176,34 @@ function lastStatusSent(win: BrowserWindow): BackendStatus {
   return status;
 }
 
+let programDataDir = '';
+const originalProgramData = process.env['ProgramData'];
+
+function postgresSecretPath(): string {
+  return path.join(programDataDir, 'Opera', 'postgres-secret.json');
+}
+
+// La mayoría de los tests no le interesa el aprovisionamiento de la
+// contraseña de Postgres en sí (eso lo prueban los tests dedicados de más
+// abajo) -- reflejan la situación real de producción, donde
+// installer.nsh ya la dejó lista antes de que la app corriera por primera
+// vez. Sembrarla acá evita que la mayoría de los tests existentes tengan
+// que saber que ahora hay un spawn extra (`icacls`) cuando el
+// aprovisionamiento sí ocurre.
+function seedPostgresSecret(password = 'seeded-postgres-password'): void {
+  mkdirSync(path.dirname(postgresSecretPath()), { recursive: true });
+  writeFileSync(
+    postgresSecretPath(),
+    JSON.stringify({ postgresPassword: password }),
+  );
+}
+
 describe('backend-manager', () => {
   beforeEach(() => {
     userDataDir = mkdtempSync(path.join(os.tmpdir(), 'opera-secrets-'));
+    programDataDir = mkdtempSync(path.join(os.tmpdir(), 'opera-programdata-'));
+    process.env['ProgramData'] = programDataDir;
+    seedPostgresSecret();
     // Solo existe dentro de un proceso Electron real (y es `readonly` en su
     // tipo, mismo motivo que main.test.ts usa `Object.defineProperty` para
     // `process.platform`) -- backendResourcesDir() lo necesita para ubicar
@@ -190,6 +222,12 @@ describe('backend-manager', () => {
 
   afterEach(() => {
     rmSync(userDataDir, { recursive: true, force: true });
+    rmSync(programDataDir, { recursive: true, force: true });
+    if (originalProgramData === undefined) {
+      delete process.env['ProgramData'];
+    } else {
+      process.env['ProgramData'] = originalProgramData;
+    }
     vi.unstubAllGlobals();
   });
 
@@ -259,7 +297,7 @@ describe('backend-manager', () => {
     );
   });
 
-  it('genera el JWT_SECRET y la contraseña de Postgres una sola vez, y los persiste entre reinicios', async () => {
+  it('genera el JWT_SECRET una sola vez (por perfil de Windows) y lo persiste entre reinicios', async () => {
     queueSpawns(happyPathSpawns({ containerExists: false }));
     const win = fakeWindow();
     initBackendManager(win);
@@ -277,25 +315,10 @@ describe('backend-manager', () => {
 
     const persisted = JSON.parse(
       readFileSync(path.join(userDataDir, 'opera-secrets.json'), 'utf-8'),
-    ) as { jwtSecret: string; postgresPassword: string };
+    ) as { jwtSecret: string };
     expect(persisted.jwtSecret).toBe(firstSecret);
-    expect(persisted.postgresPassword).toBeTruthy();
-    // Regresión de la auditoría 2026-09-03 (ronda 3): antes era el literal
-    // fijo 'opera' en toda instalación -- ahora tiene que ser aleatoria.
-    expect(persisted.postgresPassword).not.toBe('opera');
 
-    // El `docker run` que crea el contenedor (llamada 3 de las 6 de
-    // happyPathSpawns) y el DATABASE_URL que arma el backend (llamada 6)
-    // tienen que usar exactamente la misma contraseña recién generada.
-    const dockerRunCall = spawnMock.mock.calls[2] as [string, string[]];
-    expect(dockerRunCall[1]).toContain(
-      `POSTGRES_PASSWORD=${persisted.postgresPassword}`,
-    );
-    expect(firstBackendCall[2].env.DATABASE_URL).toContain(
-      `:${persisted.postgresPassword}@`,
-    );
-
-    // Reintento (simula un segundo arranque de la app) -- mismos secretos.
+    // Reintento (simula un segundo arranque de la app) -- mismo secreto.
     spawnMock.mockClear();
     queueSpawns(happyPathSpawns({ containerExists: true }));
     await ipcHandler('backend:retry')();
@@ -306,9 +329,97 @@ describe('backend-manager', () => {
       { env: Record<string, string> },
     ];
     expect(secondBackendCall[2].env.JWT_SECRET).toBe(firstSecret);
-    expect(secondBackendCall[2].env.DATABASE_URL).toContain(
-      `:${persisted.postgresPassword}@`,
-    );
+  });
+
+  // Hallazgo transversal de la auditoría 2026-09-05 (ronda 4, encontrado por
+  // Seguridad/Testing/Datos-Legal desde tres ángulos): la contraseña de
+  // Postgres tiene que ser una sola por MÁQUINA (provisionada por
+  // installer.nsh), no generada por esta app en cada perfil de Windows.
+  describe('contraseña de Postgres (machine-wide, ver ProvisionPostgresSecret en installer.nsh)', () => {
+    it('usa la contraseña ya provisionada por el instalador, no genera una nueva', async () => {
+      seedPostgresSecret('la-que-puso-el-instalador');
+      queueSpawns(happyPathSpawns({ containerExists: false }));
+
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+
+      // Sin icacls de más -- el archivo ya existía, solo se lee. Sigue
+      // siendo exactamente 6 llamadas (las de happyPathSpawns).
+      expect(spawnMock).toHaveBeenCalledTimes(6);
+      const dockerRunCall = spawnMock.mock.calls[2] as [string, string[]];
+      expect(dockerRunCall[1]).toContain(
+        'POSTGRES_PASSWORD=la-que-puso-el-instalador',
+      );
+      const backendCall = spawnMock.mock.calls[5] as [
+        string,
+        string[],
+        { env: Record<string, string> },
+      ];
+      expect(backendCall[2].env.DATABASE_URL).toContain(
+        ':la-que-puso-el-instalador@',
+      );
+    });
+
+    it('si el archivo no existe y el contenedor tampoco, la autoprovisiona (dev/testing sin pasar por el instalador)', async () => {
+      rmSync(path.dirname(postgresSecretPath()), {
+        recursive: true,
+        force: true,
+      });
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }), // docker info
+        () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
+        () => fakeCommand({ exitCode: 0 }), // icacls (nuevo, restringe permisos)
+        ...happyPathSpawns({ containerExists: false }).slice(2), // run, pg_isready, migrate, backend
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+
+      expect(spawnMock).toHaveBeenNthCalledWith(
+        3,
+        'icacls',
+        expect.arrayContaining([postgresSecretPath(), '/inheritance:r']),
+        undefined,
+      );
+      const persisted = JSON.parse(
+        readFileSync(postgresSecretPath(), 'utf-8'),
+      ) as { postgresPassword: string };
+      expect(persisted.postgresPassword).toBeTruthy();
+      const dockerRunCall = spawnMock.mock.calls[3] as [string, string[]];
+      expect(dockerRunCall[1]).toContain(
+        `POSTGRES_PASSWORD=${persisted.postgresPassword}`,
+      );
+    });
+
+    it('si el contenedor ya existe pero no hay contraseña guardada, falla con un mensaje distinguible en vez de generar una nueva', async () => {
+      rmSync(path.dirname(postgresSecretPath()), {
+        recursive: true,
+        force: true,
+      });
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }), // docker info
+        () => fakeCommand({ exitCode: 0 }), // docker inspect -> SÍ existe
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win).state).toBe('error');
+      });
+      expect(lastStatusSent(win).message).toMatch(
+        /no se pudo autenticar con la base de datos existente/i,
+      );
+      // Nunca llega a `docker run`/`icacls` -- nada más que los dos checks.
+      expect(spawnMock).toHaveBeenCalledTimes(2);
+      expect(existsSync(postgresSecretPath())).toBe(false);
+    });
   });
 
   it('backend:retry vuelve a intentar y llega a ready después de un error', async () => {
@@ -391,6 +502,42 @@ describe('backend-manager', () => {
     expect(spawnMock).toHaveBeenCalledTimes(5);
   });
 
+  // Observabilidad P2, auditoría 2026-09-05 (ronda 4): el stderr de Prisma
+  // puede ecoar el DATABASE_URL completo (contraseña incluida) en errores de
+  // conexión -- si eso llegara sin redactar al log de errores exportable,
+  // deshacía por otra vía la protección de la contraseña machine-wide.
+  it('redacta la contraseña de cualquier connection string de Postgres antes de loguearla', async () => {
+    const stderrConContraseña =
+      "Error P1001: Can't reach database server at `postgresql://opera:la-que-puso-el-instalador@127.0.0.1:5433/opera`";
+    queueSpawns([
+      () => fakeCommand({ exitCode: 0 }), // docker info
+      () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
+      () => fakeCommand({ exitCode: 0 }), // docker run
+      () => fakeCommand({ exitCode: 0 }), // pg_isready
+      () => fakeCommand({ exitCode: 1, stderr: stderrConContraseña }), // migrate deploy
+    ]);
+
+    const win = fakeWindow();
+    initBackendManager(win);
+
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win).state).toBe('error');
+    });
+    const calls = appendErrorLogMock.mock.calls as [
+      { type: string; message: string },
+    ][];
+    const loggedMessage = calls.find(
+      ([entry]) => entry.type === 'migrate-deploy-stderr',
+    )?.[0];
+    if (!loggedMessage) {
+      throw new Error('no se logueó ningún migrate-deploy-stderr');
+    }
+    expect(loggedMessage.message).not.toContain('la-que-puso-el-instalador');
+    expect(loggedMessage.message).toContain(
+      'postgresql://opera:***@127.0.0.1:5433/opera',
+    );
+  });
+
   // Ronda 2 de auditoría (2026-09-01), hallazgo P1 de testing: las 8 pruebas
   // de arriba siempre resuelven al primer intento -- nada cubría las ramas
   // de timeout/reintento real, que son justo las que importan cuando algo
@@ -461,6 +608,30 @@ describe('backend-manager', () => {
       expect.objectContaining({
         type: 'backend-stderr',
         message: 'algo se rompió',
+      }),
+    );
+  });
+
+  it('redacta la contraseña si el propio backend la imprime en su stderr', async () => {
+    const backendChild = fakeLongRunningProcess();
+    queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    backendChild.stderr.emit(
+      'data',
+      Buffer.from(
+        'DATABASE_URL=postgresql://opera:seeded-postgres-password@127.0.0.1:5433/opera',
+      ),
+    );
+
+    expect(appendErrorLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'backend-stderr',
+        message: 'DATABASE_URL=postgresql://opera:***@127.0.0.1:5433/opera',
       }),
     );
   });
