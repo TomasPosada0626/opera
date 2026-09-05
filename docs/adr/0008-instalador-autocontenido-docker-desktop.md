@@ -53,8 +53,12 @@ UAC.
 **Instalar Docker Desktop desde el instalador de Opera acepta también su
 licencia** (Docker Subscription Service Agreement) en nombre de quien
 instala — el checkbox del wizard lo dice explícitamente. Herrajes Toro
-califica como "empresa pequeña" bajo esa licencia (uso gratuito); Opera en
-sí sigue MIT (ver README).
+califica como "empresa pequeña" bajo esa licencia (uso gratuito): el
+umbral real de esa sección (§3.2 del acuerdo) es **menos de 250 empleados
+Y menos de US$10M de ingresos anuales** — dejar los dos números acá, no
+solo la conclusión, es para que quien retome esta decisión más adelante
+sepa cuándo deja de sostenerse si la empresa crece, sin tener que
+releer la licencia entera. Opera en sí sigue MIT (ver README).
 
 **Primera cuenta de administrador por instalación, no por `.env`**: nuevo
 endpoint público `POST /setup/admin` (`setup.service.ts`) reemplaza
@@ -77,7 +81,7 @@ primera vez que se abre, guardada solo en esa base de datos local.
 
 **En contra / costos aceptados:**
 
-- El instalador pesa ~827 MB sin firmar (Docker Desktop embebido más el
+- El instalador pesa ~671 MB sin firmar (Docker Desktop embebido más el
   backend con `node_modules` de producción) — ver la sección
   "Compilación" del README para el detalle.
 - El ciclo de activar WSL → reiniciar → retomar solo puede verificarse

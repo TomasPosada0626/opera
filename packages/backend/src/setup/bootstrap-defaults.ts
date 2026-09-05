@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export const ADMIN_ROLE_NAME = 'ADMIN';
 export const MAIN_WAREHOUSE_NAME = 'Bodega principal';
@@ -13,8 +13,12 @@ export const MAIN_WAREHOUSE_NAME = 'Bodega principal';
 // upsert de User/UserRole con env vars allá) sigue distinto a propósito --
 // son dos casos de uso genuinamente diferentes, no vale forzarlos a una sola
 // función.
-type BootstrapClient =
-  Pick<PrismaClient, 'role' | 'warehouse'> | Prisma.TransactionClient;
+// Un `PrismaClient` real ya satisface `Prisma.TransactionClient`
+// estructuralmente (es ese mismo tipo menos un puñado de métodos como
+// `$transaction`/`$connect`) -- alcanza con este solo tipo para los dos
+// call sites (`tx` en setup.service.ts, el `prisma` completo en
+// prisma/seed.ts), sin un `Pick<...>` de más (auditoría 2026-09-03, ronda 3).
+type BootstrapClient = Prisma.TransactionClient;
 
 export async function upsertAdminRole(client: BootstrapClient) {
   return client.role.upsert({

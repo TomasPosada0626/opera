@@ -30,6 +30,17 @@ async function bootstrap() {
   // Nada capturaba esto antes — un fallo fuera del ciclo normal de
   // request/response (una promesa sin `await`, un error asíncrono suelto)
   // se perdía sin dejar rastro. Ahora al menos queda en el log rotado.
+  //
+  // Deuda conocida, aceptada por ahora (auditoría 2026-09-03, ronda 3): ni
+  // uncaughtException ni unhandledRejection terminan el proceso tras
+  // loguear -- Node recomienda no seguir operando después de una excepción
+  // no capturada, porque el estado de la app ya no está garantizado. No se
+  // agregó `process.exit()` en esta pasada porque cambia el comportamiento
+  // de crash de todo el backend (una sola promesa suelta en un request
+  // tumbaría el servidor completo para el resto de quien lo esté usando en
+  // ese momento) y merece evaluarse aparte, con el flujo de reinicio de
+  // backend-manager.ts (que sí sabe reportar y reintentar un backend
+  // empaquetado que murió inesperado) en mente antes de decidir.
   const logger = app.get(Logger);
   process.on('uncaughtException', (error) => {
     logger.error(error, 'uncaughtException');

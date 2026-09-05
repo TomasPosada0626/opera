@@ -147,8 +147,10 @@ app.on('window-all-closed', () => {
     // Solo empaquetado -- backend-manager nunca se inicializó en dev (ahí
     // el backend/Postgres se levantan a mano, ver app.whenReady más abajo),
     // así que llamar shutdownBackend() ahí intentaría parar el
-    // opera-postgres de docker-compose que la persona desarrolladora
-    // levantó por su cuenta.
+    // opera-postgres-app de backend-manager.ts contra el opera-postgres de
+    // docker-compose.yml que la persona desarrolladora levantó por su
+    // cuenta -- nombres distintos a propósito (ver backend-manager.ts),
+    // pero el riesgo real es el mismo: no tocar el Postgres de dev.
     if (VITE_DEV_SERVER_URL) {
       app.quit();
       win = null;

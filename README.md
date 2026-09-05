@@ -107,6 +107,14 @@ flowchart LR
     API -- "SQL vía Prisma<br/>(transacciones Serializable<br/>en operaciones críticas)" --> DB
 ```
 
+Este diagrama muestra el plano de datos (cómo se hablan los tres
+contenedores), no el de control: en el instalador autocontenido (ver
+[ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)),
+**Desktop además administra el ciclo de vida de API y de la base de
+datos** — los prende (`docker run`/`docker start`, `spawn` del backend) al
+abrir Opera y los apaga al cerrarla — algo que este diagrama no representa
+porque describe la arquitectura en ejecución, no quién la orquesta.
+
 Dentro del contenedor **API REST**, el backend se organiza en módulos de Nest
 por dominio (Auth, Inventario, Producción, Ventas/Clientes/Proveedores,
 Reportes/Dashboard) — ver el detalle a nivel de componente en
@@ -237,7 +245,17 @@ No sube a ningún destino remoto a propósito — LAN-only, igual que el resto
 del proyecto; para retención real, programa este comando (cron, Task
 Scheduler) y copia `backups/` a donde ya respaldes el resto de la empresa.
 
-Restaurar un respaldo (sobrescribe la base actual):
+**Instalador empaquetado**: el Postgres que administra `backend-manager.ts`
+corre en un contenedor con nombre distinto (`opera-postgres-app`, ver
+[ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)) — para
+respaldar esa instalación, pasá el nombre por variable de entorno:
+
+```bash
+POSTGRES_CONTAINER=opera-postgres-app pnpm --filter backend backup:db
+```
+
+Restaurar un respaldo (sobrescribe la base actual — cambiá `opera-postgres`
+por `opera-postgres-app` si es una instalación del instalador empaquetado):
 
 ```bash
 gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
@@ -280,7 +298,7 @@ pnpm build
 
 Compila ambos paquetes y arma un instalador de Windows autocontenido en `packages/desktop/release/`: el script `build` del desktop primero empaqueta el backend entero (`pnpm --filter backend deploy`, con `node_modules` de producción resueltos) como recurso embebido, descarga y verifica (SHA256 contra el checksum que publica Docker) el instalador oficial de Docker Desktop la primera vez que se corre (después queda cacheado en `packages/desktop/resources/`, nunca se commitea), y recién ahí corre `tsc && vite build && electron-builder`.
 
-El instalador resultante pide permisos de administrador desde que arranca (necesarios para activar WSL/Virtual Machine Platform e instalar Docker Desktop si hace falta) y, al abrir Opera instalado, la propia app levanta y apaga Postgres y el backend en segundo plano — no hay `.env` ni `pnpm db:seed` que correr a mano en la máquina final: la primera vez que se abre sin ningún usuario todavía, muestra una pantalla para crear la cuenta de Administrador ahí mismo, guardada solo en esa base de datos local. Pesa ~827 MB sin firmar (Docker Desktop embebido más el backend con `node_modules` de producción) — ver [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md).
+El instalador resultante pide permisos de administrador desde que arranca (necesarios para activar WSL/Virtual Machine Platform e instalar Docker Desktop si hace falta) y, al abrir Opera instalado, la propia app levanta y apaga Postgres y el backend en segundo plano — no hay `.env` ni `pnpm db:seed` que correr a mano en la máquina final: la primera vez que se abre sin ningún usuario todavía, muestra una pantalla para crear la cuenta de Administrador ahí mismo, guardada solo en esa base de datos local. Pesa ~671 MB sin firmar (Docker Desktop embebido más el backend con `node_modules` de producción) — ver [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md).
 
 ### Firmar el instalador
 
@@ -324,6 +342,12 @@ El repo es público, así que el chequeo y la descarga de actualizaciones no nec
 - **`EPERM: operation not permitted` al renombrar `query_engine-*.dll.node`** (Windows, al correr `pnpm install` o `prisma generate`): algún proceso todavía tiene el motor de Prisma cargado — casi siempre un backend (`pnpm dev:backend`) que quedó corriendo en otra terminal. Ciérralo y reintenta.
 - **Puerto 5432 o 3000 ya en uso**: ver la nota de `POSTGRES_PORT`/`DATABASE_URL` arriba para Postgres; para el backend, ajusta `PORT` en `.env` (y `VITE_API_URL` en el entorno del desktop si el backend no corre en `localhost:3000`).
 - **`prisma migrate dev` pide confirmación y no avanza**: en un entorno no interactivo (CI, algunos shells embebidos) usa `prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script` para generar el SQL a mano, revísalo, y aplícalo con `prisma migrate deploy` en vez de `migrate dev`.
+
+**Instalador empaquetado** (ver [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)):
+
+- **Docker Desktop no arranca después de instalar Opera**: si la PC no tenía WSL/Virtual Machine Platform activado, Windows se reinició solo durante la instalación y Docker Desktop puede tardar un minuto en terminar de arrancar tras ese reinicio — esperá y volvé a abrir Opera. Si sigue sin arrancar, la causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI.
+- **No encuentro el Postgres de Opera en el puerto de siempre**: el Postgres que administra el instalador empaquetado corre en el puerto `5433` (contenedor `opera-postgres-app`), no en el `5432` de `docker-compose.yml` (dev) — a propósito, para que nunca colisionen en la misma PC.
+- **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` y `opera-secrets.json` respectivamente. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano.
 
 ## Modelo de dominio
 

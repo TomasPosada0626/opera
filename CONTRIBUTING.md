@@ -8,8 +8,10 @@ transacciones con aislamiento explícito — ver
 
 ## Antes de abrir un PR
 
-1. `pnpm install`, `docker compose up -d`, `pnpm db:migrate`, `pnpm db:seed`
-   (ver [Puesta en marcha](README.md#puesta-en-marcha)).
+1. Seguí los pasos de [Puesta en marcha](README.md#puesta-en-marcha) del
+   README (instalar dependencias, levantar Postgres, generar el cliente de
+   Prisma, aplicar migraciones, sembrar el usuario Administrador inicial) —
+   no se repiten acá para no desincronizarse con la fuente real.
 2. Corré el suite completo, no solo lo que tocaste:
    `pnpm test` (unit backend + desktop, con gate de cobertura) y
    `pnpm --filter backend test:e2e` (contra Postgres real).
@@ -20,6 +22,17 @@ transacciones con aislamiento explícito — ver
 5. Si es una decisión de arquitectura relevante (no un bugfix chico),
    documentala como ADR en `docs/adr/`, siguiendo el formato de las que ya
    existen (Contexto → Decisión → Consecuencias a favor/en contra).
+6. Si tocás `packages/desktop/build/installer.nsh` o cualquier
+   `spawn`/`execFileSync`/`nsExec::ExecToLog` nuevo en
+   `packages/desktop/electron/backend-manager.ts` o
+   `packages/backend/scripts/`: nunca interpoles un string externo (nombre
+   de archivo, ruta elegida por quien instala, argumento de usuario) directo
+   en el comando — usá siempre argumentos separados (`spawn(cmd, [arg1,
+arg2])`, no `spawn(\`${cmd} ${arg}\`)`) o, en NSIS, escapá/validá antes de
+interpolar. Encontrado real en la auditoría 2026-09-03 (ronda 3): un
+`$INSTDIR` escribible por un usuario sin privilegios combinado con una
+   tarea programada corriendo como SYSTEM era una escalación de privilegios
+   completa.
 
 ## Convención de commits
 
