@@ -233,16 +233,29 @@
     Pop $0 ; código de salida
     Pop $1 ; stdout capturado -- la contraseña generada, sin salto de línea
 
-    FileOpen $2 "$R2" w
-    FileWrite $2 '{"postgresPassword":"$1"}'
-    FileClose $2
+    ; Si PowerShell falla (bloqueado por política de grupo, ausente, lo que
+    ; sea) NO se escribe un archivo con una contraseña vacía o con el texto
+    ; de un error adentro -- eso rompería el JSON en silencio y dejaría un
+    ; secreto inválido que backend-manager.ts leería como si fuera bueno.
+    ; Sin este archivo, ensureMachineWidePostgresPassword() se autoprovisiona
+    ; sola en el primer arranque (mismo camino que dev/testing sin pasar por
+    ; el instalador) -- se prefiere ESO antes que escribir algo roto acá
+    ; (revisión propia post-ronda-4, 2026-09-06).
+    ${If} $0 == "0"
+    ${AndIf} $1 != ""
+      FileOpen $2 "$R2" w
+      FileWrite $2 '{"postgresPassword":"$1"}'
+      FileClose $2
 
-    ; SYSTEM/Administradores control total, cuentas locales comunes (Users,
-    ; SID S-1-5-32-545) solo lectura -- necesitan poder leerlo para que
-    ; Opera arranque en esa cuenta, pero no para modificarlo. Mismo patrón
-    ; que RESUME_EXE_PATH más abajo.
-    nsExec::ExecToLog 'icacls "$R2" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F) *S-1-5-32-545:(R)'
-    Pop $0
+      ; SYSTEM/Administradores control total, cuentas locales comunes (Users,
+      ; SID S-1-5-32-545) solo lectura -- necesitan poder leerlo para que
+      ; Opera arranque en esa cuenta, pero no para modificarlo. Mismo patrón
+      ; que RESUME_EXE_PATH más abajo.
+      nsExec::ExecToLog 'icacls "$R2" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F) *S-1-5-32-545:(R)'
+      Pop $0
+    ${Else}
+      DetailPrint "Opera: no se pudo generar la contraseña de Postgres vía PowerShell (código $0) -- Opera la va a generar sola en su primer arranque."
+    ${EndIf}
   ${EndIf}
 !macroend
 
