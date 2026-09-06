@@ -474,11 +474,16 @@ describe('backend-manager', () => {
       return path.join(programDataDir, 'Opera', 'last-backup-at.txt');
     }
 
+    function backupDirPath(): string {
+      return path.join(programDataDir, 'Opera', 'backups');
+    }
+
     it('corre un backup 6 horas después de un arranque exitoso, con el contenedor y la carpeta correctos, y guarda cuándo', async () => {
       vi.useFakeTimers();
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () => fakeCommand({ exitCode: 0 }), // backup-db.js
         ]);
         const win = fakeWindow();
@@ -486,8 +491,17 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        expect(spawnMock).toHaveBeenCalledTimes(7);
-        const backupCall = spawnMock.mock.calls[6] as [
+        expect(spawnMock).toHaveBeenCalledTimes(8);
+        // La carpeta de backups es nueva (no existía) -- se restringe a
+        // SYSTEM/Administradores antes de spawnear el script, para que el
+        // .sql.gz que va a crear ya nazca con esos permisos heredados.
+        expect(spawnMock).toHaveBeenNthCalledWith(
+          7,
+          'icacls',
+          expect.arrayContaining([backupDirPath(), '/inheritance:r']),
+          undefined,
+        );
+        const backupCall = spawnMock.mock.calls[7] as [
           string,
           string[],
           { cwd: string; env: Record<string, string> },
@@ -495,12 +509,38 @@ describe('backend-manager', () => {
         expect(backupCall[1]).toEqual([backupScriptPath()]);
         expect(backupCall[2].env.ELECTRON_RUN_AS_NODE).toBe('1');
         expect(backupCall[2].env.POSTGRES_CONTAINER).toBe('opera-postgres-app');
-        expect(backupCall[2].env.OPERA_BACKUP_DIR).toBe(
-          path.join(programDataDir, 'Opera', 'backups'),
-        );
+        expect(backupCall[2].env.OPERA_BACKUP_DIR).toBe(backupDirPath());
 
         const marker = readFileSync(lastBackupMarkerPath(), 'utf-8');
         expect(Number.isFinite(Date.parse(marker))).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('restringe la carpeta de backups solo a SYSTEM/Administradores -- a diferencia del secreto de Postgres, ninguna otra cuenta necesita leerla', async () => {
+      vi.useFakeTimers();
+      try {
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls
+          () => fakeCommand({ exitCode: 0 }), // backup-db.js
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        const icaclsCall = spawnMock.mock.calls[6] as [string, string[]];
+        expect(icaclsCall[1].some((arg) => arg.includes('S-1-5-32-545'))).toBe(
+          false,
+        );
+        expect(icaclsCall[1]).toEqual(
+          expect.arrayContaining([
+            '*S-1-5-18:(OI)(CI)(F)',
+            '*S-1-5-32-544:(OI)(CI)(F)',
+          ]),
+        );
       } finally {
         vi.useRealTimers();
       }
@@ -535,6 +575,7 @@ describe('backend-manager', () => {
         );
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () => fakeCommand({ exitCode: 0 }),
         ]);
         const win = fakeWindow();
@@ -542,7 +583,7 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        expect(spawnMock).toHaveBeenCalledTimes(7);
+        expect(spawnMock).toHaveBeenCalledTimes(8);
       } finally {
         vi.useRealTimers();
       }
@@ -553,6 +594,7 @@ describe('backend-manager', () => {
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () =>
             fakeCommand({
               exitCode: 1,

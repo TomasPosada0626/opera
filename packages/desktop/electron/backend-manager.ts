@@ -223,6 +223,30 @@ async function restrictToSystemAndAdmins(file: string): Promise<void> {
   }
 }
 
+// A diferencia de restrictToSystemAndAdmins() (que sí deja leer a cuentas
+// locales comunes -- necesario para que puedan arrancar Opera), un backup
+// es el volcado completo de la base real (clientes, pedidos, todo lo que
+// haya) -- ninguna otra cuenta de Windows necesita poder leerlo para nada,
+// así que se restringe SOLO a SYSTEM/Administradores. `(OI)(CI)` para que
+// los .sql.gz que se creen DESPUÉS, adentro de esta carpeta, hereden el
+// mismo ACL restrictivo -- sin esto, solo la carpeta en sí quedaría
+// protegida, no los backups que se generen más adelante (auditoría
+// 2026-09-06, revisión propia post-ronda-4: hueco real en el propio
+// backup automático agregado esa ronda, nadie lo había señalado todavía).
+async function restrictBackupDirToSystemAndAdmins(dir: string): Promise<void> {
+  try {
+    await spawnAndWait('icacls', [
+      dir,
+      '/inheritance:r',
+      '/grant:r',
+      '*S-1-5-18:(OI)(CI)(F)',
+      '*S-1-5-32-544:(OI)(CI)(F)',
+    ]);
+  } catch {
+    // best-effort, ver comentario de restrictToSystemAndAdmins().
+  }
+}
+
 // Redacta cualquier contraseña embebida en una connection string de
 // Postgres antes de que llegue al log de errores exportable -- ese archivo
 // existe justo para mandarse por WhatsApp/correo cuando algo falla
@@ -544,6 +568,11 @@ async function runBackupIfDue(): Promise<void> {
 
   backupInProgress = true;
   try {
+    const dir = backupDir();
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+      await restrictBackupDirToSystemAndAdmins(dir);
+    }
     const { code, stderr } = await spawnAndWait(
       process.execPath,
       [backupScriptPath()],
