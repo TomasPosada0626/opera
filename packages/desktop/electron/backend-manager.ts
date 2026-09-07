@@ -217,7 +217,7 @@ async function ensureMachineWidePostgresPassword(
 // archivo sigue con los permisos que haya heredado la carpeta.
 async function restrictToSystemAndAdmins(file: string): Promise<void> {
   try {
-    await spawnAndWait('icacls', [
+    const { code, stderr } = await spawnAndWait('icacls', [
       file,
       '/inheritance:r',
       '/grant:r',
@@ -225,8 +225,23 @@ async function restrictToSystemAndAdmins(file: string): Promise<void> {
       '*S-1-5-32-544:(F)',
       '*S-1-5-32-545:(R)',
     ]);
-  } catch {
-    // best-effort, ver comentario de arriba.
+    // Best-effort de verdad (no tumba el arranque), pero un fallo real acá
+    // deja el archivo con permisos débiles sin que nadie se entere -- vale
+    // la pena que quede registrado (auditoría 2026-09-06, ronda 5,
+    // Seguridad, mejora).
+    if (code !== 0) {
+      appendRedactedErrorLog({
+        source: 'main',
+        type: 'icacls-failed',
+        message: `icacls sobre "${file}" terminó con código ${code}: ${stderr}`,
+      });
+    }
+  } catch (error) {
+    appendRedactedErrorLog({
+      source: 'main',
+      type: 'icacls-failed',
+      message: `No se pudo correr icacls sobre "${file}": ${error instanceof Error ? error.message : String(error)}`,
+    });
   }
 }
 
@@ -242,15 +257,26 @@ async function restrictToSystemAndAdmins(file: string): Promise<void> {
 // backup automático agregado esa ronda, nadie lo había señalado todavía).
 async function restrictBackupDirToSystemAndAdmins(dir: string): Promise<void> {
   try {
-    await spawnAndWait('icacls', [
+    const { code, stderr } = await spawnAndWait('icacls', [
       dir,
       '/inheritance:r',
       '/grant:r',
       '*S-1-5-18:(OI)(CI)(F)',
       '*S-1-5-32-544:(OI)(CI)(F)',
     ]);
-  } catch {
-    // best-effort, ver comentario de restrictToSystemAndAdmins().
+    if (code !== 0) {
+      appendRedactedErrorLog({
+        source: 'main',
+        type: 'icacls-failed',
+        message: `icacls sobre "${dir}" terminó con código ${code}: ${stderr}`,
+      });
+    }
+  } catch (error) {
+    appendRedactedErrorLog({
+      source: 'main',
+      type: 'icacls-failed',
+      message: `No se pudo correr icacls sobre "${dir}": ${error instanceof Error ? error.message : String(error)}`,
+    });
   }
 }
 

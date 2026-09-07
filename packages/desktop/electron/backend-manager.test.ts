@@ -447,6 +447,35 @@ describe('backend-manager', () => {
       );
     });
 
+    // Seguridad, mejora de ronda 5: antes, un fallo real de icacls quedaba
+    // completamente invisible (best-effort silencioso) -- el secreto podía
+    // quedar con permisos débiles sin que nadie se enterara.
+    it('si icacls falla al restringir el secreto, lo deja registrado en el log (best-effort, no tumba el arranque)', async () => {
+      rmSync(path.dirname(postgresSecretPath()), {
+        recursive: true,
+        force: true,
+      });
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }), // docker info
+        () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
+        () => fakeCommand({ exitCode: 5, stderr: 'Acceso denegado.' }), // icacls falla
+        ...happyPathSpawns({ containerExists: false }).slice(2),
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+
+      expect(appendErrorLogMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'icacls-failed',
+          message: expect.stringContaining('Acceso denegado.'),
+        }),
+      );
+    });
+
     it('si el contenedor ya existe pero no hay contraseña guardada, falla con un mensaje distinguible en vez de generar una nueva', async () => {
       rmSync(path.dirname(postgresSecretPath()), {
         recursive: true,
