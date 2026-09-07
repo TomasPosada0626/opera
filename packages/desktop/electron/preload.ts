@@ -57,5 +57,7 @@ if (!process.env['VITE_DEV_SERVER_URL']) {
       );
     },
     retry: (): Promise<void> => ipcRenderer.invoke('backend:retry'),
+    getBackupStatus: (): Promise<BackupStatus> =>
+      ipcRenderer.invoke('backend:get-backup-status'),
   });
 }

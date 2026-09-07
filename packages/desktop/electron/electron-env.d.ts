@@ -44,7 +44,16 @@ interface Window {
     getStatus(): Promise<BackendStatus>;
     onStatusChange(callback: (status: BackendStatus) => void): void;
     retry(): Promise<void>;
+    getBackupStatus(): Promise<BackupStatus>;
   };
+}
+
+// Solo informativo -- ver runBackupIfDue() en electron/backend-manager.ts.
+// `lastSuccessAt` sobrevive un reinicio de Opera (viene del marcador en
+// disco); `lastAttemptFailed` no (solo en memoria del proceso principal).
+interface BackupStatus {
+  lastSuccessAt: string | null;
+  lastAttemptFailed: boolean;
 }
 
 // Solo existe en el build empaquetado -- electron/backend-manager.ts (fase

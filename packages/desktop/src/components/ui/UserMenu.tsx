@@ -11,11 +11,43 @@ function initials(email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
 
+// El backup automático (backend-manager.ts, runBackupIfDue) corría en
+// silencio, sin ningún indicador para quien usa la app -- si fallaba
+// repetidamente, nadie se enteraba hasta el día de necesitar restaurar y no
+// haber nada útil (auditoría 2026-09-06, ronda 5, Documentación/
+// Observabilidad). Texto informativo nada más, sin acción -- no hay ningún
+// botón de "reintentar ahora", el intervalo de 6 horas ya se encarga solo.
+function backupStatusText(status: BackupStatus): string {
+  if (status.lastAttemptFailed) {
+    return status.lastSuccessAt
+      ? `El último respaldo falló (el anterior exitoso fue ${formatRelativeDays(status.lastSuccessAt)}).`
+      : 'El último respaldo falló y todavía no hay ninguno exitoso.';
+  }
+  if (!status.lastSuccessAt) {
+    return 'Todavía no se hizo ningún respaldo automático.';
+  }
+  return `Último respaldo exitoso: ${formatRelativeDays(status.lastSuccessAt)}.`;
+}
+
+function formatRelativeDays(isoDate: string): string {
+  const days = Math.floor(
+    (Date.now() - new Date(isoDate).getTime()) / (24 * 60 * 60 * 1000),
+  );
+  if (days <= 0) {
+    return 'hoy';
+  }
+  if (days === 1) {
+    return 'ayer';
+  }
+  return `hace ${days} días`;
+}
+
 // Menú de usuario con logout (#41) — sin librería de dropdown: solo un
 // click-outside + Escape hechos a mano, suficiente para un solo consumidor.
 export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   async function handleExportLogs() {
@@ -31,6 +63,12 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
       setExportMessage('No se pudo exportar el registro.');
     }
   }
+
+  useEffect(() => {
+    if (open && window.appBackend) {
+      void window.appBackend.getBackupStatus().then(setBackupStatus);
+    }
+  }, [open]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -98,6 +136,17 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
           )}
           {exportMessage && (
             <p className="text-ink-muted px-3 pt-1 text-xs">{exportMessage}</p>
+          )}
+          {backupStatus && (
+            <p
+              className={
+                backupStatus.lastAttemptFailed
+                  ? 'text-danger px-3 pt-1 text-xs'
+                  : 'text-ink-muted px-3 pt-1 text-xs'
+              }
+            >
+              {backupStatusText(backupStatus)}
+            </p>
           )}
           <button
             type="button"

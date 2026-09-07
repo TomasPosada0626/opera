@@ -587,6 +587,34 @@ function backupScriptPath(): string {
 }
 
 let backupInProgress = false;
+// Solo en memoria (no sobrevive un reinicio de Opera) -- a diferencia del
+// marcador de ÉXITO (persistido en disco), esto es nada más para que la UI
+// pueda mostrar "el último intento falló" mientras la app sigue abierta.
+// Documentación/Observabilidad, auditoría 2026-09-06 (ronda 5): el backup
+// automático fallaba en silencio, sin ningún indicador para quien usa la
+// app -- un indicador puramente local (sin salir a internet) no contradice
+// el diseño LAN-only (ADR 0007 habla de TLS/tráfico de red, no de esto).
+let lastBackupAttemptFailed = false;
+
+function getBackupStatus(): {
+  lastSuccessAt: string | null;
+  lastAttemptFailed: boolean;
+} {
+  const marker = lastBackupMarkerPath();
+  let lastSuccessAt: string | null = null;
+  if (existsSync(marker)) {
+    try {
+      const raw = readFileSync(marker, 'utf-8').trim();
+      if (Number.isFinite(Date.parse(raw))) {
+        lastSuccessAt = raw;
+      }
+    } catch {
+      // Se deja en null -- mismo criterio que el resto del archivo ante un
+      // marcador corrupto.
+    }
+  }
+  return { lastSuccessAt, lastAttemptFailed: lastBackupAttemptFailed };
+}
 
 // Corre packages/backend/scripts/backup-db.ts ya compilado, como proceso
 // Node real -- mismo truco que runMigrations()/startBackendProcess()
@@ -659,6 +687,7 @@ async function runBackupIfDue(): Promise<void> {
       },
     );
     if (code !== 0) {
+      lastBackupAttemptFailed = true;
       appendRedactedErrorLog({
         source: 'main',
         type: 'backup-db-stderr',
@@ -668,7 +697,9 @@ async function runBackupIfDue(): Promise<void> {
     }
     mkdirSync(path.dirname(marker), { recursive: true });
     writeFileSync(marker, new Date().toISOString());
+    lastBackupAttemptFailed = false;
   } catch (error) {
+    lastBackupAttemptFailed = true;
     appendRedactedErrorLog({
       source: 'main',
       type: 'backup-db-exception',
@@ -751,6 +782,7 @@ export function initBackendManager(window: BrowserWindow): void {
   win = window;
   ipcMain.handle('backend:get-status', () => currentStatus);
   ipcMain.handle('backend:retry', () => start());
+  ipcMain.handle('backend:get-backup-status', () => getBackupStatus());
   void start();
 
   // `.unref()` -- no debe ser este timer quien mantenga vivo el proceso;

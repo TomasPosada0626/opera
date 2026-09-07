@@ -176,4 +176,81 @@ describe('UserMenu', () => {
       expect(screen.queryByText(/Guardado en/)).not.toBeInTheDocument();
     });
   });
+
+  // Documentación/Observabilidad, auditoría 2026-09-06 (ronda 5): el backup
+  // automático fallaba en silencio, sin ningún indicador para quien usa la
+  // app.
+  describe('con el puente de Electron appBackend (estado del backup)', () => {
+    const originalAppBackend = window.appBackend;
+
+    afterEach(() => {
+      window.appBackend = originalAppBackend;
+    });
+
+    it('muestra cuándo fue el último respaldo exitoso', async () => {
+      window.appBackend = {
+        getStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+        retry: vi.fn(),
+        getBackupStatus: vi.fn().mockResolvedValue({
+          lastSuccessAt: new Date(
+            Date.now() - 2 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          lastAttemptFailed: false,
+        }),
+      };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+
+      expect(
+        await screen.findByText(/Último respaldo exitoso: hace 2 días/),
+      ).toBeInTheDocument();
+    });
+
+    it('avisa cuando el último intento de respaldo falló', async () => {
+      window.appBackend = {
+        getStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+        retry: vi.fn(),
+        getBackupStatus: vi.fn().mockResolvedValue({
+          lastSuccessAt: null,
+          lastAttemptFailed: true,
+        }),
+      };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+
+      expect(
+        await screen.findByText(
+          'El último respaldo falló y todavía no hay ninguno exitoso.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('dice que todavía no hubo ningún respaldo si nunca corrió uno', async () => {
+      window.appBackend = {
+        getStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+        retry: vi.fn(),
+        getBackupStatus: vi.fn().mockResolvedValue({
+          lastSuccessAt: null,
+          lastAttemptFailed: false,
+        }),
+      };
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+
+      expect(
+        await screen.findByText(
+          'Todavía no se hizo ningún respaldo automático.',
+        ),
+      ).toBeInTheDocument();
+    });
+  });
 });
