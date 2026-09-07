@@ -32,6 +32,14 @@ async function withRetry(
       await sleep(delayMs);
     }
   }
+  // Cuántos intentos hicieron falta -- sin esto, alguien viendo solo la
+  // cola de un log (típico en integraciones que reenvían nada más el
+  // último error) no puede distinguir "falló al primer intento" de "falló
+  // tras agotar los reintentos" (auditoría 2026-09-06, ronda 5,
+  // Observabilidad, mejora).
+  if (lastError instanceof Error) {
+    lastError.attempts = maxAttempts;
+  }
   throw lastError;
 }
 

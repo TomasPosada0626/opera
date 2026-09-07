@@ -155,8 +155,11 @@ async function main() {
 }
 
 main().catch((error) => {
+  const attempts = error instanceof Error ? error.attempts : undefined;
   console.error(
-    'No se pudo preparar el instalador de Docker Desktop embebido:',
+    attempts
+      ? `No se pudo preparar el instalador de Docker Desktop embebido (tras ${attempts} intentos):`
+      : 'No se pudo preparar el instalador de Docker Desktop embebido:',
   );
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);

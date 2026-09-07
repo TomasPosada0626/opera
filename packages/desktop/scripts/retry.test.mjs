@@ -60,6 +60,22 @@ describe('withRetry', () => {
     expect(fn).toHaveBeenCalledTimes(3);
   });
 
+  // Observabilidad, mejora de ronda 5: sin esto, alguien viendo solo la
+  // cola de un log no puede distinguir "falló al primer intento" de "falló
+  // tras agotar los reintentos".
+  it('adjunta cuántos intentos hicieron falta al error final', async () => {
+    const fn = vi.fn().mockRejectedValue(new Error('persistente'));
+
+    let thrown;
+    try {
+      await withRetry(fn, { sleep: instantSleep, maxAttempts: 3 });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown.attempts).toBe(3);
+  });
+
   it('espera con backoff exponencial entre reintentos', async () => {
     const fn = vi
       .fn()
