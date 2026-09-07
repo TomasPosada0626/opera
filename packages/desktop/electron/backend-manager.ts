@@ -85,9 +85,12 @@ function spawnAndWait(
   });
 }
 
-async function docker(...args: string[]): Promise<boolean> {
+async function docker(
+  args: string[],
+  options?: { env?: NodeJS.ProcessEnv },
+): Promise<boolean> {
   try {
-    const { code } = await spawnAndWait('docker', args);
+    const { code } = await spawnAndWait('docker', args, options);
     return code === 0;
   } catch {
     return false;
@@ -268,7 +271,7 @@ function appendRedactedErrorLog(entry: LoggedError): void {
 
 async function ensurePostgres(): Promise<string> {
   setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
-  if (!(await docker('info'))) {
+  if (!(await docker(['info']))) {
     throw new Error(
       // Docker Desktop tarda en arrancar solo después de un reinicio de
       // Windows -- sin esta primera sugerencia, alguien que acaba de
@@ -280,33 +283,47 @@ async function ensurePostgres(): Promise<string> {
   }
 
   setStatus({ state: 'starting', message: 'Iniciando la base de datos…' });
-  const exists = await docker('inspect', CONTAINER_NAME);
+  const exists = await docker(['inspect', CONTAINER_NAME]);
   // Se resuelve ACÁ, no antes -- ensureMachineWidePostgresPassword()
   // necesita saber si el contenedor ya existe para decidir si autoprovisionar
   // es seguro o si hay que fallar con un mensaje distinguible (ver esa
   // función).
   const postgresPassword = await ensureMachineWidePostgresPassword(exists);
   if (exists) {
-    await docker('start', CONTAINER_NAME);
+    await docker(['start', CONTAINER_NAME]);
   } else {
+    // `-e POSTGRES_PASSWORD` SIN "=valor" -- le dice a `docker` que herede
+    // el valor de SU PROPIO entorno (pasado acá vía `env`), no que lo lea
+    // de la línea de comandos. En Windows, el command-line completo de un
+    // proceso es visible a cualquier otra cuenta local (Task Manager,
+    // columna "Línea de comandos", sin privilegios especiales) y puede
+    // quedar escrito en el Event Log de Seguridad si la auditoría de
+    // creación de procesos está activa -- exactamente el escenario "PC
+    // compartida" que motivó todo el rediseño de la contraseña machine-wide
+    // (ronda 4). `POSTGRES_USER`/`POSTGRES_DB` no son secretos (nunca salen
+    // de loopback), se quedan como estaban (auditoría 2026-09-06, ronda 5,
+    // Seguridad P1).
     await docker(
-      'run',
-      '-d',
-      '--name',
-      CONTAINER_NAME,
-      '--restart',
-      'unless-stopped',
-      '-e',
-      `POSTGRES_USER=${POSTGRES_USER}`,
-      '-e',
-      `POSTGRES_PASSWORD=${postgresPassword}`,
-      '-e',
-      `POSTGRES_DB=${POSTGRES_DB}`,
-      '-p',
-      `127.0.0.1:${POSTGRES_PORT}:5432`,
-      '-v',
-      `${POSTGRES_VOLUME}:/var/lib/postgresql/data`,
-      POSTGRES_IMAGE,
+      [
+        'run',
+        '-d',
+        '--name',
+        CONTAINER_NAME,
+        '--restart',
+        'unless-stopped',
+        '-e',
+        `POSTGRES_USER=${POSTGRES_USER}`,
+        '-e',
+        'POSTGRES_PASSWORD',
+        '-e',
+        `POSTGRES_DB=${POSTGRES_DB}`,
+        '-p',
+        `127.0.0.1:${POSTGRES_PORT}:5432`,
+        '-v',
+        `${POSTGRES_VOLUME}:/var/lib/postgresql/data`,
+        POSTGRES_IMAGE,
+      ],
+      { env: { ...process.env, POSTGRES_PASSWORD: postgresPassword } },
     );
   }
 
@@ -315,7 +332,7 @@ async function ensurePostgres(): Promise<string> {
     message: 'Esperando a que la base de datos esté lista…',
   });
   await waitUntil(
-    () => docker('exec', CONTAINER_NAME, 'pg_isready', '-U', POSTGRES_USER),
+    () => docker(['exec', CONTAINER_NAME, 'pg_isready', '-U', POSTGRES_USER]),
     POSTGRES_READY_TIMEOUT_MS,
     'La base de datos no respondió a tiempo.',
   );
@@ -707,5 +724,5 @@ export async function shutdownBackend(): Promise<void> {
     backupIntervalHandle = null;
   }
   await stopBackendProcess();
-  await docker('stop', CONTAINER_NAME);
+  await docker(['stop', CONTAINER_NAME]);
 }

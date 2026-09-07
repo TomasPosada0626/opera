@@ -305,7 +305,11 @@ describe('backend-manager', () => {
       3,
       'docker',
       expect.arrayContaining(['run', '-d', '--name', 'opera-postgres-app']),
-      undefined,
+      expect.objectContaining({
+        env: expect.objectContaining({
+          POSTGRES_PASSWORD: expect.any(String),
+        }),
+      }),
     );
   });
 
@@ -379,9 +383,20 @@ describe('backend-manager', () => {
       // Sin icacls de más -- el archivo ya existía, solo se lee. Sigue
       // siendo exactamente 6 llamadas (las de happyPathSpawns).
       expect(spawnMock).toHaveBeenCalledTimes(6);
-      const dockerRunCall = spawnMock.mock.calls[2] as [string, string[]];
-      expect(dockerRunCall[1]).toContain(
+      // La contraseña va por `env`, nunca por argv (auditoría 2026-09-06,
+      // ronda 5, Seguridad P1 -- visible en el Administrador de Tareas de
+      // cualquier cuenta de Windows si viajara en la línea de comandos).
+      const dockerRunCall = spawnMock.mock.calls[2] as [
+        string,
+        string[],
+        { env: Record<string, string> },
+      ];
+      expect(dockerRunCall[1]).toContain('POSTGRES_PASSWORD');
+      expect(dockerRunCall[1]).not.toContain(
         'POSTGRES_PASSWORD=la-que-puso-el-instalador',
+      );
+      expect(dockerRunCall[2].env.POSTGRES_PASSWORD).toBe(
+        'la-que-puso-el-instalador',
       );
       const backendCall = spawnMock.mock.calls[5] as [
         string,
@@ -421,9 +436,14 @@ describe('backend-manager', () => {
         readFileSync(postgresSecretPath(), 'utf-8'),
       ) as { postgresPassword: string };
       expect(persisted.postgresPassword).toBeTruthy();
-      const dockerRunCall = spawnMock.mock.calls[3] as [string, string[]];
-      expect(dockerRunCall[1]).toContain(
-        `POSTGRES_PASSWORD=${persisted.postgresPassword}`,
+      const dockerRunCall = spawnMock.mock.calls[3] as [
+        string,
+        string[],
+        { env: Record<string, string> },
+      ];
+      expect(dockerRunCall[1]).toContain('POSTGRES_PASSWORD');
+      expect(dockerRunCall[2].env.POSTGRES_PASSWORD).toBe(
+        persisted.postgresPassword,
       );
     });
 
