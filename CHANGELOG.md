@@ -68,6 +68,9 @@ hacia atrás; este changelog arranca desde que se creó.
   `scripts/backup-db.ts` era manual/bajo demanda, y en el instalador
   empaquetado ni siquiera apuntaba al contenedor correcto). Corre cada 6
   horas mientras la app está abierta, sin repetir antes de 24 horas.
+- Reintento con backoff exponencial en la descarga del instalador de Docker
+  Desktop embebido (600+ MB) — antes, un solo corte de red a mitad de
+  camino tumbaba el build entero.
 
 ### Corregido
 
@@ -121,6 +124,8 @@ hacia atrás; este changelog arranca desde que se creó.
 - `packages/desktop/scripts/generate-self-signed-cert.ps1` y el README ya no
   indican importar el certificado también a `Cert:\LocalMachine\Root`
   (sobre-privilegio real; `TrustedPublisher` alcanza).
+- `stopBackendProcess()` dejaba un backend huérfano dueño del puerto si no
+  respondía al `SIGTERM` en 5 segundos — ahora escala a `SIGKILL`.
 
 ### Seguridad
 
@@ -152,6 +157,16 @@ hacia atrás; este changelog arranca desde que se creó.
   se perdió.
 - La contraseña de Postgres ya no puede filtrarse al log de errores
   exportable: cualquier connection string se redacta antes de guardarse.
+- La carpeta de backups automáticos (`%ProgramData%\Opera\backups`) ya no
+  quedaba con la ACL heredada por defecto de `ProgramData` — restringida a
+  SYSTEM/Administradores, igual que la contraseña de Postgres.
+- El instalador ya no podía escribir un secreto de Postgres vacío o roto si
+  PowerShell fallaba al generarlo — ahora, sin éxito confirmado, no escribe
+  nada y deja que la app se autoprovisione en su primer arranque.
+- La contraseña de Postgres ya no viaja en la línea de comandos de
+  `docker run` (visible para cualquier cuenta de Windows en esa PC vía el
+  Administrador de Tareas) — pasa por variable de entorno, mismo criterio
+  que `DATABASE_URL`/`JWT_SECRET`.
 
 ### Rendimiento
 
