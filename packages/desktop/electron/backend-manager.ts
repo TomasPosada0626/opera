@@ -466,17 +466,26 @@ function isPortInUse(port: number): Promise<boolean> {
 //
 // Si Electron muere de una forma que NUNCA llega a `shutdownBackend()`
 // (crash real, "Finalizar tarea" desde el Administrador de tareas, corte de
-// luz) este proceso queda huérfano, sin nadie que lo mate. Evaluado
-// (auditoría 2026-09-05, ronda 4, Arquitectura, mejora) usar un Job Object
-// de Windows (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) para que Windows mismo
-// lo mate en cuanto el proceso de Electron termine, sin importar cómo --
+// luz) este proceso queda huérfano, sin nadie que lo mate. Lo mismo aplica,
+// con menor severidad, a un `backend:retry` en vuelo si esa muerte ocurre
+// ANTES de que `shutdownBackend()` llegue a esperarlo (ver su propio
+// comentario) y al proceso de `backup-db.js` que spawnea `runBackupIfDue()`
+// (más abajo) -- ninguno de los tres queda rastreado en un lugar que algo
+// externo a Electron pueda matar (auditoría 2026-09-06, ronda 5,
+// Arquitectura: encontrados los otros dos casos, esta nota antes solo
+// enmarcaba el primero). Evaluado (auditoría 2026-09-05, ronda 4,
+// Arquitectura, mejora) usar un Job Object de Windows
+// (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) para que Windows mismo mate TODOS
+// los procesos hijos en cuanto Electron termine, sin importar cómo --
 // decisión consciente de NO hacerlo: Node no lo expone nativamente, exigiría
-// sumar una dependencia nativa/FFI solo para este caso, y el escenario ya
-// tiene una salida razonable sin eso -- `isPortInUse()` (más abajo) lo
-// detecta en el arranque siguiente y el mensaje de error ya dice
-// explícitamente "revisá también el Administrador de tareas". Si esto
-// cambia de costo/beneficio (por ejemplo, si el huérfano deja de ser un
-// evento raro), reconsiderar acá.
+// sumar una dependencia nativa/FFI solo para esto, y el caso más grave (el
+// backend principal) ya tiene una salida razonable sin eso -- `isPortInUse()`
+// (más abajo) lo detecta en el arranque siguiente y el mensaje de error ya
+// dice explícitamente "revisá también el Administrador de tareas" (un
+// `pg_dump` huérfano de `backup-db.js`, en cambio, simplemente termina solo
+// y deja un backup válido -- no necesita ni siquiera esa red de seguridad).
+// Si esto cambia de costo/beneficio (por ejemplo, si el huérfano deja de
+// ser un evento raro), reconsiderar acá.
 function startBackendProcess(env: Record<string, string>): void {
   setStatus({ state: 'starting', message: 'Iniciando Opera…' });
   const mainJsPath = path.join(backendResourcesDir(), 'dist', 'src', 'main.js');
@@ -598,6 +607,20 @@ function stopBackendProcess(): Promise<void> {
 const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // No repetir un backup si el último se completó hace menos de esto -- evita
 // respaldar de más si la app queda abierta muchas horas seguidas.
+//
+// Nota (auditoría 2026-09-06, ronda 5, Observabilidad): el marcador de
+// "último éxito" solo se actualiza cuando el backup SALE BIEN -- si falla
+// siempre, este tope de 24h nunca llega a aplicar y runBackupIfDue() se
+// reintenta en cada chequeo de 6h (hasta 4 veces por día), no una vez por
+// día. Diseño intencional (mejor reintentar seguido que dejar pasar un día
+// entero sin backup mientras algo esté roto), pero el volumen de log que
+// eso genera en un escenario de falla SOSTENIDA -- en paralelo con
+// `backend-stderr`, que tampoco tiene límite de tamaño propio -- no se
+// midió con ese ritmo en mente al dimensionar la rotación de
+// error-log-store.ts (10 MB / 2 respaldos). Con mensajes de error
+// realistas (~200B-3KB), en aislamiento tardaría años en llenarse igual --
+// pero vale la pena tenerlo presente si algún día ese archivo rota más
+// seguido de lo esperado.
 const BACKUP_MIN_GAP_MS = 24 * 60 * 60 * 1000;
 
 function backupDir(): string {
