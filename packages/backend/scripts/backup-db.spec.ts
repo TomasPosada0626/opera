@@ -128,5 +128,30 @@ describe('backup-db', () => {
         expect.anything(),
       );
     });
+
+    // Testing, mejora de ronda 5: mismo patrón que POSTGRES_CONTAINER de
+    // arriba, nunca testeado para estas dos.
+    it('usa POSTGRES_USER/POSTGRES_DB si están seteados, no los defaults hardcodeados', () => {
+      process.env.POSTGRES_USER = 'otro-usuario';
+      process.env.POSTGRES_DB = 'otra-base';
+      jest.mocked(fs.statSync).mockReturnValue({ size: 0 } as fs.Stats);
+      jest.mocked(fs.readdirSync).mockReturnValue([] as never);
+      jest.mocked(execFileSync).mockReturnValue(Buffer.from(''));
+
+      main();
+
+      expect(execFileSync).toHaveBeenCalledWith(
+        'docker',
+        [
+          'exec',
+          'opera-postgres',
+          'pg_dump',
+          '-U',
+          'otro-usuario',
+          'otra-base',
+        ],
+        expect.anything(),
+      );
+    });
   });
 });
