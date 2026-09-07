@@ -365,6 +365,31 @@ describe('backend-manager', () => {
     expect(secondBackendCall[2].env.JWT_SECRET).toBe(firstSecret);
   });
 
+  // Seguridad, mejora de ronda 5: `JSON.parse(...) as {...}` no valida
+  // nada en runtime -- un valor con el tipo equivocado (acá, un número en
+  // vez de un string) pasaba el chequeo `if (parsed.jwtSecret)` (truthy) y
+  // terminaba usado como si fuera el secreto real.
+  it('si el JWT_SECRET guardado no es un string, lo trata como corrupto y genera uno nuevo', async () => {
+    writeFileSync(
+      path.join(userDataDir, 'opera-secrets.json'),
+      JSON.stringify({ jwtSecret: 12345 }),
+    );
+    queueSpawns(happyPathSpawns({ containerExists: false }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    const backendCall = spawnMock.mock.calls[5] as [
+      string,
+      string[],
+      { env: Record<string, string> },
+    ];
+    expect(typeof backendCall[2].env.JWT_SECRET).toBe('string');
+    expect(backendCall[2].env.JWT_SECRET).not.toBe('12345');
+  });
+
   // Hallazgo transversal de la auditoría 2026-09-05 (ronda 4, encontrado por
   // Seguridad/Testing/Datos-Legal desde tres ángulos): la contraseña de
   // Postgres tiene que ser una sola por MÁQUINA (provisionada por
@@ -498,6 +523,36 @@ describe('backend-manager', () => {
       // Nunca llega a `docker run`/`icacls` -- nada más que los dos checks.
       expect(spawnMock).toHaveBeenCalledTimes(2);
       expect(existsSync(postgresSecretPath())).toBe(false);
+    });
+
+    // Seguridad, mejora de ronda 5: mismo hueco que el test de JWT_SECRET
+    // de arriba, del lado de la contraseña de Postgres -- acá el archivo
+    // SÍ existe y es JSON válido, pero con el tipo equivocado adentro (a
+    // diferencia del test de "no hay contraseña guardada", que borra el
+    // archivo entero).
+    it('si la contraseña guardada no es un string, la trata como corrupta (se autoprovisiona si el contenedor no existe)', async () => {
+      writeFileSync(
+        postgresSecretPath(),
+        JSON.stringify({ postgresPassword: 12345 }),
+      );
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }), // docker info
+        () => fakeCommand({ exitCode: 1 }), // docker inspect -> no existe
+        () => fakeCommand({ exitCode: 0 }), // icacls (nueva contraseña)
+        ...happyPathSpawns({ containerExists: false }).slice(2),
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+
+      const persisted = JSON.parse(
+        readFileSync(postgresSecretPath(), 'utf-8'),
+      ) as { postgresPassword: string };
+      expect(typeof persisted.postgresPassword).toBe('string');
+      expect(persisted.postgresPassword).not.toBe('12345');
     });
   });
 

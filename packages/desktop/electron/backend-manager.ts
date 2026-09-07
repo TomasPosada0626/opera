@@ -109,14 +109,24 @@ function secretsFilePath(): string {
   return path.join(app.getPath('userData'), 'opera-secrets.json');
 }
 
+// `JSON.parse(...) as {...}` no valida nada en runtime -- un archivo con
+// `{"jwtSecret": 12345}` pasaba el `if (parsed.jwtSecret)` (12345 es
+// truthy) y ese número terminaba usado como si fuera el secreto real.
+// Impacto bajo (ya exige tener acceso de escritura a un archivo protegido
+// por ACL), pero barato de cerrar del todo (auditoría 2026-09-06, ronda 5,
+// Seguridad, mejora).
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
 function ensureJwtSecret(): string {
   const file = secretsFilePath();
   if (existsSync(file)) {
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf-8')) as {
-        jwtSecret?: string;
+        jwtSecret?: unknown;
       };
-      if (parsed.jwtSecret) {
+      if (isNonEmptyString(parsed.jwtSecret)) {
         trackSecret(parsed.jwtSecret);
         return parsed.jwtSecret;
       }
@@ -181,9 +191,9 @@ async function ensureMachineWidePostgresPassword(
   if (existsSync(file)) {
     try {
       const parsed = JSON.parse(readFileSync(file, 'utf-8')) as {
-        postgresPassword?: string;
+        postgresPassword?: unknown;
       };
-      if (parsed.postgresPassword) {
+      if (isNonEmptyString(parsed.postgresPassword)) {
         trackSecret(parsed.postgresPassword);
         return parsed.postgresPassword;
       }
