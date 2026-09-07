@@ -673,6 +673,45 @@ describe('backend-manager', () => {
     );
   });
 
+  // Seguridad/Arquitectura P2, auditoría 2026-09-06 (ronda 5): si
+  // shutdownBackend() no esperaba un backend:retry en vuelo, ese reintento
+  // podía terminar de spawnear un backend nuevo DESPUÉS de "cerrar" Opera
+  // -- huérfano, sin nada que lo mate.
+  it('shutdownBackend espera un backend:retry en vuelo antes de apagar, sin dejar el backend nuevo huérfano', async () => {
+    const firstBackend = fakeLongRunningProcess();
+    queueSpawns(
+      happyPathSpawns({ containerExists: false, backendChild: firstBackend }),
+    );
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    // Dispara un retry (segundo backend) pero sin esperarlo todavía --
+    // simula que shutdownBackend() llega mientras sigue en curso. La
+    // respuesta de "docker stop" va al final de la MISMA cola (no un
+    // mockImplementationOnce aparte) -- shutdownBackend() no llega ahí
+    // hasta después de esperar el retry completo (los 6 spawns del camino
+    // feliz), así que tiene que ser la 7ma respuesta encolada, no la 1ra.
+    const secondBackend = fakeLongRunningProcess();
+    queueSpawns([
+      ...happyPathSpawns({
+        containerExists: true,
+        backendChild: secondBackend,
+      }),
+      () => fakeCommand({ exitCode: 0 }), // docker stop
+    ]);
+    const retryPromise = ipcHandler('backend:retry')();
+
+    await shutdownBackend();
+    await retryPromise;
+
+    // El backend que el retry levantó no queda huérfano -- shutdownBackend
+    // esperó a que terminara de arrancar y después lo mató.
+    expect(secondBackend.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
   // Arquitectura P3, auditoría 2026-09-05 (ronda 4): antes, si el backend no
   // respondía al SIGTERM en 5s, stopBackendProcess() se rendía sin forzar
   // nada -- el proceso quedaba huérfano, dueño del puerto, y hacía falta un

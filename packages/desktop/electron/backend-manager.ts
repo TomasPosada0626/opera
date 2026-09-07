@@ -756,6 +756,17 @@ export async function shutdownBackend(): Promise<void> {
     clearInterval(backupIntervalHandle);
     backupIntervalHandle = null;
   }
+  // Esperar cualquier start()/backend:retry en vuelo ANTES de intentar
+  // apagar -- sin esto, si alguien cierra la ventana justo mientras un
+  // reintento sigue en curso, stopBackendProcess() de acá abajo no
+  // encuentra nada que matar (backendProcess todavía null) y ese reintento
+  // podía terminar de spawnear un backend nuevo DESPUÉS de que Electron ya
+  // cerró -- huérfano, dueño del puerto, sin nada que lo mate. startChain
+  // nunca rechaza (ver su propio comentario), así que este await es
+  // siempre seguro; el costo real es que cerrar la app puede tardar hasta
+  // lo que tarde ese start() en resolverse (auditoría 2026-09-06, ronda 5,
+  // Seguridad/Arquitectura P2).
+  await startChain;
   await stopBackendProcess();
   await docker(['stop', CONTAINER_NAME]);
 }
