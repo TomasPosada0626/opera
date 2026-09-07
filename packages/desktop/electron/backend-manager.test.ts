@@ -637,6 +637,76 @@ describe('backend-manager', () => {
         vi.useRealTimers();
       }
     });
+
+    // Testing P2, auditoría 2026-09-06 (ronda 5): el test de arriba solo
+    // cubre el proceso corriendo y saliendo con código ≠0 -- esto cubre que
+    // `spawn` ni siquiera pueda lanzar el binario (mismo tipo de falla que
+    // fakeSpawnError ya simula para `docker`), la otra rama real del catch.
+    it('si spawnAndWait mismo rechaza (spawn no pudo lanzar backup-db.js), lo deja en el log como excepción', async () => {
+      vi.useFakeTimers();
+      try {
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups
+          fakeSpawnError,
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        expect(appendErrorLogMock).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'backup-db-exception' }),
+        );
+        expect(existsSync(lastBackupMarkerPath())).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('trata un marcador de última corrida corrupto igual que "nunca hubo backup"', async () => {
+      vi.useFakeTimers();
+      try {
+        mkdirSync(path.dirname(lastBackupMarkerPath()), { recursive: true });
+        writeFileSync(lastBackupMarkerPath(), 'esto no es una fecha');
+        queueSpawns([
+          ...happyPathSpawns({ containerExists: false }),
+          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups
+          () => fakeCommand({ exitCode: 0 }), // backup-db.js
+        ]);
+        const win = fakeWindow();
+        initBackendManager(win);
+
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        expect(spawnMock).toHaveBeenCalledTimes(8);
+        const marker = readFileSync(lastBackupMarkerPath(), 'utf-8');
+        expect(Number.isFinite(Date.parse(marker))).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('no dispara ningún backup mientras el estado no sea "ready" (por ejemplo, en "error")', async () => {
+      vi.useFakeTimers();
+      try {
+        // docker info falla -- nunca llega a ready.
+        queueSpawns([() => fakeCommand({ exitCode: 1 })]);
+        const win = fakeWindow();
+        initBackendManager(win);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(lastStatusSent(win).state).toBe('error');
+
+        spawnMock.mockClear();
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+
+        // El intervalo sí corrió (pasaron 6h), pero el gate de estado
+        // evitó cualquier intento de backup.
+        expect(spawnMock).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('backend:retry vuelve a intentar y llega a ready después de un error', async () => {
