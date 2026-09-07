@@ -104,9 +104,19 @@ function sha256OfFile(filePath) {
 
 function logRetry(what) {
   return (error, attempt, delayMs) => {
-    console.log(
-      `${what} (intento ${attempt}) falló: ${error instanceof Error ? error.message : error} -- reintentando en ${delayMs / 1000}s...`,
-    );
+    const message = `${what} (intento ${attempt}) falló: ${error instanceof Error ? error.message : error} -- reintentando en ${delayMs / 1000}s...`;
+    console.log(message);
+    // Comando de workflow de GitHub Actions -- sin esto, un reintento
+    // aislado queda enterrado en el log crudo del paso "Package Windows
+    // installer" y solo se nota si alguien lo abre entero. Con esto, GitHub
+    // Actions lo resalta en el resumen de la corrida (icono de warning en
+    // el step). Fuera de CI (dev local, `GITHUB_ACTIONS` sin setear) es
+    // inocuo -- cualquier otro entorno lo imprime como texto plano, GitHub
+    // Actions setea esa variable de entorno siempre (auditoría 2026-09-06,
+    // ronda 5, Observabilidad, mejora).
+    if (process.env.GITHUB_ACTIONS) {
+      console.log(`::warning::${message}`);
+    }
   };
 }
 
