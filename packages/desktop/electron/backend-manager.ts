@@ -538,6 +538,20 @@ function stopBackendProcess(): Promise<void> {
       // ocupado en el intento siguiente, pero el síntoma real era "hay que
       // reintentar a mano" en vez de resolverse solo (auditoría
       // 2026-09-05, ronda 4, Arquitectura P3).
+      //
+      // Nota (auditoría 2026-09-06, ronda 5, Observabilidad): según la
+      // documentación de Node, en Windows un SIGTERM ya mata el proceso de
+      // forma forzosa e inmediata -- esta rama probablemente nunca se
+      // alcanza en la práctica en este proyecto (Windows-only). Se deja
+      // como red de seguridad barata para el caso raro de un proceso
+      // realmente atascado; el log de abajo existe para confirmar (o
+      // descartar) con datos reales si alguna vez llega a dispararse.
+      appendRedactedErrorLog({
+        source: 'main',
+        type: 'backend-sigkill-escalation',
+        message:
+          'El backend no respondió a SIGTERM en 5s -- se forzó con SIGKILL (posible señal de deadlock).',
+      });
       child.kill('SIGKILL');
       // Igual, nunca colgar a quien llama para siempre si ni el SIGKILL
       // llegara a producir un 'exit' -- mismo criterio de tope de antes,

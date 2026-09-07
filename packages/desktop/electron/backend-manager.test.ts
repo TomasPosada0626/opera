@@ -733,6 +733,12 @@ describe('backend-manager', () => {
 
       expect(backendChild.kill).toHaveBeenNthCalledWith(1, 'SIGTERM');
       expect(backendChild.kill).toHaveBeenNthCalledWith(2, 'SIGKILL');
+      // Observabilidad, ronda 5: si esta rama llega a dispararse en la
+      // práctica (posible deadlock), tiene que quedar registrada -- antes
+      // no dejaba ningún rastro.
+      expect(appendErrorLogMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'backend-sigkill-escalation' }),
+      );
     } finally {
       vi.useRealTimers();
     }
