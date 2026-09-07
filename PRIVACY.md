@@ -65,11 +65,16 @@ salen de la red de la empresa hacia ningún tercero ni proveedor en la nube.
   esa LAN siga siendo de confianza.
 - Acceso a la base de datos protegido con contraseña — generada una sola
   vez por instalación, nunca fija ni repetida entre instalaciones distintas.
+- Los respaldos automáticos de la base de datos (ver abajo) están
+  restringidos por permisos del sistema operativo a
+  SYSTEM/Administradores — ninguna otra cuenta de la PC donde corre Opera
+  puede leerlos.
 
 ## Cuánto tiempo se conservan los datos
 
 Mientras la relación comercial o laboral esté activa, o hasta que su titular
-ejerza el derecho de supresión descrito abajo. Dos excepciones documentadas:
+ejerza el derecho de supresión descrito abajo. Tres excepciones
+documentadas:
 
 - **`StockMovement`** (historial de inventario) nunca se borra — es un
   ledger contable append-only con requisitos de retención fiscal que la
@@ -79,12 +84,21 @@ ejerza el derecho de supresión descrito abajo. Dos excepciones documentadas:
   (`packages/backend/scripts/archive-audit-log.ts`), nunca automáticamente
   (ver
   [ADR 0006](docs/adr/0006-retencion-auditlog-stockmovement.md)).
+- **Respaldos automáticos de la base de datos** (copias completas para
+  recuperación ante desastres, no un registro de auditoría): se generan
+  periódicamente mientras Opera está abierto y se conservan 30 días antes
+  de borrarse solos. Un respaldo es una foto completa de la base en ese
+  momento — si se toma antes de que alguien ejerza su derecho de supresión,
+  sus datos originales (no anonimizados) quedan en ese respaldo hasta que
+  se cumplan esos 30 días, aunque ya se hayan anonimizado en la base en uso.
 
 Por eso, cuando un cliente, proveedor o usuario pide que se eliminen sus
 datos, Opera **anonimiza** en vez de borrar físicamente: el pedido/compra ya
 registrado se conserva (sigue apuntando a un id real, con la razón contable
 de arriba), pero el nombre, NIT, correo, teléfono y dirección de esa persona
-o empresa se sobreescriben de forma permanente e irreversible.
+o empresa se sobreescriben de forma permanente e irreversible **en la base
+de datos en uso** — con la salvedad de los respaldos de hasta 30 días
+descrita arriba.
 
 ## Derechos del titular (Ley 1581 de 2012)
 
