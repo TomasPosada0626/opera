@@ -879,6 +879,68 @@ describe('backend-manager', () => {
     );
   });
 
+  // Seguridad P2, auditoría 2026-09-06 (ronda 5): el regex de arriba solo
+  // atrapa contraseñas embebidas en una URL -- JWT_SECRET (comprometerlo
+  // permite forjar tokens de sesión arbitrarios) no tiene ningún patrón
+  // reconocible, así que necesita redactarse por valor conocido, no por
+  // forma.
+  it('redacta el JWT_SECRET si aparece en el stderr del backend (no es una connection string)', async () => {
+    const backendChild = fakeLongRunningProcess();
+    queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    const backendCall = spawnMock.mock.calls[5] as [
+      string,
+      string[],
+      { env: Record<string, string> },
+    ];
+    const jwtSecret = backendCall[2].env.JWT_SECRET;
+
+    backendChild.stderr.emit(
+      'data',
+      Buffer.from(`Error interno: token firmado con ${jwtSecret}`),
+    );
+
+    expect(appendErrorLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'backend-stderr',
+        message: 'Error interno: token firmado con ***',
+      }),
+    );
+  });
+
+  // Seguridad P2: el regex viejo solo reconocía el esquema `postgresql://`
+  // -- `postgres://` es un alias igual de válido para Postgres y no
+  // depende de que la contraseña ya sea un "secreto conocido" (a
+  // diferencia del test de arriba, esta contraseña nunca se trackeó).
+  it('redacta también el alias corto postgres:// (no solo postgresql://)', async () => {
+    const backendChild = fakeLongRunningProcess();
+    queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    backendChild.stderr.emit(
+      'data',
+      Buffer.from(
+        'postgres://otrouser:un-password-nunca-visto-antes@otrohost:5432/otradb',
+      ),
+    );
+
+    expect(appendErrorLogMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'backend-stderr',
+        message: 'postgres://otrouser:***@otrohost:5432/otradb',
+      }),
+    );
+  });
+
   it('backend:retry llamado mientras un start() anterior sigue en curso no deja dos backends corriendo a la vez', async () => {
     const firstBackend = fakeLongRunningProcess();
     const secondBackend = fakeLongRunningProcess();
