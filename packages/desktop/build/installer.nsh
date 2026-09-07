@@ -243,6 +243,15 @@
     ; (revisión propia post-ronda-4, 2026-09-06).
     ${If} $0 == "0"
     ${AndIf} $1 != ""
+      ; Ventana TOCTOU aceptada (auditoría 2026-09-06, ronda 5, Seguridad
+      ; P2, mismo criterio que ScheduleResumeAndReboot más abajo): entre
+      ; este FileWrite y el icacls que sigue, el archivo existe un instante
+      ; con la contraseña en texto plano y el ACL heredado (sin restringir
+      ; todavía) de la carpeta recién creada. Más sensible que el TOCTOU ya
+      ; aceptado ahí (ese es sobre un .exe, no sobre un secreto). Explotarla
+      ; exige monitorear activamente la creación de este archivo durante un
+      ; UAC que la mayoría ve terminar en segundos -- riesgo bajo, aceptado
+      ; en vez de dejarlo implícito.
       FileOpen $2 "$R2" w
       FileWrite $2 '{"postgresPassword":"$1"}'
       FileClose $2

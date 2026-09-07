@@ -117,6 +117,7 @@ function ensureJwtSecret(): string {
         jwtSecret?: string;
       };
       if (parsed.jwtSecret) {
+        trackSecret(parsed.jwtSecret);
         return parsed.jwtSecret;
       }
     } catch {
@@ -127,6 +128,7 @@ function ensureJwtSecret(): string {
   }
   const jwtSecret = randomBytes(48).toString('base64');
   writeFileSync(file, JSON.stringify({ jwtSecret }));
+  trackSecret(jwtSecret);
   return jwtSecret;
 }
 
@@ -182,6 +184,7 @@ async function ensureMachineWidePostgresPassword(
         postgresPassword?: string;
       };
       if (parsed.postgresPassword) {
+        trackSecret(parsed.postgresPassword);
         return parsed.postgresPassword;
       }
     } catch {
@@ -202,6 +205,7 @@ async function ensureMachineWidePostgresPassword(
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify({ postgresPassword: password }));
   await restrictToSystemAndAdmins(file);
+  trackSecret(password);
   return password;
 }
 
@@ -250,6 +254,22 @@ async function restrictBackupDirToSystemAndAdmins(dir: string): Promise<void> {
   }
 }
 
+// Valores reales conocidos en este proceso -- además del regex de abajo,
+// se redactan literalmente en cualquier texto antes de loguearlo. El regex
+// por sí solo no alcanza a todo: no cubre el alias `postgres://` (agregado
+// abajo) ni una eventual serialización futura que no sea una URL, y
+// JWT_SECRET (comprometerlo = forjar tokens de sesión arbitrarios) no tiene
+// ningún patrón reconocible que un regex pueda buscar -- solo conociendo el
+// valor real se puede redactar (auditoría 2026-09-06, ronda 5, Seguridad
+// P2).
+const knownSecrets = new Set<string>();
+
+function trackSecret(secret: string): void {
+  if (secret) {
+    knownSecrets.add(secret);
+  }
+}
+
 // Redacta cualquier contraseña embebida en una connection string de
 // Postgres antes de que llegue al log de errores exportable -- ese archivo
 // existe justo para mandarse por WhatsApp/correo cuando algo falla
@@ -258,7 +278,14 @@ async function restrictBackupDirToSystemAndAdmins(dir: string): Promise<void> {
 // deshacía, por otra vía, la protección de la contraseña de arriba
 // (auditoría 2026-09-05, ronda 4).
 function redactConnectionStrings(text: string): string {
-  return text.replace(/(postgresql:\/\/[^:]+:)[^@]+(@)/gi, '$1***$2');
+  let redacted = text.replace(
+    /(postgres(?:ql)?:\/\/[^:]+:)[^@]+(@)/gi,
+    '$1***$2',
+  );
+  for (const secret of knownSecrets) {
+    redacted = redacted.split(secret).join('***');
+  }
+  return redacted;
 }
 
 function appendRedactedErrorLog(entry: LoggedError): void {
@@ -587,6 +614,12 @@ async function runBackupIfDue(): Promise<void> {
   try {
     const dir = backupDir();
     if (!existsSync(dir)) {
+      // Ventana TOCTOU aceptada (auditoría 2026-09-06, ronda 5, Seguridad
+      // P2, mismo criterio que ScheduleResumeAndReboot en installer.nsh):
+      // entre este mkdirSync y el icacls de abajo, la carpeta existe un
+      // instante con el ACL heredado (sin restringir todavía). Explotarla
+      // exige monitorear activamente la creación de esta carpeta -- riesgo
+      // bajo, aceptado en vez de dejarlo implícito.
       mkdirSync(dir, { recursive: true });
       await restrictBackupDirToSystemAndAdmins(dir);
     }
