@@ -245,17 +245,35 @@ No sube a ningún destino remoto a propósito — LAN-only, igual que el resto
 del proyecto; para retención real, programa este comando (cron, Task
 Scheduler) y copia `backups/` a donde ya respaldes el resto de la empresa.
 
-**Instalador empaquetado**: el Postgres que administra `backend-manager.ts`
-corre en un contenedor con nombre distinto (`opera-postgres-app`, ver
-[ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)) — para
-respaldar esa instalación, pasá el nombre por variable de entorno:
+**Instalador empaquetado (Herrajes Toro y cualquier instalación real)**: acá
+arriba es el flujo manual para dev, contra el Postgres de
+`docker-compose.yml`. La app empaquetada NO usa este comando — no tiene
+`pnpm` disponible (el backend se despliega con `node_modules` de
+producción), así que `backend-manager.ts` respalda sola, automáticamente,
+mientras Opera está abierta:
+
+- Corre cada 6 horas mientras la app sigue abierta (sin repetir antes de 24
+  horas desde el último éxito) — no hace falta ni Task Scheduler ni ninguna
+  acción manual.
+- Guarda en `%ProgramData%\Opera\backups\opera-<fecha>.sql.gz`, restringido
+  por permisos a SYSTEM/Administradores — ninguna otra cuenta de esa PC
+  puede leerlos, mismo criterio que la contraseña de Postgres.
+- Retención de 30 días, igual que el comando manual de arriba.
+- Si un respaldo falla, no tumba la app — queda registrado en el log de
+  errores exportable de Opera ("Exportar registro de errores" en el menú de
+  usuario), sin ningún aviso visible hasta que haga falta restaurar. Vale la
+  pena revisar ese log de vez en cuando si te preocupa la continuidad de los
+  datos.
+
+Restaurar un respaldo de la app empaquetada (sobrescribe la base actual,
+requiere tener Docker Desktop y una terminal a mano):
 
 ```bash
-POSTGRES_CONTAINER=opera-postgres-app pnpm --filter backend backup:db
+gunzip -c "C:\ProgramData\Opera\backups\opera-<fecha>.sql.gz" | docker exec -i opera-postgres-app psql -U opera -d opera
 ```
 
-Restaurar un respaldo (sobrescribe la base actual — cambiá `opera-postgres`
-por `opera-postgres-app` si es una instalación del instalador empaquetado):
+Restaurar un respaldo hecho a mano en dev (contenedor `opera-postgres`, no
+`opera-postgres-app`):
 
 ```bash
 gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
