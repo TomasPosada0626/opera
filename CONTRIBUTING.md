@@ -33,6 +33,15 @@ interpolar. Encontrado real en la auditoría 2026-09-03 (ronda 3): un
 `$INSTDIR` escribible por un usuario sin privilegios combinado con una
    tarea programada corriendo como SYSTEM era una escalación de privilegios
    completa.
+7. Si restringís permisos con `icacls` sobre una **carpeta** (no un
+   archivo suelto): agregá `(OI)(CI)` a cada `*SID:(...)` del `/grant:r`
+   para que los archivos que se creen DESPUÉS, adentro de esa carpeta,
+   hereden el mismo ACL restrictivo — sin esos flags, solo la carpeta en sí
+   queda protegida, no su contenido futuro. Encontrado real en la auditoría
+   2026-09-06 (ronda 5): la carpeta de backups automáticos
+   (`%ProgramData%\Opera\backups`) se creó sin restringir en absoluto,
+   dejando el volcado completo de la base real legible por cualquier cuenta
+   de esa PC.
 
 ## Convención de commits
 
