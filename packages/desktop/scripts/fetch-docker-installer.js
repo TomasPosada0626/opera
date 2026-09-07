@@ -13,6 +13,7 @@ const {
   createWriteStream,
   existsSync,
   readFileSync,
+  statSync,
   unlinkSync,
 } = require('node:fs');
 const { mkdir, rename } = require('node:fs/promises');
@@ -63,17 +64,77 @@ function fetchBuffer(url, redirectsLeft = 5) {
   });
 }
 
+// Pura, sin I/O -- testeable sin mockear `node:https` (mismo criterio que
+// parse-checksums.js/retry.js). Qué hacer con la respuesta de una descarga
+// que puede o no haber pedido un Range, sin saber nada de sockets/streams:
+// - 3xx con Location: seguir la redirección.
+// - Se pidió un Range (alreadyDownloaded > 0) pero el servidor respondió
+//   200 (mandó el archivo completo igual, ignorando el Range) o 416 (el
+//   offset ya no es válido): no se puede confiar en lo que ya había en
+//   disco, hay que reiniciar de cero.
+// - 200/206 normales: escribir (de cero) o agregar (al archivo parcial).
+// - Cualquier otro código: error.
+function decideDownloadAction(statusCode, alreadyDownloaded) {
+  if (statusCode != null && statusCode >= 300 && statusCode < 400) {
+    return 'redirect';
+  }
+  if (alreadyDownloaded > 0 && (statusCode === 200 || statusCode === 416)) {
+    return 'restart';
+  }
+  if (statusCode !== 200 && statusCode !== 206) {
+    return 'error';
+  }
+  return statusCode === 206 ? 'append' : 'write';
+}
+
+// Resume (HTTP Range) desde donde cortó un intento anterior -- sin esto,
+// cada reintento de withRetry() volvía a bajar los 600+ MB desde cero, el
+// peor caso posible para el escenario que ese retry dice cubrir ("corte de
+// red a mitad de camino": cuanto más tarde corta, más caro es cada
+// reintento). `destPath` sobrevive entre intentos de la MISMA corrida de
+// withRetry() (nada lo borra entre uno y otro) -- por eso alcanza con leer
+// su tamaño actual en cada llamada, sin que downloadToFile necesite saber
+// nada de la lógica de reintento en sí (auditoría 2026-09-06, ronda 5,
+// Observabilidad, mejora).
 function downloadToFile(url, destPath, redirectsLeft = 5) {
   return new Promise((resolve, reject) => {
+    let alreadyDownloaded = 0;
+    try {
+      alreadyDownloaded = statSync(destPath).size;
+    } catch {
+      // No existe todavía -- primer intento, arranca de cero.
+    }
+    const options =
+      alreadyDownloaded > 0
+        ? { headers: { Range: `bytes=${alreadyDownloaded}-` } }
+        : {};
+
+    // Si el servidor no puede/quiere resumir, no hay que confiar en lo que
+    // ya está en disco -- se borra y se reintenta desde cero con la
+    // respuesta completa que sí llegó. Converge solo: la próxima llamada ya
+    // no encuentra nada en disco, así que no vuelve a pedir un Range.
+    function restartFromScratch(res) {
+      res.resume();
+      try {
+        unlinkSync(destPath);
+      } catch {
+        // Nada que borrar, seguir igual.
+      }
+      resolve(downloadToFile(url, destPath, redirectsLeft));
+    }
+
     https
-      .get(url, (res) => {
-        if (
-          res.statusCode != null &&
-          res.statusCode >= 300 &&
-          res.statusCode < 400 &&
-          res.headers.location
-        ) {
+      .get(url, options, (res) => {
+        const action = decideDownloadAction(res.statusCode, alreadyDownloaded);
+
+        if (action === 'redirect') {
           res.resume();
+          if (!res.headers.location) {
+            reject(
+              new Error(`Redirección (${res.statusCode}) sin Location: ${url}`),
+            );
+            return;
+          }
           if (redirectsLeft <= 0) {
             reject(new Error(`Demasiadas redirecciones siguiendo ${url}`));
             return;
@@ -83,12 +144,23 @@ function downloadToFile(url, destPath, redirectsLeft = 5) {
           );
           return;
         }
-        if (res.statusCode !== 200) {
+
+        if (action === 'restart') {
+          restartFromScratch(res);
+          return;
+        }
+
+        if (action === 'error') {
           res.resume();
           reject(new Error(`GET ${url} -> HTTP ${res.statusCode}`));
           return;
         }
-        const fileStream = createWriteStream(destPath);
+
+        // 'append' (206, Partial Content -- seguir donde había quedado) o
+        // 'write' (200, descarga nueva de punta a punta).
+        const fileStream = createWriteStream(destPath, {
+          flags: action === 'append' ? 'a' : 'w',
+        });
         res.pipe(fileStream);
         fileStream.on('finish', () => fileStream.close(() => resolve()));
         fileStream.on('error', reject);
@@ -164,13 +236,20 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  const attempts = error instanceof Error ? error.attempts : undefined;
-  console.error(
-    attempts
-      ? `No se pudo preparar el instalador de Docker Desktop embebido (tras ${attempts} intentos):`
-      : 'No se pudo preparar el instalador de Docker Desktop embebido:',
-  );
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+// `require.main === module` -- no correr `main()` (red real) cuando este
+// archivo se importa desde un test para ejercitar `decideDownloadAction()`,
+// mismo patrón que `backup-db.ts` (packages/backend/scripts/).
+if (require.main === module) {
+  main().catch((error) => {
+    const attempts = error instanceof Error ? error.attempts : undefined;
+    console.error(
+      attempts
+        ? `No se pudo preparar el instalador de Docker Desktop embebido (tras ${attempts} intentos):`
+        : 'No se pudo preparar el instalador de Docker Desktop embebido:',
+    );
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+module.exports = { decideDownloadAction };
