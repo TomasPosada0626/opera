@@ -93,6 +93,16 @@ export function main(): void {
     `Respaldando base "${db}" (contenedor ${container}) a ${outputFile}...`,
   );
 
+  // Bufferea el dump completo en memoria (más la copia que hace
+  // zlib.gzipSync abajo, dos copias completas a la vez) -- techo de escala
+  // consciente, no un descuido: para un ERP real de varios años, una base
+  // que supere el `maxBuffer` de acá hace que el backup empiece a fallar,
+  // silenciosamente salvo por el log de diagnóstico (auditoría 2026-09-06,
+  // ronda 5, Arquitectura P3). Migrar a streaming (`pg_dump` con stdout en
+  // pipe directo a un `gzip` en pipe, sin pasar por memoria de Node) es la
+  // solución real si esto llega a ser un problema -- no se hizo acá para no
+  // reescribir un script que hoy funciona, sin evidencia todavía de que
+  // Herrajes Toro se acerque a ese techo.
   const dump = execFileSync(
     'docker',
     ['exec', container, 'pg_dump', '-U', user, db],
