@@ -28,6 +28,14 @@ const INSTALLER_URL =
 const TARGET_DIR = path.join(__dirname, '..', 'resources', 'docker');
 const TARGET_FILE = path.join(TARGET_DIR, 'Docker Desktop Installer.exe');
 
+/* v8 ignore start -- I/O real contra node:https, deliberadamente sin test
+ * (mismo criterio que parse-checksums.js/retry.js: se extrae y testea la
+ * lógica pura, el I/O en sí queda sin mockear). Agregar este archivo a la
+ * cobertura por primera vez (fetch-docker-installer.test.mjs, ronda 5) hizo
+ * que este bloque, nunca antes contado, arrastrara el umbral agregado del
+ * paquete por debajo del mínimo -- ignorado explícitamente en vez de bajar
+ * ese umbral global para todo el resto del proyecto (auditoría 2026-09-06,
+ * ronda 5, Testing). */
 function fetchText(url) {
   return fetchBuffer(url).then((buf) => buf.toString('utf-8'));
 }
@@ -63,6 +71,7 @@ function fetchBuffer(url, redirectsLeft = 5) {
       .on('error', reject);
   });
 }
+/* v8 ignore stop */
 
 // Pura, sin I/O -- testeable sin mockear `node:https` (mismo criterio que
 // parse-checksums.js/retry.js). Qué hacer con la respuesta de una descarga
@@ -87,6 +96,8 @@ function decideDownloadAction(statusCode, alreadyDownloaded) {
   return statusCode === 206 ? 'append' : 'write';
 }
 
+/* v8 ignore start -- I/O real, ver el comentario de fetchText/fetchBuffer
+ * más arriba (mismo criterio, mismo motivo). */
 // Resume (HTTP Range) desde donde cortó un intento anterior -- sin esto,
 // cada reintento de withRetry() volvía a bajar los 600+ MB desde cero, el
 // peor caso posible para el escenario que ese retry dice cubrir ("corte de
@@ -251,5 +262,6 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+/* v8 ignore stop */
 
 module.exports = { decideDownloadAction };
