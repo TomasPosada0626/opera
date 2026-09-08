@@ -13,7 +13,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:cov": "vitest run --coverage && node scripts/check-electron-coverage.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:installer-nsh": "node scripts/check-installer-nsh.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

@@ -103,6 +103,20 @@ jobs:
       - name: Build desktop (renderer + electron)
         run: pnpm --filter desktop exec tsc && pnpm --filter desktop exec vite build
 
+      # Smoke test de sintaxis de build/installer.nsh (auditoría 2026-09-06,
+      # ronda 5, Testing/Observabilidad): antes de esto, el único lugar que
+      # compilaba ese script era el job package-windows (~6-10 min en
+      # windows-latest, con la descarga de Docker Desktop de por medio) --
+      # un error de sintaxis ahí solo se veía al final de ese job, no acá.
+      # Corre en este job (ubuntu-latest, ya en marcha) porque NSIS soporta
+      # compilar instaladores de Windows desde Linux -- ver
+      # scripts/check-installer-nsh.js para el porqué no se reutiliza un
+      # fixture del script completo que arma electron-builder (investigado y
+      # descartado: incluye archivos temporales efímeros con nombre aleatorio
+      # por corrida).
+      - name: Check installer.nsh syntax (smoke test)
+        run: pnpm --filter desktop check:installer-nsh
+
       # Los 5 specs de Playwright (e2e/*.spec.ts) existían pero no corrían
       # en CI — podían pudrirse sin que nadie se entere, a diferencia del
       # e2e de Jest del backend, que sí está gateado (y que ya demostró su
@@ -262,22 +276,5 @@ jobs:
       # misma sesión (orden reinicio/Docker) vivía justo en ese script. Con
       # el cache de arriba, el costo real ya baja casi siempre a "restaurar
       # ~600 MB", no a "descargarlos".
-      # TEMPORAL (auditoria 2026-09-08, ronda 5, Testing) -- DEBUG=electron-builder
-      # vuelca el script NSIS real ensamblado (nsis.script) a builder-debug.yml
-      # via el DebugLogger incorporado de electron-builder, en un executeFinally
-      # que corre pase lo que pase. Objetivo: capturar ese script UNA vez como
-      # fixture exacto para un smoke test de `makensis` corriendo en Linux (no
-      # hace falta un runner Windows solo para eso). Revertir este env + el step
-      # de upload de abajo en cuanto el artifact quede descargado.
       - name: Package Windows installer
-        env:
-          DEBUG: electron-builder
         run: pnpm --filter desktop build
-
-      - name: Upload builder-debug.yml (temporal, ver comentario arriba)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: builder-debug
-          path: packages/desktop/release/*/builder-debug.yml
-          if-no-files-found: warn
