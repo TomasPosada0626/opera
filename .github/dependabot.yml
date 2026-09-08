@@ -20,22 +20,47 @@ updates:
         # disponible en ese mismo PR) todavía no soporta TS 7. Mismo
         # tratamiento que Prisma: fuera del group, para que un bump que
         # rompe el lint no bloquee las otras 24 actualizaciones reales.
+        #
+        # @nestjs/*: el PR #113 (31 paquetes agrupados) saltó @nestjs/common
+        # /core/config/jwt/passport/platform-express/swagger/terminus/cli/
+        # schematics/testing de v11 a v12 y rompió `pnpm lint` con 5604
+        # errores. Investigado a fondo (auditoría 2026-09-08): la causa real
+        # es que @nestjs/throttler@6.5.0 (última publicada) declara
+        # peerDependencies solo hasta "@nestjs/common/core ^11.0.0" — no
+        # existe todavía una versión de @nestjs/throttler compatible con
+        # Nest v12, así que ThrottlerModule.forRootAsync() deja de tipar
+        # bien en app.module.ts (ThrottlerAsyncOptions ya no coincide) y esa
+        # falla de tipos en cascada es lo que dispara los miles de errores
+        # "Unsafe call/member access" del resto del código bajo lint
+        # tipado. Adicional (no bloqueante todavía, pero real): @nestjs/
+        # config v12 migró validationSchema/validationOptions al estándar
+        # "Standard Schema" (que Joi no implementa nativamente) — el schema
+        # Joi de app.module.ts necesitaría reescribirse con `validate:`
+        # manual o migrar a Zod antes de poder usar v12, aun si throttler
+        # no fuera un problema. Mismo tratamiento que Prisma/TypeScript:
+        # fuera del group hasta que @nestjs/throttler publique soporte
+        # para v12 (revisar entonces; no hay issue propio, es espera de
+        # compatibilidad upstream, no trabajo planeado).
         exclude-patterns:
           - 'prisma'
           - '@prisma/*'
           - 'typescript'
+          - '@nestjs/*'
     # Nunca proponer el PR de major hasta que el ecosistema lo soporte —
     # updates menores/parche siguen llegando (su propio PR, fuera del group
     # de arriba). Prisma: bloqueado hasta que arranque #104. TypeScript:
     # bloqueado hasta que typescript-eslint soporte TS 7 (revisar de nuevo
     # entonces, no hay issue propio todavía porque no es trabajo planeado,
-    # solo una espera de compatibilidad upstream).
+    # solo una espera de compatibilidad upstream). @nestjs/*: bloqueado
+    # hasta que @nestjs/throttler soporte Nest v12 (ver nota arriba).
     ignore:
       - dependency-name: 'prisma'
         update-types: ['version-update:semver-major']
       - dependency-name: '@prisma/*'
         update-types: ['version-update:semver-major']
       - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@nestjs/*'
         update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
