@@ -58,6 +58,16 @@ export default defineConfig({
     // `coverageThreshold` del backend, gateado en CI.
     coverage: {
       provider: 'v8',
+      // 'json-summary' agregado (auditoría 2026-09-06, ronda 5, Testing,
+      // mejora) -- lo consume scripts/check-electron-coverage.js. El
+      // umbral agregado de abajo por sí solo puede esconder un archivo
+      // crítico con cobertura hueca detrás del promedio del paquete
+      // (encontrado real: backend-manager.ts en 72% de rama, paquete en
+      // 87% agregado) -- ver ese script para el piso por archivo,
+      // limitado a electron/ (Vitest no permite un `perFile` scopeado a
+      // un glob sin aplicarlo también, con los mismos números, al resto
+      // del paquete -- confirmado en los tipos reales instalados).
+      reporter: ['text', 'html', 'clover', 'json', 'json-summary'],
       thresholds: {
         statements: 95,
         branches: 85,
