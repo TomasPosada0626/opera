@@ -38,6 +38,11 @@ hacia atrás; este changelog arranca desde que se creó.
   desactivar una entidad todavía en uso real: productos activos para
   Category/Unit, stock real (`stockMovement.groupBy` + `having`) para
   Warehouse.
+- Indicador de backup automático en el menú de usuario ("Último respaldo
+  exitoso: hace N días" / aviso si las últimas corridas fallaron),
+  calculado del lado del cliente a partir del marcador local — sin salir a
+  internet, coherente con el diseño LAN-only. Antes el backup automático
+  era invisible para quien usa la app.
 - `DELETE /supplier-products/:id` (ADMIN) — antes no había ninguna vía para
   quitar el precio de referencia de un proveedor que dejó de vender un
   producto. Botón "Eliminar" por fila en `SupplierDetailPage`.
@@ -124,8 +129,21 @@ hacia atrás; este changelog arranca desde que se creó.
 - `packages/desktop/scripts/generate-self-signed-cert.ps1` y el README ya no
   indican importar el certificado también a `Cert:\LocalMachine\Root`
   (sobre-privilegio real; `TrustedPublisher` alcanza).
+- `codeql-action/init` y `codeql-action/analyze` deben moverse en lockstep
+  (un mismatch de versión rompe el job con "Loaded a configuration file for
+  version X, but running version Y") — Dependabot los había partido en dos
+  PRs separadas que en aislamiento rompían CI cada una; sincronizados en un
+  solo commit.
 - `stopBackendProcess()` dejaba un backend huérfano dueño del puerto si no
-  respondía al `SIGTERM` en 5 segundos — ahora escala a `SIGKILL`.
+  respondía al `SIGTERM` en 5 segundos — ahora escala a `SIGKILL`. La
+  escalada en sí no dejaba ningún rastro en el log pase lo que pase — ahora
+  se registra en el log de errores exportable, con un mensaje explícito de
+  posible deadlock.
+- `pg_dump` en `scripts/backup-db.ts` bufferea completo en memoria
+  (`execFileSync` con `maxBuffer` de 1 GB, más una segunda copia por
+  `zlib.gzipSync`) — documentado como límite consciente de escala, no
+  cambiado de arquitectura: por encima de ese techo el backup empieza a
+  fallar en silencio salvo por el log de diagnóstico.
 
 ### Seguridad
 
@@ -157,6 +175,14 @@ hacia atrás; este changelog arranca desde que se creó.
   se perdió.
 - La contraseña de Postgres ya no puede filtrarse al log de errores
   exportable: cualquier connection string se redacta antes de guardarse.
+  Ampliado más adelante: además del regex de connection strings, se pasan
+  los valores reales conocidos en runtime (contraseña, `JWT_SECRET`, alias
+  `postgres://`) a una redacción por reemplazo literal exacto — el regex
+  original no cubría ninguno de esos casos.
+- `restrictToSystemAndAdmins`/`restrictBackupDirToSystemAndAdmins` tragaban
+  cualquier falla de `icacls` sin loguear nada — ahora un fallo real de
+  permisos (contraseña o backups con ACL débil) queda registrado en el log
+  de errores exportable en vez de invisible.
 - La carpeta de backups automáticos (`%ProgramData%\Opera\backups`) ya no
   quedaba con la ACL heredada por defecto de `ProgramData` — restringida a
   SYSTEM/Administradores, igual que la contraseña de Postgres.
@@ -167,6 +193,14 @@ hacia atrás; este changelog arranca desde que se creó.
   `docker run` (visible para cualquier cuenta de Windows en esa PC vía el
   Administrador de Tareas) — pasa por variable de entorno, mismo criterio
   que `DATABASE_URL`/`JWT_SECRET`.
+- 8 vulnerabilidades `high` de `pnpm audit` resueltas: `nodemailer` (DoS por
+  complejidad cuadrática en `addressparser`, bump a `^9.1.1`) y `multer`
+  (3 CVEs de DoS, dependencia transitiva de `@nestjs/platform-express`,
+  fijado por override a `^2.3.0`, mismo patrón que los demás overrides ya
+  existentes).
+- `@nestjs/*` aislado del group principal de Dependabot hasta que
+  `@nestjs/throttler` declare soporte para Nest v12 en sus
+  `peerDependencies` (bloqueo real del ecosistema, no un bug propio).
 
 ### Rendimiento
 
@@ -195,6 +229,18 @@ hacia atrás; este changelog arranca desde que se creó.
 - Cobertura de `electron/main.ts` y `electron/updater.ts` — antes sin
   ningún test propio, ya que Playwright corre con `NODE_ENV=test` (se salta
   el plugin de electron por completo) y nunca los ejercitaba.
+- Piso de cobertura por archivo para `packages/desktop/electron/**`
+  (`scripts/check-electron-coverage.js`, wireado en `test:cov`) — el umbral
+  agregado del paquete completo podía esconder un archivo crítico con
+  cobertura hueca detrás del promedio (encontrado real:
+  `backend-manager.ts` en 72% de rama, paquete en 87% agregado).
+- Smoke test de sintaxis de `installer.nsh` en CI
+  (`scripts/check-installer-nsh.js`, corre en `ubuntu-latest` vía el
+  `makensis` real que ya cachea `electron-builder`) — atrapa errores de
+  sintaxis reales (typos de comando, bloques `${If}/${EndIf}`
+  desbalanceados) en ~2s, sin esperar al build completo de Windows. Sigue
+  sin poder atrapar una condición lógica invertida que compile limpio (solo
+  una corrida real del instalador cierra ese hueco).
 
 ## [0.0.1] — 2026-08-27
 

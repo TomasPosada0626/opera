@@ -261,9 +261,10 @@ mientras Opera está abierta:
 - Retención de 30 días, igual que el comando manual de arriba.
 - Si un respaldo falla, no tumba la app — queda registrado en el log de
   errores exportable de Opera ("Exportar registro de errores" en el menú de
-  usuario), sin ningún aviso visible hasta que haga falta restaurar. Vale la
-  pena revisar ese log de vez en cuando si te preocupa la continuidad de los
-  datos.
+  usuario). Además, el menú de usuario muestra un indicador local ("Último
+  respaldo exitoso: hace N días" o el aviso de que las últimas corridas
+  fallaron), calculado del lado del cliente sin salir a internet — no hace
+  falta revisar el log a menos que ese indicador marque una falla.
 
 Restaurar un respaldo de la app empaquetada (sobrescribe la base actual,
 requiere tener Docker Desktop y una terminal a mano):
