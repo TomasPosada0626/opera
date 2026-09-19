@@ -154,8 +154,8 @@ importers:
         specifier: ^11.0.0
         version: 11.1.0(chokidar@4.0.3)(prettier@3.9.6)(typescript@5.9.3)
       '@nestjs/testing':
-        specifier: ^11.2.3
-        version: 11.2.3(@nestjs/common@11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(@nestjs/platform-express@11.2.3)
+        specifier: ^11.2.5
+        version: 11.2.5(@nestjs/common@11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(@nestjs/platform-express@11.2.3)
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
@@ -1294,8 +1294,8 @@ packages:
       typeorm:
         optional: true
 
-  '@nestjs/testing@11.2.3':
-    resolution: {integrity: sha512-7ANDWlkm8Xw4CYIhCNZhtBzANsQUKqjteA2yx/6sjqGyWhekeBKz8wgCJykm0vo+ltrg6U34dZlm2NgiRcNHPQ==}
+  '@nestjs/testing@11.2.5':
+    resolution: {integrity: sha512-6PEjtGlqwpXDUDsiuSmE7EoRGHs27YAmHctgLMXfeb2oyWQsg5a/8+vQTnY/oF4c6wSRPM9x5OPtQ/JCuVNg9g==}
     peerDependencies:
       '@nestjs/common': ^11.0.0
       '@nestjs/core': ^11.0.0
@@ -7342,7 +7342,7 @@ snapshots:
     optionalDependencies:
       '@prisma/client': 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
 
-  '@nestjs/testing@11.2.3(@nestjs/common@11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(@nestjs/platform-express@11.2.3)':
+  '@nestjs/testing@11.2.5(@nestjs/common@11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.2.3)(@nestjs/platform-express@11.2.3)':
     dependencies:
       '@nestjs/common': 11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.2.3(@nestjs/common@11.2.3(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.3)(reflect-metadata@0.2.2)(rxjs@7.8.2)
