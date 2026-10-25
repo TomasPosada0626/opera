@@ -7,6 +7,7 @@ describe('SearchService', () => {
     customer: { findMany: jest.Mock };
     supplier: { findMany: jest.Mock };
     remission: { findMany: jest.Mock };
+    order: { findMany: jest.Mock };
     productionOrder: { findMany: jest.Mock };
   };
   let service: SearchService;
@@ -17,6 +18,7 @@ describe('SearchService', () => {
       customer: { findMany: jest.fn().mockResolvedValue([]) },
       supplier: { findMany: jest.fn().mockResolvedValue([]) },
       remission: { findMany: jest.fn().mockResolvedValue([]) },
+      order: { findMany: jest.fn().mockResolvedValue([]) },
       productionOrder: { findMany: jest.fn().mockResolvedValue([]) },
     };
     service = new SearchService(prisma as unknown as PrismaService);
@@ -73,6 +75,18 @@ describe('SearchService', () => {
 
     expect(prisma.remission.findMany).not.toHaveBeenCalled();
     expect(result.remissions).toEqual([]);
+  });
+
+  it('finds sales orders by exact number, and skips them for text', async () => {
+    await service.search({ q: '45' });
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { number: 45 } }),
+    );
+
+    prisma.order.findMany.mockClear();
+    const result = await service.search({ q: 'silla' });
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+    expect(result.orders).toEqual([]);
   });
 
   it('matches production orders by their product sku or name', async () => {

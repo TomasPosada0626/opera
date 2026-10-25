@@ -171,7 +171,66 @@ export class ReportsService {
     return ranked.slice(0, query.limit ?? 10);
   }
 
-  // Los tres exports reusan el mismo cálculo que su reporte en JSON (nunca
+  // Cartera: lo que cada cliente debe hoy, de mayor a menor. Remisiones
+  // vigentes (no anuladas) que no están pagadas del todo, agrupadas por
+  // cliente — el mismo total - abonado que CustomersService.getBalance(),
+  // pero de todos a la vez. oldestPendingAt es la remisión impaga más
+  // vieja: dice cuánto lleva esperando ese cobro.
+  async getReceivablesReport(now: Date = new Date()) {
+    const remissions = await this.prisma.remission.findMany({
+      where: { voidedAt: null, paymentStatus: { not: 'PAGADO' } },
+      select: {
+        total: true,
+        amountPaid: true,
+        createdAt: true,
+        order: {
+          select: { customer: { select: { id: true, name: true } } },
+        },
+      },
+    });
+
+    const byCustomer = new Map<
+      string,
+      {
+        customerId: string;
+        customerName: string;
+        remissionCount: number;
+        totalBilled: Prisma.Decimal;
+        totalPaid: Prisma.Decimal;
+        oldestPendingAt: Date;
+      }
+    >();
+    for (const remission of remissions) {
+      const { customer } = remission.order;
+      const existing = byCustomer.get(customer.id) ?? {
+        customerId: customer.id,
+        customerName: customer.name,
+        remissionCount: 0,
+        totalBilled: new Prisma.Decimal(0),
+        totalPaid: new Prisma.Decimal(0),
+        oldestPendingAt: remission.createdAt,
+      };
+      existing.remissionCount += 1;
+      existing.totalBilled = existing.totalBilled.plus(remission.total);
+      existing.totalPaid = existing.totalPaid.plus(remission.amountPaid);
+      if (remission.createdAt < existing.oldestPendingAt) {
+        existing.oldestPendingAt = remission.createdAt;
+      }
+      byCustomer.set(customer.id, existing);
+    }
+
+    return Array.from(byCustomer.values())
+      .map((row) => ({
+        ...row,
+        balance: row.totalBilled.minus(row.totalPaid),
+        daysPending: Math.floor(
+          (now.getTime() - row.oldestPendingAt.getTime()) / 86_400_000,
+        ),
+      }))
+      .sort((a, b) => b.balance.comparedTo(a.balance));
+  }
+
+  // Los exports reusan el mismo cálculo que su reporte en JSON (nunca
   // reimplementan la consulta) — la hoja de Excel es solo otra
   // presentación de los mismos números, no una fuente de verdad aparte.
   async getInventoryExcel(): Promise<Buffer> {
@@ -243,6 +302,33 @@ export class ReportsService {
         name: row.name,
         quantitySold: row.quantitySold.toNumber(),
         revenue: row.revenue.toNumber(),
+      })),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async getReceivablesExcel(): Promise<Buffer> {
+    const rows = await this.getReceivablesReport();
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Cartera');
+    sheet.columns = [
+      { header: 'Cliente', key: 'customerName', width: 30 },
+      { header: 'Remisiones pendientes', key: 'remissionCount', width: 22 },
+      { header: 'Despachado', key: 'totalBilled', width: 16 },
+      { header: 'Abonado', key: 'totalPaid', width: 16 },
+      { header: 'Saldo', key: 'balance', width: 16 },
+      { header: 'Días de la más vieja', key: 'daysPending', width: 20 },
+    ];
+    sheet.addRows(
+      rows.map((row) => ({
+        customerName: row.customerName,
+        remissionCount: row.remissionCount,
+        totalBilled: row.totalBilled.toNumber(),
+        totalPaid: row.totalPaid.toNumber(),
+        balance: row.balance.toNumber(),
+        daysPending: row.daysPending,
       })),
     );
 

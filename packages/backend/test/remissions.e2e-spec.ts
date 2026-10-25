@@ -124,7 +124,6 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'CARTERA',
         items: [
           { orderItemId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', quantity: 1 },
         ],
@@ -138,7 +137,6 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId, quantity: 999 }],
       })
       .expect(400);
@@ -151,8 +149,7 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'ABONADO',
-        amountPaid: 60,
+        initialPayment: { amount: 60, method: 'EFECTIVO' },
         items: [{ orderItemId, quantity: 6 }],
       })
       .expect(201);
@@ -168,14 +165,25 @@ describe('Remissions (e2e)', () => {
       .expect(200);
     expect((stockAfterFirst.body as { stock: string }).stock).toBe('4');
 
-    const paymentUpdate = await request(app.getHttpServer())
-      .patch(`/remissions/${firstBody.id}/payment`)
+    // 6 x 20 = 120. Abonó 60 al recibir; un abono de 80 se pasa del saldo.
+    await request(app.getHttpServer())
+      .post(`/remissions/${firstBody.id}/payments`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ paymentStatus: 'PAGADO' })
-      .expect(200);
-    expect(
-      (paymentUpdate.body as { paymentStatus: string }).paymentStatus,
-    ).toBe('PAGADO');
+      .send({ amount: 80, method: 'TRANSFERENCIA' })
+      .expect(400);
+    const paymentUpdate = await request(app.getHttpServer())
+      .post(`/remissions/${firstBody.id}/payments`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ amount: 60, method: 'TRANSFERENCIA', note: 'Bancolombia' })
+      .expect(201);
+    const paid = paymentUpdate.body as {
+      paymentStatus: string;
+      amountPaid: string;
+      payments: { amount: string; method: string }[];
+    };
+    expect(paid.paymentStatus).toBe('PAGADO');
+    expect(Number(paid.amountPaid)).toBe(120);
+    expect(paid.payments).toHaveLength(2);
 
     // Ya se entregaron 6 de 10 — pedir 5 más debe fallar (solo quedan 4).
     await request(app.getHttpServer())
@@ -183,7 +191,6 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId, quantity: 5 }],
       })
       .expect(400);
@@ -194,7 +201,6 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'PAGADO',
         items: [{ orderItemId, quantity: 4 }],
       })
       .expect(201);
@@ -213,21 +219,92 @@ describe('Remissions (e2e)', () => {
     expect(body.data.some((r) => r.id === firstBody.id)).toBe(true);
   });
 
+  it('marks the order DESPACHADO once every line is fully dispatched', async () => {
+    const order = await request(app.getHttpServer())
+      .get(`/orders/${orderId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const body = order.body as { status: string; dispatchedAt: string | null };
+    expect(body.status).toBe('DESPACHADO');
+    expect(body.dispatchedAt).not.toBeNull();
+  });
+
+  it('refuses to void a remission that still has valid payments', async () => {
+    const response = await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[0]}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Prueba' })
+      .expect(400);
+    expect((response.body as { message: string }).message).toContain(
+      'abonos registrados',
+    );
+  });
+
+  it('voids a payment, keeping it in the history and lowering what was paid', async () => {
+    const remission = await request(app.getHttpServer())
+      .get(`/remissions/${remissionIds[0]}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const { payments } = remission.body as {
+      payments: { id: string; voidedAt: string | null }[];
+    };
+
+    await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[0]}/payments/${payments[1].id}/void`)
+      .set('Authorization', `Bearer ${staffToken}`)
+      .send({ reason: 'Transferencia rechazada' })
+      .expect(403);
+
+    const voided = await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[0]}/payments/${payments[1].id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Transferencia rechazada' })
+      .expect(200);
+    const body = voided.body as {
+      paymentStatus: string;
+      amountPaid: string;
+      payments: { voidedAt: string | null; voidReason: string | null }[];
+    };
+    expect(body.paymentStatus).toBe('ABONADO');
+    expect(Number(body.amountPaid)).toBe(60);
+    expect(body.payments).toHaveLength(2);
+    expect(body.payments[1].voidReason).toBe('Transferencia rechazada');
+
+    await request(app.getHttpServer())
+      .patch(`/remissions/${remissionIds[0]}/payments/${payments[1].id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Otra vez' })
+      .expect(400);
+  });
+
+  it('filters remissions by payment status and customer', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/remissions')
+      .query({ paymentStatus: 'ABONADO', customerId })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    const body = response.body as { data: { id: string }[] };
+    expect(body.data.map((remission) => remission.id)).toEqual([
+      remissionIds[0],
+    ]);
+  });
+
   it('returns a PDF document for a remission', async () => {
     const created = await request(app.getHttpServer())
       .post('/remissions')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId, quantity: 0.5 }],
       })
       .expect(400); // no queda nada por entregar tras el test anterior
 
-    // El pedido ya quedó completamente remisionado por el test anterior —
-    // confirma explícitamente que no queda nada, luego pide el PDF de una
-    // remisión ya existente en vez de crear una nueva.
-    expect((created.body as { overages: unknown[] }).overages).toHaveLength(1);
+    // El pedido ya quedó completamente remisionado (DESPACHADO) por el test
+    // anterior — confirma explícitamente que no queda nada, luego pide el
+    // PDF de una remisión ya existente en vez de crear una nueva.
+    expect((created.body as { message: string }).message).toContain(
+      'ya se despachó por completo',
+    );
 
     const pdfResponse = await request(app.getHttpServer())
       .get(`/remissions/${remissionIds[0]}/pdf`)
@@ -278,11 +355,18 @@ describe('Remissions (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId, quantity: 4 }],
       })
       .expect(201);
     remissionIds.push((redispatch.body as { id: string }).id);
+
+    // Al anular, el pedido volvió a EN_ALMACEN; el redespacho lo completa
+    // de nuevo.
+    const order = await request(app.getHttpServer())
+      .get(`/orders/${orderId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((order.body as { status: string }).status).toBe('DESPACHADO');
   });
 
   it('rejects voiding an already-voided remission', async () => {

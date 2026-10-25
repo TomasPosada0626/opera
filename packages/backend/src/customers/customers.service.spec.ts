@@ -38,7 +38,8 @@ describe('CustomersService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
-    remission: { findMany: jest.Mock };
+    remission: { aggregate: jest.Mock };
+    remissionPayment: { findMany: jest.Mock };
     order: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
@@ -53,7 +54,8 @@ describe('CustomersService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
-      remission: { findMany: jest.fn() },
+      remission: { aggregate: jest.fn() },
+      remissionPayment: { findMany: jest.fn() },
       order: { findMany: jest.fn() },
     };
     audit = { log: jest.fn() };
@@ -275,11 +277,13 @@ describe('CustomersService', () => {
       await expect(service.getBalance('missing')).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      expect(prisma.remission.findMany).not.toHaveBeenCalled();
+      expect(prisma.remission.aggregate).not.toHaveBeenCalled();
     });
 
     it('returns zero for a customer with no remissions', async () => {
-      prisma.remission.findMany.mockResolvedValue([]);
+      prisma.remission.aggregate.mockResolvedValue({
+        _sum: { total: null, amountPaid: null },
+      });
 
       const result = await service.getBalance('customer-1');
 
@@ -290,110 +294,14 @@ describe('CustomersService', () => {
       });
     });
 
-    it('counts a PAGADO remission as fully paid', async () => {
-      prisma.remission.findMany.mockResolvedValue([
-        {
-          paymentStatus: 'PAGADO',
-          amountPaid: null,
-          items: [
-            {
-              quantity: new Prisma.Decimal(4),
-              orderItem: { unitPrice: new Prisma.Decimal(25) },
-            },
-          ],
+    it('subtracts what was paid from what was dispatched', async () => {
+      prisma.remission.aggregate.mockResolvedValue({
+        _sum: {
+          total: new Prisma.Decimal(210),
+          amountPaid: new Prisma.Decimal(130),
         },
-      ]);
-
-      const result = await service.getBalance('customer-1');
-
-      expect(result).toEqual({
-        totalBilled: '100',
-        totalPaid: '100',
-        balance: '0',
       });
-    });
 
-    it('counts only amountPaid for an ABONADO remission, leaving the rest as balance', async () => {
-      prisma.remission.findMany.mockResolvedValue([
-        {
-          paymentStatus: 'ABONADO',
-          amountPaid: new Prisma.Decimal(40),
-          items: [
-            {
-              quantity: new Prisma.Decimal(4),
-              orderItem: { unitPrice: new Prisma.Decimal(25) },
-            },
-          ],
-        },
-      ]);
-
-      const result = await service.getBalance('customer-1');
-
-      expect(result).toEqual({
-        totalBilled: '100',
-        totalPaid: '40',
-        balance: '60',
-      });
-    });
-
-    it('counts a CARTERA remission as fully pending', async () => {
-      prisma.remission.findMany.mockResolvedValue([
-        {
-          paymentStatus: 'CARTERA',
-          amountPaid: null,
-          items: [
-            {
-              quantity: new Prisma.Decimal(4),
-              orderItem: { unitPrice: new Prisma.Decimal(25) },
-            },
-          ],
-        },
-      ]);
-
-      const result = await service.getBalance('customer-1');
-
-      expect(result).toEqual({
-        totalBilled: '100',
-        totalPaid: '0',
-        balance: '100',
-      });
-    });
-
-    it('sums across multiple remissions with mixed payment statuses', async () => {
-      prisma.remission.findMany.mockResolvedValue([
-        {
-          paymentStatus: 'PAGADO',
-          amountPaid: null,
-          items: [
-            {
-              quantity: new Prisma.Decimal(2),
-              orderItem: { unitPrice: new Prisma.Decimal(50) },
-            },
-          ],
-        },
-        {
-          paymentStatus: 'ABONADO',
-          amountPaid: new Prisma.Decimal(30),
-          items: [
-            {
-              quantity: new Prisma.Decimal(1),
-              orderItem: { unitPrice: new Prisma.Decimal(80) },
-            },
-          ],
-        },
-        {
-          paymentStatus: 'CARTERA',
-          amountPaid: null,
-          items: [
-            {
-              quantity: new Prisma.Decimal(3),
-              orderItem: { unitPrice: new Prisma.Decimal(10) },
-            },
-          ],
-        },
-      ]);
-
-      // Facturado: 100 + 80 + 30 = 210. Pagado: 100 + 30 = 130. Saldo: 80.
       const result = await service.getBalance('customer-1');
 
       expect(result).toEqual({
@@ -401,9 +309,42 @@ describe('CustomersService', () => {
         totalPaid: '130',
         balance: '80',
       });
-      expect(prisma.remission.findMany).toHaveBeenCalledWith(
+    });
+
+    it('only counts non-voided remissions (a voided one is never charged)', async () => {
+      prisma.remission.aggregate.mockResolvedValue({
+        _sum: { total: null, amountPaid: null },
+      });
+
+      await service.getBalance('customer-1');
+
+      expect(prisma.remission.aggregate).toHaveBeenCalledWith({
+        where: { order: { customerId: 'customer-1' }, voidedAt: null },
+        _sum: { total: true, amountPaid: true },
+      });
+    });
+  });
+
+  describe('getPayments', () => {
+    it('throws NotFoundException when the customer does not exist', async () => {
+      prisma.customer.findUnique.mockResolvedValue(null);
+
+      await expect(service.getPayments('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.remissionPayment.findMany).not.toHaveBeenCalled();
+    });
+
+    it('lists every payment across the customer remissions, newest first', async () => {
+      prisma.remissionPayment.findMany.mockResolvedValue([{ id: 'payment-1' }]);
+
+      const result = await service.getPayments('customer-1');
+
+      expect(result).toEqual([{ id: 'payment-1' }]);
+      expect(prisma.remissionPayment.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { order: { customerId: 'customer-1' } },
+          where: { remission: { order: { customerId: 'customer-1' } } },
+          orderBy: { paidAt: 'desc' },
         }),
       );
     });
@@ -414,6 +355,7 @@ describe('CustomersService', () => {
       prisma.customer.findUnique.mockResolvedValue(baseCustomer);
       prisma.order.findMany.mockResolvedValue([
         {
+          number: 31,
           createdAt: new Date('2026-02-01'),
           status: 'EN_ALMACEN',
           items: [
@@ -432,9 +374,10 @@ describe('CustomersService', () => {
       expect(profileSheet.getRow(2).getCell(2).value).toBe(baseCustomer.name);
 
       const ordersSheet = await readSheet(buffer, 'Pedidos');
-      expect(ordersSheet.getRow(2).getCell(2).value).toBe('EN_ALMACEN');
-      expect(ordersSheet.getRow(2).getCell(3).value).toBe(1);
-      expect(ordersSheet.getRow(2).getCell(4).value).toBe(100);
+      expect(ordersSheet.getRow(2).getCell(1).value).toBe(31);
+      expect(ordersSheet.getRow(2).getCell(3).value).toBe('EN_ALMACEN');
+      expect(ordersSheet.getRow(2).getCell(4).value).toBe(1);
+      expect(ordersSheet.getRow(2).getCell(5).value).toBe(100);
       expect(prisma.order.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { customerId: 'customer-1' } }),
       );

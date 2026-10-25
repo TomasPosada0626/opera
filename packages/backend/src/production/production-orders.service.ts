@@ -110,7 +110,7 @@ export class ProductionOrdersService {
     });
     if (!bom || !bom.isActive || bom.items.length === 0) {
       throw new BadRequestException(
-        'Este producto no tiene una receta activa configurada',
+        'Este producto no tiene lista de materiales. Configúrala en Productos antes de crear la orden.',
       );
     }
 
@@ -208,7 +208,7 @@ export class ProductionOrdersService {
           });
           if (!bom || !bom.isActive || bom.items.length === 0) {
             throw new BadRequestException(
-              'Este producto ya no tiene una receta activa configurada',
+              'Este producto ya no tiene lista de materiales configurada',
             );
           }
 

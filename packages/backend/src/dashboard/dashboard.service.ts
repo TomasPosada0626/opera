@@ -4,10 +4,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ReportsService } from '../reports/reports.service';
+import { overdueWhere } from '../orders/orders.service';
 import { countRecentWarnings } from './recent-warnings.util';
 
 const RECENT_LIMIT = 5;
 const RECENT_ACTIVITY_LIMIT = 10;
+const OVERDUE_LIMIT = 10;
 
 @Injectable()
 export class DashboardService {
@@ -32,6 +34,9 @@ export class DashboardService {
       recentPurchases,
       recentSales,
       recentActivity,
+      overdueCount,
+      overdueOrders,
+      receivables,
     ] = await Promise.all([
       this.reports.getInventoryReport(),
       this.inventory.getLowStockProducts(),
@@ -60,6 +65,21 @@ export class DashboardService {
         },
       }),
       this.audit.getRecent(RECENT_ACTIVITY_LIMIT),
+      this.prisma.order.count({ where: overdueWhere() }),
+      this.prisma.order.findMany({
+        where: overdueWhere(),
+        take: OVERDUE_LIMIT,
+        orderBy: { estimatedDeliveryDate: 'asc' },
+        include: { customer: { select: { id: true, name: true } } },
+      }),
+      // Por cobrar = total - abonado de las remisiones vigentes que no están
+      // pagadas del todo. Mismo criterio que CustomersService.getBalance,
+      // agregado sobre todos los clientes.
+      this.prisma.remission.aggregate({
+        where: { voidedAt: null, paymentStatus: { not: 'PAGADO' } },
+        _sum: { total: true, amountPaid: true },
+        _count: true,
+      }),
     ]);
 
     return {
@@ -77,17 +97,37 @@ export class DashboardService {
           minStock: product.minStock,
         })),
       },
+      // Los mismos tres valores del enum ProductionOrderStatus — antes
+      // listaba un 'EN_PROCESO' que no existe (siempre 0) y omitía
+      // CANCELADA (auditoría ronda 6).
       production: statusCounts(productionByStatus, [
         'PENDIENTE',
-        'EN_PROCESO',
         'COMPLETADA',
+        'CANCELADA',
       ]),
       orders: statusCounts(ordersByStatus, [
         'PENDIENTE',
         'EN_PRODUCCION',
         'EN_ALMACEN',
+        'DESPACHADO',
         'CANCELADO',
       ]),
+      overdueOrders: {
+        count: overdueCount,
+        orders: overdueOrders.map((order) => ({
+          id: order.id,
+          number: order.number,
+          customerName: order.customer.name,
+          status: order.status,
+          estimatedDeliveryDate: order.estimatedDeliveryDate,
+        })),
+      },
+      receivables: {
+        total: (receivables._sum.total ?? new Prisma.Decimal(0)).minus(
+          receivables._sum.amountPaid ?? new Prisma.Decimal(0),
+        ),
+        remissionCount: receivables._count,
+      },
       recentPurchases: recentPurchases.map((purchase) => ({
         id: purchase.id,
         supplierName: purchase.supplier.name,
@@ -98,6 +138,7 @@ export class DashboardService {
       })),
       recentSales: recentSales.map((order) => ({
         id: order.id,
+        number: order.number,
         customerName: order.customer.name,
         status: order.status,
         total: order.items.reduce(

@@ -18,10 +18,11 @@ import {
 } from '@nestjs/swagger';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
-import { ListQueryDto } from '../common/dto/list-query.dto';
 import { RemissionsService } from './remissions.service';
 import { CreateRemissionDto } from './dto/create-remission.dto';
-import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
+import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ListRemissionsDto } from './dto/list-remissions.dto';
+import { VoidPaymentDto } from './dto/void-payment.dto';
 import { VoidRemissionDto } from './dto/void-remission.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
@@ -59,8 +60,12 @@ export class RemissionsController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar remisiones (paginado)' })
-  findAll(@Query() query: ListQueryDto) {
+  @ApiOperation({
+    summary: 'Listar remisiones (paginado)',
+    description:
+      'Filtra por número exacto con ?search=, por estado de pago con ?paymentStatus=PAGADO|ABONADO|CARTERA (solo no anuladas) y por cliente con ?customerId=.',
+  })
+  findAll(@Query() query: ListRemissionsDto) {
     return this.remissionsService.findAll(query);
   }
 
@@ -71,22 +76,50 @@ export class RemissionsController {
     return this.remissionsService.findOne(id);
   }
 
-  @Patch(':id/payment')
+  @Post(':id/payments')
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Actualizar estado de pago de una remisión (ADMIN)',
+    summary: 'Registrar un abono de la remisión (ADMIN)',
     description:
-      'El pago normalmente se confirma después del despacho, no al crear la remisión.',
+      'Cada abono queda en el historial (fecha, monto, medio). El estado de pago se recalcula solo: PAGADO si lo abonado cubre el total, ABONADO si cubre parte, CARTERA si nada.',
   })
-  @ApiResponse({ status: 200, description: 'Estado de pago actualizado.' })
+  @ApiResponse({ status: 201, description: 'Abono registrado.' })
+  @ApiResponse({
+    status: 400,
+    description: 'Remisión anulada, o el abono supera el saldo pendiente.',
+  })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   @ApiResponse({ status: 404, description: 'Remisión no encontrada.' })
-  updatePayment(
+  @ApiResponse({
+    status: 409,
+    description: 'Otro abono se registró al mismo tiempo.',
+  })
+  addPayment(
     @Param('id') id: string,
-    @Body() dto: UpdateRemissionPaymentDto,
+    @Body() dto: CreatePaymentDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.remissionsService.updatePayment(id, dto, req.user.sub);
+    return this.remissionsService.addPayment(id, dto, req.user.sub);
+  }
+
+  @Patch(':id/payments/:paymentId/void')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Anular un abono (ADMIN)',
+    description:
+      'No se borra: queda en el historial con el motivo y deja de contar en lo abonado.',
+  })
+  @ApiResponse({ status: 200, description: 'Abono anulado.' })
+  @ApiResponse({ status: 400, description: 'El abono ya está anulado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Abono no encontrado.' })
+  voidPayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: VoidPaymentDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.remissionsService.voidPayment(id, paymentId, dto, req.user.sub);
   }
 
   @Patch(':id/void')
@@ -98,7 +131,10 @@ export class RemissionsController {
       'escribe una ENTRADA de reverso por producto para corregir el stock.',
   })
   @ApiResponse({ status: 200, description: 'Remisión anulada.' })
-  @ApiResponse({ status: 400, description: 'La remisión ya está anulada.' })
+  @ApiResponse({
+    status: 400,
+    description: 'La remisión ya está anulada o tiene abonos vigentes.',
+  })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   @ApiResponse({ status: 404, description: 'Remisión no encontrada.' })
   @ApiResponse({

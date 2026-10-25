@@ -4,9 +4,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { OrdersService } from './orders.service';
+import { OrdersService, overdueWhere, todayAsDateOnly } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventoryService } from '../inventory/inventory.service';
 
 describe('OrdersService', () => {
   const customer = {
@@ -26,6 +27,7 @@ describe('OrdersService', () => {
   };
   const baseOrder = {
     id: 'order-1',
+    number: 7,
     customerId: customer.id,
     warehouseId: warehouse.id,
     userId: 'acting-user',
@@ -45,11 +47,16 @@ describe('OrdersService', () => {
       findMany: jest.Mock;
       findUnique: jest.Mock;
       create: jest.Mock;
+      update: jest.Mock;
       updateMany: jest.Mock;
     };
     $transaction: jest.Mock;
   };
   let audit: { log: jest.Mock };
+  let inventory: {
+    getStockForProducts: jest.Mock;
+    getAverageCostForProducts: jest.Mock;
+  };
   let service: OrdersService;
 
   // La transacción de markWarehoused se mockea ejecutando el callback
@@ -59,8 +66,12 @@ describe('OrdersService', () => {
     orderUpdateMany?: unknown;
     orderFindUniqueOrThrow?: unknown;
     movementCreateMany?: jest.Mock;
+    boms?: unknown[];
   }) {
     return {
+      billOfMaterials: {
+        findMany: jest.fn().mockResolvedValue(overrides.boms ?? []),
+      },
       order: {
         updateMany: jest
           .fn()
@@ -86,14 +97,20 @@ describe('OrdersService', () => {
         findMany: jest.fn(),
         findUnique: jest.fn(),
         create: jest.fn(),
+        update: jest.fn(),
         updateMany: jest.fn(),
       },
       $transaction: jest.fn(),
     };
     audit = { log: jest.fn() };
+    inventory = {
+      getStockForProducts: jest.fn().mockResolvedValue([]),
+      getAverageCostForProducts: jest.fn().mockResolvedValue(new Map()),
+    };
     service = new OrdersService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
+      inventory as unknown as InventoryService,
     );
 
     prisma.customer.findUnique.mockResolvedValue(customer);
@@ -242,7 +259,157 @@ describe('OrdersService', () => {
     });
   });
 
+  describe('create (seguimiento)', () => {
+    it('stores the estimated delivery date as a date-only value and trims notes', async () => {
+      prisma.order.create.mockResolvedValue(baseOrder);
+
+      await service.create(
+        {
+          customerId: customer.id,
+          warehouseId: warehouse.id,
+          items: [{ productId: product.id, quantity: 2, unitPrice: 50 }],
+          estimatedDeliveryDate: '2026-11-15',
+          notes: '  Entregar en la obra  ',
+        },
+        'acting-user',
+      );
+
+      const createCalls = prisma.order.create.mock.calls as [
+        [{ data: { estimatedDeliveryDate: Date; notes: string } }],
+      ];
+      expect(createCalls[0][0].data.estimatedDeliveryDate.toISOString()).toBe(
+        '2026-11-15T00:00:00.000Z',
+      );
+      expect(createCalls[0][0].data.notes).toBe('Entregar en la obra');
+    });
+
+    it('omits the estimated date and blank notes when not given', async () => {
+      prisma.order.create.mockResolvedValue(baseOrder);
+
+      await service.create(
+        {
+          customerId: customer.id,
+          warehouseId: warehouse.id,
+          items: [{ productId: product.id, quantity: 2, unitPrice: 50 }],
+          notes: '   ',
+        },
+        'acting-user',
+      );
+
+      const createCalls = prisma.order.create.mock.calls as [
+        [{ data: { estimatedDeliveryDate?: Date; notes?: string } }],
+      ];
+      expect(createCalls[0][0].data.estimatedDeliveryDate).toBeUndefined();
+      expect(createCalls[0][0].data.notes).toBeUndefined();
+    });
+  });
+
+  describe('update', () => {
+    it('rejects editing a cancelled order', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'CANCELADO',
+      });
+
+      await expect(
+        service.update('order-1', { notes: 'x' }, 'acting-user'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    });
+
+    it('sets a new date, clears notes with null, and logs before/after', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        estimatedDeliveryDate: null,
+        notes: 'vieja',
+      });
+      prisma.order.update.mockResolvedValue({
+        ...baseOrder,
+        estimatedDeliveryDate: new Date('2026-12-01'),
+        notes: null,
+      });
+
+      await service.update(
+        'order-1',
+        { estimatedDeliveryDate: '2026-12-01', notes: null },
+        'acting-user',
+      );
+
+      const updateCalls = prisma.order.update.mock.calls as [
+        [{ data: { estimatedDeliveryDate: Date; notes: null } }],
+      ];
+      expect(updateCalls[0][0].data.estimatedDeliveryDate.toISOString()).toBe(
+        '2026-12-01T00:00:00.000Z',
+      );
+      expect(updateCalls[0][0].data.notes).toBeNull();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'UPDATE',
+          before: { estimatedDeliveryDate: null, notes: 'vieja' },
+        }),
+      );
+    });
+
+    it('clears the date with null and leaves untouched fields out of the update', async () => {
+      prisma.order.findUnique.mockResolvedValue(baseOrder);
+      prisma.order.update.mockResolvedValue(baseOrder);
+
+      await service.update(
+        'order-1',
+        { estimatedDeliveryDate: null },
+        'acting-user',
+      );
+
+      const updateCalls = prisma.order.update.mock.calls as [
+        [{ data: Record<string, unknown> }],
+      ];
+      expect(updateCalls[0][0].data).toEqual({ estimatedDeliveryDate: null });
+    });
+  });
+
+  describe('overdueWhere / todayAsDateOnly', () => {
+    it('builds today as UTC midnight of the local calendar day', () => {
+      const today = todayAsDateOnly(new Date(2026, 9, 24, 23, 30));
+      expect(today.toISOString()).toBe('2026-10-24T00:00:00.000Z');
+    });
+
+    it('only counts orders still in progress whose date is before today', () => {
+      expect(overdueWhere(new Date(2026, 9, 24, 8))).toEqual({
+        estimatedDeliveryDate: { lt: new Date('2026-10-24T00:00:00.000Z') },
+        status: { in: ['PENDIENTE', 'EN_PRODUCCION', 'EN_ALMACEN'] },
+      });
+    });
+  });
+
   describe('findAll / findOne', () => {
+    it('filters overdue orders inside AND so it combines with ?status=', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      prisma.order.count.mockResolvedValue(0);
+
+      await service.findAll({ status: 'EN_ALMACEN', overdue: true });
+
+      const countCalls = prisma.order.count.mock.calls as [
+        [{ where: { status: string; AND: unknown[] } }],
+      ];
+      expect(countCalls[0][0].where.status).toBe('EN_ALMACEN');
+      expect(countCalls[0][0].where.AND).toHaveLength(1);
+    });
+
+    it('searches by exact order number, and returns nothing for non-numeric text', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      prisma.order.count.mockResolvedValue(0);
+
+      await service.findAll({ search: '45' });
+      await service.findAll({ search: 'abc' });
+
+      expect(prisma.order.count).toHaveBeenNthCalledWith(1, {
+        where: { number: 45 },
+      });
+      expect(prisma.order.count).toHaveBeenNthCalledWith(2, {
+        where: { number: -1 },
+      });
+    });
+
     it('lists orders paginated, newest first by default', async () => {
       prisma.order.findMany.mockResolvedValue([baseOrder]);
       prisma.order.count.mockResolvedValue(1);
@@ -434,6 +601,169 @@ describe('OrdersService', () => {
       );
     });
 
+    it('consumes the bill of materials and enters the finished good at its cost', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'EN_PRODUCCION',
+        items: [
+          {
+            id: 'item-1',
+            productId: product.id,
+            quantity: new Prisma.Decimal(2),
+            unitPrice: new Prisma.Decimal(50),
+          },
+        ],
+      });
+      const movementCreateMany = jest.fn();
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'wood', stock: new Prisma.Decimal(10) },
+        { productId: 'screw', stock: new Prisma.Decimal(100) },
+      ]);
+      inventory.getAverageCostForProducts.mockResolvedValue(
+        new Map([
+          ['wood', new Prisma.Decimal(4)],
+          ['screw', new Prisma.Decimal(0.5)],
+        ]),
+      );
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) =>
+          callback(
+            txStub({
+              movementCreateMany,
+              orderFindUniqueOrThrow: { ...baseOrder, status: 'EN_ALMACEN' },
+              boms: [
+                {
+                  productId: product.id,
+                  items: [
+                    {
+                      componentId: 'wood',
+                      quantity: new Prisma.Decimal(3),
+                      component: { name: 'Tabla' },
+                    },
+                    {
+                      componentId: 'screw',
+                      quantity: new Prisma.Decimal(8),
+                      component: { name: 'Tornillo' },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+      );
+
+      await service.markWarehoused('order-1', 'acting-user');
+
+      const calls = movementCreateMany.mock.calls as Array<
+        [
+          {
+            data: {
+              productId: string;
+              type: string;
+              quantity: Prisma.Decimal;
+              unitCost?: Prisma.Decimal;
+              reason: string;
+            }[];
+          },
+        ]
+      >;
+      // Primero las SALIDA de materiales (2 sillas x 3 tablas, 2 x 8 tornillos).
+      const consumption = calls[0][0].data;
+      expect(consumption.map((row) => [row.productId, row.type])).toEqual([
+        ['wood', 'SALIDA'],
+        ['screw', 'SALIDA'],
+      ]);
+      expect(consumption[0].quantity.toString()).toBe('-6');
+      expect(consumption[1].quantity.toString()).toBe('-16');
+      expect(consumption[0].reason).toBe('Consumo de materiales, pedido No. 7');
+      // Después la ENTRADA del terminado: 3 x 4 + 8 x 0.5 = 16 por unidad.
+      const entry = calls[1][0].data[0];
+      expect(entry.type).toBe('ENTRADA');
+      expect(entry.unitCost?.toString()).toBe('16');
+      expect(entry.reason).toBe('Producción terminada, pedido No. 7');
+    });
+
+    it('rejects with the shortage detail when a material is missing, writing nothing', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'EN_PRODUCCION',
+        items: [
+          {
+            id: 'item-1',
+            productId: product.id,
+            quantity: new Prisma.Decimal(2),
+            unitPrice: new Prisma.Decimal(50),
+          },
+        ],
+      });
+      const movementCreateMany = jest.fn();
+      inventory.getStockForProducts.mockResolvedValue([
+        { productId: 'wood', stock: new Prisma.Decimal(5) },
+      ]);
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) =>
+          callback(
+            txStub({
+              movementCreateMany,
+              boms: [
+                {
+                  productId: product.id,
+                  items: [
+                    {
+                      componentId: 'wood',
+                      quantity: new Prisma.Decimal(3),
+                      component: { name: 'Tabla' },
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+      );
+
+      const error = (await service
+        .markWarehoused('order-1', 'acting-user')
+        .catch((caught: unknown) => caught)) as BadRequestException;
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(error.getResponse()).toEqual(
+        expect.objectContaining({
+          shortages: [
+            {
+              componentId: 'wood',
+              componentName: 'Tabla',
+              required: '6',
+              available: '5',
+            },
+          ],
+        }),
+      );
+      expect(movementCreateMany).not.toHaveBeenCalled();
+    });
+
+    it('ignores a bill of materials with no lines', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        status: 'EN_PRODUCCION',
+      });
+      const movementCreateMany = jest.fn();
+      prisma.$transaction.mockImplementation(
+        (callback: (tx: TxStub) => Promise<unknown>) =>
+          callback(
+            txStub({
+              movementCreateMany,
+              orderFindUniqueOrThrow: { ...baseOrder, status: 'EN_ALMACEN' },
+              boms: [{ productId: product.id, items: [] }],
+            }),
+          ),
+      );
+
+      await service.markWarehoused('order-1', 'acting-user');
+
+      expect(movementCreateMany).toHaveBeenCalledTimes(1);
+      expect(inventory.getStockForProducts).not.toHaveBeenCalled();
+    });
+
     it('converts an atomic guard miss (count 0) into ConflictException', async () => {
       prisma.order.findUnique.mockResolvedValue({
         ...baseOrder,
@@ -550,10 +880,13 @@ describe('OrdersService', () => {
       ];
       expect(updateManyCalls[0][0].where).toEqual({
         id: 'order-1',
-        status: { not: 'CANCELADO' },
+        status: { notIn: ['CANCELADO', 'DESPACHADO'] },
         remissions: { none: { voidedAt: null } },
       });
-      expect(updateManyCalls[0][0].data).toEqual({ status: 'CANCELADO' });
+      expect(updateManyCalls[0][0].data).toEqual({
+        status: 'CANCELADO',
+        cancelledAt: expect.any(Date) as Date,
+      });
       expect(result.status).toBe('CANCELADO');
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(audit.log).toHaveBeenCalledWith(

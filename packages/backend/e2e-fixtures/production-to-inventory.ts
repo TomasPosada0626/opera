@@ -1,10 +1,10 @@
 // Fixtures del test Playwright de #57 (packages/desktop/e2e/production-to-inventory.spec.ts).
 //
-// La creación de una receta (BillOfMaterials) no tiene endpoint HTTP — nunca
-// lo tuvo, es un hueco real y conocido, no algo que este script deba resolver
-// (ver src/production/production-orders.service.ts) — así que el setup habla
-// con Prisma directo, igual que los fixtures de los specs e2e de Jest
-// (test/support/fixtures.ts), no con la API. El login real sí lo hace
+// La lista de materiales (BillOfMaterials) se arma con Prisma directo, no
+// con PUT /products/:id/bill-of-materials: este spec prueba el flujo de
+// producción -> inventario, no el editor de la lista (ese lo cubre
+// test/order-tracking.e2e-spec.ts). Mismo criterio que los fixtures de los
+// specs e2e de Jest (test/support/fixtures.ts). El login real sí lo hace
 // Playwright a través de la UI — este script solo deja la cuenta creada.
 import { PrismaClient, ProductType } from '@prisma/client';
 import * as argon2 from 'argon2';

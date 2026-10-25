@@ -1,30 +1,27 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
-  IsEnum,
   IsOptional,
-  IsPositive,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
-import { RemissionPaymentStatus } from '@prisma/client';
 import { RemissionItemDto } from './remission-item.dto';
+import { CreatePaymentDto } from './create-payment.dto';
 
 export class CreateRemissionDto {
   @IsUUID('4')
   orderId: string;
 
-  @IsEnum(RemissionPaymentStatus)
-  paymentStatus: RemissionPaymentStatus;
-
-  // Solo tiene sentido con paymentStatus = ABONADO — cuánto de esta
-  // remisión ya se pagó, no el saldo total del cliente.
-  @IsOptional()
-  @IsPositive()
-  amountPaid?: number;
-
   @ValidateNested({ each: true })
   @Type(() => RemissionItemDto)
   @ArrayMinSize(1)
   items: RemissionItemDto[];
+
+  // Lo que el cliente pagó en el momento del despacho, si pagó algo. El
+  // estado de pago (pagado/abonado/cartera) ya no se elige: se calcula de
+  // los abonos contra el total de la remisión.
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreatePaymentDto)
+  initialPayment?: CreatePaymentDto;
 }

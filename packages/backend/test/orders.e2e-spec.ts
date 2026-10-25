@@ -414,7 +414,6 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: order.id,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId: order.items[0].id, quantity: 1 }],
       })
       .expect(201);
@@ -466,7 +465,6 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: order.id,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId: order.items[0].id, quantity: 1 }],
       })
       .expect(201);
@@ -553,7 +551,6 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: order.id,
-        paymentStatus: 'CARTERA',
         items: [{ orderItemId, quantity: 5 }],
       })
       .expect(400);
@@ -567,11 +564,11 @@ describe('Orders (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: order.id,
-        paymentStatus: 'ABONADO',
-        amountPaid: 20,
+        initialPayment: { amount: 20, method: 'EFECTIVO' },
         items: [{ orderItemId, quantity: 1 }],
       })
       .expect(201);
+    // 1 x 40 despachado, 20 abonados al recibir -> ABONADO.
     expect((remission.body as { paymentStatus: string }).paymentStatus).toBe(
       'ABONADO',
     );

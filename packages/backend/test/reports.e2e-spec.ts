@@ -114,7 +114,6 @@ describe('Reports (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         orderId: createdOrder.id,
-        paymentStatus: 'PAGADO',
         items: [{ orderItemId: createdOrder.items[0].id, quantity: 4 }],
       })
       .expect(201);
