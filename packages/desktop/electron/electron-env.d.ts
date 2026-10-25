@@ -45,6 +45,8 @@ interface Window {
     onStatusChange(callback: (status: BackendStatus) => void): void;
     retry(): Promise<void>;
     getBackupStatus(): Promise<BackupStatus>;
+    listBackups(): Promise<BackupFile[]>;
+    restoreBackup(fileName: string): Promise<RestoreResult>;
   };
 }
 
@@ -55,6 +57,15 @@ interface BackupStatus {
   lastSuccessAt: string | null;
   lastAttemptFailed: boolean;
 }
+
+// Un respaldo en la carpeta "backups" del perfil (ver backend-manager.ts).
+interface BackupFile {
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+type RestoreResult = { ok: true } | { ok: false; error: string };
 
 // Solo existe en el build empaquetado -- electron/backend-manager.ts (fase
 // Electron) levanta Postgres + el backend en segundo plano y reporta su

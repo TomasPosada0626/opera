@@ -1,8 +1,28 @@
+import type { ReactElement } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { UserMenu } from './UserMenu';
+import { apiFetch } from '../../lib/api-client';
 import type { CurrentUser } from '../../lib/current-user';
+import { toast } from '../../lib/toast';
+
+vi.mock('../../lib/api-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api-client')>();
+  return { ...actual, apiFetch: vi.fn() };
+});
+
+const mockedApiFetch = apiFetch as unknown as Mock;
+
+function renderWithClient(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 function buildUser(overrides: Partial<CurrentUser> = {}): CurrentUser {
   return {
@@ -192,6 +212,8 @@ describe('UserMenu', () => {
         getStatus: vi.fn(),
         onStatusChange: vi.fn(),
         retry: vi.fn(),
+        listBackups: vi.fn().mockResolvedValue([]),
+        restoreBackup: vi.fn(),
         getBackupStatus: vi.fn().mockResolvedValue({
           lastSuccessAt: new Date(
             Date.now() - 2 * 24 * 60 * 60 * 1000,
@@ -214,6 +236,8 @@ describe('UserMenu', () => {
         getStatus: vi.fn(),
         onStatusChange: vi.fn(),
         retry: vi.fn(),
+        listBackups: vi.fn().mockResolvedValue([]),
+        restoreBackup: vi.fn(),
         getBackupStatus: vi.fn().mockResolvedValue({
           lastSuccessAt: null,
           lastAttemptFailed: true,
@@ -236,6 +260,8 @@ describe('UserMenu', () => {
         getStatus: vi.fn(),
         onStatusChange: vi.fn(),
         retry: vi.fn(),
+        listBackups: vi.fn().mockResolvedValue([]),
+        restoreBackup: vi.fn(),
         getBackupStatus: vi.fn().mockResolvedValue({
           lastSuccessAt: null,
           lastAttemptFailed: false,
@@ -251,6 +277,119 @@ describe('UserMenu', () => {
           'Todavía no se hizo ningún respaldo automático.',
         ),
       ).toBeInTheDocument();
+    });
+  });
+
+  it('opens the recovery code dialog and keeps it open after the menu closes', async () => {
+    mockedApiFetch.mockResolvedValue({
+      hasRecoveryCode: false,
+      createdAt: null,
+    });
+    const user = userEvent.setup();
+    renderWithClient(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'AD' }));
+    await user.click(
+      screen.getByRole('menuitem', { name: /Código de recuperación/ }),
+    );
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('dialog', { name: 'Código de recuperación' }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Tu cuenta todavía no tiene código de recuperación',
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('does not offer "Respaldos" outside Electron (no appBackend bridge)', async () => {
+    const user = userEvent.setup();
+    render(<UserMenu user={buildUser()} onLogout={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'AD' }));
+
+    expect(
+      screen.queryByRole('menuitem', { name: /Respaldos/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  describe('respaldos desde el menú', () => {
+    const originalAppBackend = window.appBackend;
+
+    afterEach(() => {
+      window.appBackend = originalAppBackend;
+      vi.restoreAllMocks();
+    });
+
+    it('logs out with a notice after restoring a backup', async () => {
+      window.appBackend = {
+        getStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+        retry: vi.fn(),
+        getBackupStatus: vi
+          .fn()
+          .mockResolvedValue({ lastSuccessAt: null, lastAttemptFailed: false }),
+        listBackups: vi.fn().mockResolvedValue([
+          {
+            name: 'opera-2026-10-25T08-00-00Z.sql.gz',
+            sizeBytes: 2048,
+            createdAt: '2026-10-25T13:00:00.000Z',
+          },
+        ]),
+        restoreBackup: vi.fn().mockResolvedValue({ ok: true }),
+      };
+      const successToast = vi.spyOn(toast, 'success');
+      const onLogout = vi.fn();
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={onLogout} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+      await user.click(screen.getByRole('menuitem', { name: /Respaldos/ }));
+      await user.click(
+        await screen.findByRole('button', { name: /^Restaurar$/ }),
+      );
+      await user.type(
+        screen.getByLabelText('Escribe RESTAURAR para confirmar'),
+        'RESTAURAR',
+      );
+      await user.click(
+        screen.getByRole('button', { name: /Restaurar este respaldo/ }),
+      );
+
+      await vi.waitFor(() => expect(onLogout).toHaveBeenCalledTimes(1));
+      expect(successToast).toHaveBeenCalledWith(
+        'Respaldo restaurado. Inicia sesión de nuevo para seguir.',
+      );
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('closes the backups dialog without logging out', async () => {
+      window.appBackend = {
+        getStatus: vi.fn(),
+        onStatusChange: vi.fn(),
+        retry: vi.fn(),
+        getBackupStatus: vi
+          .fn()
+          .mockResolvedValue({ lastSuccessAt: null, lastAttemptFailed: false }),
+        listBackups: vi.fn().mockResolvedValue([]),
+        restoreBackup: vi.fn(),
+      };
+      const onLogout = vi.fn();
+      const user = userEvent.setup();
+      render(<UserMenu user={buildUser()} onLogout={onLogout} />);
+
+      await user.click(screen.getByRole('button', { name: 'AD' }));
+      await user.click(screen.getByRole('menuitem', { name: /Respaldos/ }));
+      await screen.findByText('Todavía no hay respaldos.');
+      await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(onLogout).not.toHaveBeenCalled();
     });
   });
 });

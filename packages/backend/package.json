@@ -35,7 +35,6 @@
     "e2e:fixtures:users:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/users.ts setup",
     "e2e:fixtures:users:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/users.ts teardown",
     "e2e:fixtures:auth:setup": "dotenv -e ../../.env -- ts-node e2e-fixtures/auth.ts setup",
-    "e2e:fixtures:auth:reseed-code": "dotenv -e ../../.env -- ts-node e2e-fixtures/auth.ts reseed-code",
     "e2e:fixtures:auth:teardown": "dotenv -e ../../.env -- ts-node e2e-fixtures/auth.ts teardown",
     "loadtest:seed": "dotenv -e ../../.env -- ts-node load-tests/generate-dataset.ts",
     "loadtest:teardown": "dotenv -e ../../.env -- ts-node load-tests/teardown-dataset.ts",

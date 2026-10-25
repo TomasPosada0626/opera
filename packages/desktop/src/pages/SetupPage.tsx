@@ -1,13 +1,14 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
-import { UserPlus } from 'lucide-react';
+import { ArrowRight, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { z } from 'zod';
+import { AuthShell } from '../components/auth/AuthShell';
+import { RecoveryCodeDisplay } from '../components/auth/RecoveryCodeDisplay';
 import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
-import { Logo } from '../components/ui/Logo';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
 
@@ -26,14 +27,18 @@ type SetupFormValues = z.infer<typeof setupSchema>;
 
 interface SetupResponse {
   accessToken: string;
+  // Primer código de recuperación de la cuenta — se muestra una sola vez.
+  recoveryCode: string;
 }
 
-// Se llega acá solo cuando GET /setup/status reporta needsSetup: true (ver
-// el loader de /login en router.tsx) -- esta cuenta queda como la única
-// administradora de esta instalación, guardada solo en su base de datos
-// local, nunca una credencial repartida por .env (auditoría 2026-08-28).
+// Primer arranque de una instalación: crea la cuenta de administrador y,
+// antes de entrar, muestra su código de recuperación para anotarlo. Sin
+// él, en una instalación sin correo olvidar la contraseña dejaba el
+// sistema sin entrada posible (auditoría ronda 6).
 function SetupPage() {
   const navigate = useNavigate();
+  const [created, setCreated] = useState<SetupResponse | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
   const {
     register,
     handleSubmit,
@@ -50,87 +55,107 @@ function SetupPage() {
           password: values.password,
         }),
       }),
-    onSuccess: ({ accessToken }) => {
-      setAuthToken(accessToken);
-      void navigate('/', { replace: true });
-    },
+    onSuccess: (response) => setCreated(response),
   });
 
-  return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
-      <div
-        aria-hidden="true"
-        className="bg-accent/[0.14] dark:bg-accent/[0.2] pointer-events-none absolute top-[38%] left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[110px]"
-      />
-      <div className="fixed top-4 right-4">
-        <ThemeToggle />
-      </div>
-      <div className="relative w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <Logo size={48} showWordmark />
-          <span className="text-ink-muted text-sm">
-            Configuración inicial de esta instalación
-          </span>
-        </div>
+  function enter() {
+    if (!created) {
+      return;
+    }
+    setAuthToken(created.accessToken);
+    void navigate('/', { replace: true });
+  }
 
-        <form
-          onSubmit={(event) =>
-            void handleSubmit((values) => setupMutation.mutate(values))(event)
-          }
-          noValidate
-          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-2xl shadow-black/10 dark:shadow-black/70"
-        >
-          <p className="text-ink-muted text-sm">
-            Es la primera vez que se abre Opera en esta PC. Creá la cuenta de
-            administrador que vas a usar para entrar — queda guardada solo acá.
-          </p>
-          <TextField
-            label="Nombre"
-            registration={register('name')}
-            error={errors.name}
-          />
-          <TextField
-            label="Correo"
-            type="email"
-            registration={register('email')}
-            error={errors.email}
-          />
-          <TextField
-            label="Contraseña"
-            type="password"
-            registration={register('password')}
-            error={errors.password}
-          />
-          <TextField
-            label="Confirmar contraseña"
-            type="password"
-            registration={register('confirmPassword')}
-            error={errors.confirmPassword}
-          />
-
-          {setupMutation.isError && (
-            <p
-              role="alert"
-              className="bg-danger-surface text-danger rounded-md px-3 py-2 text-sm"
+  if (created) {
+    return (
+      <AuthShell
+        title="Guarda tu código de recuperación"
+        subtitle="La cuenta quedó creada. Este código es la llave de repuesto si algún día olvidas la contraseña."
+      >
+        <div className="flex flex-col gap-6">
+          <RecoveryCodeDisplay code={created.recoveryCode} />
+          <div className="flex items-start gap-3">
+            <input
+              id="recoveryCodeSaved"
+              type="checkbox"
+              checked={confirmed}
+              onChange={(event) => setConfirmed(event.target.checked)}
+              className="accent-accent mt-0.5 h-4 w-4 cursor-pointer"
+            />
+            <label
+              htmlFor="recoveryCodeSaved"
+              className="text-ink-secondary cursor-pointer text-sm"
             >
-              {setupMutation.error instanceof ApiError &&
-              setupMutation.error.statusCode === 409
-                ? 'Ya existe un administrador configurado en esta instalación.'
-                : 'No se pudo crear la cuenta. Intenta de nuevo.'}
-            </p>
-          )}
-
-          <Button
-            type="submit"
-            disabled={setupMutation.isPending}
-            className="mt-2"
-          >
-            <UserPlus className="h-4 w-4" />
-            {setupMutation.isPending ? 'Creando…' : 'Crear cuenta y entrar'}
+              Ya lo anoté en un lugar seguro
+            </label>
+          </div>
+          <Button disabled={!confirmed} onClick={enter} className="h-10">
+            Entrar a Opera
+            <ArrowRight />
           </Button>
-        </form>
-      </div>
-    </div>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell
+      title="Configuración inicial"
+      subtitle="Es la primera vez que se abre Opera en esta PC. Crea la cuenta de administrador que vas a usar para entrar; queda guardada solo acá."
+    >
+      <form
+        onSubmit={(event) =>
+          void handleSubmit((values) => setupMutation.mutate(values))(event)
+        }
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        <TextField
+          label="Nombre"
+          registration={register('name')}
+          error={errors.name}
+        />
+        <TextField
+          label="Correo"
+          type="email"
+          registration={register('email')}
+          error={errors.email}
+        />
+        <TextField
+          label="Contraseña"
+          type="password"
+          registration={register('password')}
+          error={errors.password}
+        />
+        <TextField
+          label="Confirmar contraseña"
+          type="password"
+          registration={register('confirmPassword')}
+          error={errors.confirmPassword}
+        />
+
+        {setupMutation.isError && (
+          <p
+            role="alert"
+            className="border-danger-line bg-danger-surface text-danger rounded-lg border px-3.5 py-2.5 text-sm"
+          >
+            {setupMutation.error instanceof ApiError &&
+            setupMutation.error.statusCode === 409
+              ? 'Ya existe un administrador configurado en esta instalación.'
+              : 'No se pudo crear la cuenta. Intenta de nuevo.'}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          disabled={setupMutation.isPending}
+          className="mt-2 h-10"
+        >
+          <UserPlus />
+          {setupMutation.isPending ? 'Creando…' : 'Crear cuenta'}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 

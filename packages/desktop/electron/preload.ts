@@ -59,5 +59,9 @@ if (!process.env['VITE_DEV_SERVER_URL']) {
     retry: (): Promise<void> => ipcRenderer.invoke('backend:retry'),
     getBackupStatus: (): Promise<BackupStatus> =>
       ipcRenderer.invoke('backend:get-backup-status'),
+    listBackups: (): Promise<BackupFile[]> =>
+      ipcRenderer.invoke('backend:list-backups'),
+    restoreBackup: (fileName: string): Promise<RestoreResult> =>
+      ipcRenderer.invoke('backend:restore-backup', fileName),
   });
 }

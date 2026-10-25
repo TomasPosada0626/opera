@@ -5,8 +5,11 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
+import { PassThrough } from 'node:stream';
+import { gzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import type { BrowserWindow } from 'electron';
@@ -575,11 +578,11 @@ describe('backend-manager', () => {
     }
 
     function lastBackupMarkerPath(): string {
-      return path.join(programDataDir, 'Opera', 'last-backup-at.txt');
+      return path.join(userDataDir, 'last-backup-at.txt');
     }
 
     function backupDirPath(): string {
-      return path.join(programDataDir, 'Opera', 'backups');
+      return path.join(userDataDir, 'backups');
     }
 
     it('corre un backup 6 horas después de un arranque exitoso, con el contenedor y la carpeta correctos, y guarda cuándo', async () => {
@@ -587,7 +590,6 @@ describe('backend-manager', () => {
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () => fakeCommand({ exitCode: 0 }), // backup-db.js
         ]);
         const win = fakeWindow();
@@ -595,17 +597,8 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        expect(spawnMock).toHaveBeenCalledTimes(8);
-        // La carpeta de backups es nueva (no existía) -- se restringe a
-        // SYSTEM/Administradores antes de spawnear el script, para que el
-        // .sql.gz que va a crear ya nazca con esos permisos heredados.
-        expect(spawnMock).toHaveBeenNthCalledWith(
-          7,
-          'icacls',
-          expect.arrayContaining([backupDirPath(), '/inheritance:r']),
-          undefined,
-        );
-        const backupCall = spawnMock.mock.calls[7] as [
+        expect(spawnMock).toHaveBeenCalledTimes(7);
+        const backupCall = spawnMock.mock.calls[6] as [
           string,
           string[],
           { cwd: string; env: Record<string, string> },
@@ -622,12 +615,11 @@ describe('backend-manager', () => {
       }
     });
 
-    it('restringe la carpeta de backups solo a SYSTEM/Administradores -- a diferencia del secreto de Postgres, ninguna otra cuenta necesita leerla', async () => {
+    it('guarda los respaldos en el perfil del usuario, sin icacls (con icacls el propio usuario sin elevar perdía el acceso)', async () => {
       vi.useFakeTimers();
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls
           () => fakeCommand({ exitCode: 0 }), // backup-db.js
         ]);
         const win = fakeWindow();
@@ -635,16 +627,10 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        const icaclsCall = spawnMock.mock.calls[6] as [string, string[]];
-        expect(icaclsCall[1].some((arg) => arg.includes('S-1-5-32-545'))).toBe(
-          false,
-        );
-        expect(icaclsCall[1]).toEqual(
-          expect.arrayContaining([
-            '*S-1-5-18:(OI)(CI)(F)',
-            '*S-1-5-32-544:(OI)(CI)(F)',
-          ]),
-        );
+        expect(
+          spawnMock.mock.calls.some(([command]) => command === 'icacls'),
+        ).toBe(false);
+        expect(existsSync(backupDirPath())).toBe(true);
       } finally {
         vi.useRealTimers();
       }
@@ -679,7 +665,6 @@ describe('backend-manager', () => {
         );
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () => fakeCommand({ exitCode: 0 }),
         ]);
         const win = fakeWindow();
@@ -687,7 +672,7 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        expect(spawnMock).toHaveBeenCalledTimes(8);
+        expect(spawnMock).toHaveBeenCalledTimes(7);
       } finally {
         vi.useRealTimers();
       }
@@ -698,7 +683,6 @@ describe('backend-manager', () => {
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups (nueva)
           () =>
             fakeCommand({
               exitCode: 1,
@@ -731,7 +715,6 @@ describe('backend-manager', () => {
       try {
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups
           fakeSpawnError,
         ]);
         const win = fakeWindow();
@@ -755,7 +738,6 @@ describe('backend-manager', () => {
         writeFileSync(lastBackupMarkerPath(), 'esto no es una fecha');
         queueSpawns([
           ...happyPathSpawns({ containerExists: false }),
-          () => fakeCommand({ exitCode: 0 }), // icacls sobre la carpeta de backups
           () => fakeCommand({ exitCode: 0 }), // backup-db.js
         ]);
         const win = fakeWindow();
@@ -763,7 +745,7 @@ describe('backend-manager', () => {
 
         await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
 
-        expect(spawnMock).toHaveBeenCalledTimes(8);
+        expect(spawnMock).toHaveBeenCalledTimes(7);
         const marker = readFileSync(lastBackupMarkerPath(), 'utf-8');
         expect(Number.isFinite(Date.parse(marker))).toBe(true);
       } finally {
@@ -790,6 +772,215 @@ describe('backend-manager', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  // Restaurar desde la app (auditoría ronda 6): antes solo existía un
+  // comando de terminal en el README que, además, no sobrescribía la base.
+  describe('restaurar un respaldo', () => {
+    function backupsDir(): string {
+      return path.join(userDataDir, 'backups');
+    }
+
+    function writeBackup(name: string, sql: string, mtime?: Date): void {
+      mkdirSync(backupsDir(), { recursive: true });
+      const file = path.join(backupsDir(), name);
+      writeFileSync(file, gzipSync(Buffer.from(sql)));
+      if (mtime) {
+        utimesSync(file, mtime, mtime);
+      }
+    }
+
+    interface FakePsql extends FakeChild {
+      stdin: PassThrough;
+      received: () => string;
+    }
+
+    function fakePsql(exitCode = 0, stderr = ''): FakePsql {
+      const child = new EventEmitter() as FakePsql;
+      child.stderr = new EventEmitter();
+      child.kill = vi.fn();
+      child.stdin = new PassThrough();
+      let received = '';
+      child.stdin.on('data', (chunk: Buffer) => {
+        received += chunk.toString();
+      });
+      child.stdin.on('finish', () => {
+        queueMicrotask(() => {
+          if (stderr) {
+            child.stderr.emit('data', Buffer.from(stderr));
+          }
+          child.emit('exit', exitCode, null);
+        });
+      });
+      child.received = () => received;
+      return child;
+    }
+
+    async function startReady(): Promise<BrowserWindow> {
+      queueSpawns(happyPathSpawns({ containerExists: false }));
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+      return win;
+    }
+
+    const restore = (fileName: unknown) =>
+      (
+        ipcHandler('backend:restore-backup') as unknown as (
+          event: unknown,
+          name: unknown,
+        ) => Promise<{ ok: boolean; error?: string }>
+      )({}, fileName);
+
+    it('lista solo los respaldos de Opera, del más reciente al más viejo', async () => {
+      writeBackup(
+        'opera-2026-10-01T10-00-00-000Z.sql.gz',
+        'a',
+        new Date('2026-10-01'),
+      );
+      writeBackup(
+        'opera-2026-10-20T10-00-00-000Z.sql.gz',
+        'b',
+        new Date('2026-10-20'),
+      );
+      writeFileSync(path.join(backupsDir(), 'notas.txt'), 'no es un respaldo');
+      await startReady();
+
+      const list = (await ipcHandler('backend:list-backups')()) as {
+        name: string;
+      }[];
+
+      expect(list.map((backup) => backup.name)).toEqual([
+        'opera-2026-10-20T10-00-00-000Z.sql.gz',
+        'opera-2026-10-01T10-00-00-000Z.sql.gz',
+      ]);
+    });
+
+    it('devuelve una lista vacía si todavía no hay carpeta de respaldos', async () => {
+      await startReady();
+      // listBackups() es síncrono (lectura de disco local).
+      expect(await ipcHandler('backend:list-backups')()).toEqual([]);
+    });
+
+    it.each([
+      ['un nombre con ruta', '../opera-2026.sql.gz'],
+      ['un archivo que no es un respaldo', 'notas.txt'],
+      ['algo que no es texto', 42],
+    ])('rechaza %s sin tocar nada', async (_label, name) => {
+      await startReady();
+      spawnMock.mockClear();
+
+      const result = await restore(name);
+
+      expect(result).toEqual({
+        ok: false,
+        error: 'Ese archivo no es un respaldo de Opera.',
+      });
+      expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    it('rechaza un respaldo que ya no existe', async () => {
+      await startReady();
+
+      await expect(
+        restore('opera-2026-10-20T10-00-00-000Z.sql.gz'),
+      ).resolves.toEqual({ ok: false, error: 'Ese respaldo ya no existe.' });
+    });
+
+    it('no restaura nada si no pudo respaldar antes el estado actual', async () => {
+      writeBackup('opera-2026-10-20T10-00-00-000Z.sql.gz', 'SELECT 1;');
+      const win = await startReady();
+      spawnMock.mockClear();
+      queueSpawns([() => fakeCommand({ exitCode: 1, stderr: 'sin espacio' })]);
+
+      const result = await restore('opera-2026-10-20T10-00-00-000Z.sql.gz');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/no se restauró nada/);
+      // Solo el intento de respaldo de seguridad: ni psql ni un reinicio.
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    it('respalda, apaga el backend, aplica el respaldo en una transacción y vuelve a arrancar', async () => {
+      writeBackup(
+        'opera-2026-10-20T10-00-00-000Z.sql.gz',
+        'SET x = 1;\nCREATE SCHEMA public;\nCREATE TABLE t (id int);\n',
+      );
+      const win = await startReady();
+      spawnMock.mockClear();
+      const psql = fakePsql(0);
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }), // backup-db.js (seguridad)
+        () => psql,
+        ...happyPathSpawns({ containerExists: true }),
+      ]);
+
+      const result = await restore('opera-2026-10-20T10-00-00-000Z.sql.gz');
+
+      expect(result).toEqual({ ok: true });
+      const psqlCall = spawnMock.mock.calls[1] as [string, string[]];
+      expect(psqlCall[0]).toBe('docker');
+      expect(psqlCall[1]).toEqual(
+        expect.arrayContaining([
+          'exec',
+          '-i',
+          'opera-postgres-app',
+          'psql',
+          'ON_ERROR_STOP=1',
+          '--single-transaction',
+        ]),
+      );
+      const sql = psql.received();
+      expect(
+        sql.startsWith('DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n'),
+      ).toBe(true);
+      expect(sql).toContain('CREATE TABLE t (id int);');
+      // El CREATE SCHEMA del volcado se descarta (ya lo creó el preámbulo).
+      expect(sql.match(/CREATE SCHEMA public;/g)).toHaveLength(1);
+      expect(spawnMock).toHaveBeenCalledTimes(8);
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    it('si psql falla, avisa que la base quedó como estaba, lo registra y vuelve a arrancar', async () => {
+      writeBackup('opera-2026-10-20T10-00-00-000Z.sql.gz', 'SELECT 1;');
+      const win = await startReady();
+      spawnMock.mockClear();
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }),
+        () => fakePsql(3, 'ERROR:  relation "x" does not exist'),
+        ...happyPathSpawns({ containerExists: true }),
+      ]);
+
+      const result = await restore('opera-2026-10-20T10-00-00-000Z.sql.gz');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/sigue como estaba/);
+      expect(appendErrorLogMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'restore-failed' }),
+      );
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    it('si docker no puede lanzar psql, lo registra como excepción', async () => {
+      writeBackup('opera-2026-10-20T10-00-00-000Z.sql.gz', 'SELECT 1;');
+      await startReady();
+      spawnMock.mockClear();
+      queueSpawns([
+        () => fakeCommand({ exitCode: 0 }),
+        fakeSpawnError,
+        ...happyPathSpawns({ containerExists: true }),
+      ]);
+
+      const result = await restore('opera-2026-10-20T10-00-00-000Z.sql.gz');
+
+      expect(result.ok).toBe(false);
+      expect(appendErrorLogMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'restore-exception' }),
+      );
     });
   });
 

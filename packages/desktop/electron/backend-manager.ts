@@ -1,8 +1,19 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { createGunzip } from 'node:zlib';
 import { app, ipcMain, type BrowserWindow } from 'electron';
 import { appendErrorLog, type LoggedError } from './error-log-store';
 
@@ -251,41 +262,6 @@ async function restrictToSystemAndAdmins(file: string): Promise<void> {
       source: 'main',
       type: 'icacls-failed',
       message: `No se pudo correr icacls sobre "${file}": ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
-}
-
-// A diferencia de restrictToSystemAndAdmins() (que sí deja leer a cuentas
-// locales comunes -- necesario para que puedan arrancar Opera), un backup
-// es el volcado completo de la base real (clientes, pedidos, todo lo que
-// haya) -- ninguna otra cuenta de Windows necesita poder leerlo para nada,
-// así que se restringe SOLO a SYSTEM/Administradores. `(OI)(CI)` para que
-// los .sql.gz que se creen DESPUÉS, adentro de esta carpeta, hereden el
-// mismo ACL restrictivo -- sin esto, solo la carpeta en sí quedaría
-// protegida, no los backups que se generen más adelante (auditoría
-// 2026-09-06, revisión propia post-ronda-4: hueco real en el propio
-// backup automático agregado esa ronda, nadie lo había señalado todavía).
-async function restrictBackupDirToSystemAndAdmins(dir: string): Promise<void> {
-  try {
-    const { code, stderr } = await spawnAndWait('icacls', [
-      dir,
-      '/inheritance:r',
-      '/grant:r',
-      '*S-1-5-18:(OI)(CI)(F)',
-      '*S-1-5-32-544:(OI)(CI)(F)',
-    ]);
-    if (code !== 0) {
-      appendRedactedErrorLog({
-        source: 'main',
-        type: 'icacls-failed',
-        message: `icacls sobre "${dir}" terminó con código ${code}: ${stderr}`,
-      });
-    }
-  } catch (error) {
-    appendRedactedErrorLog({
-      source: 'main',
-      type: 'icacls-failed',
-      message: `No se pudo correr icacls sobre "${dir}": ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -633,12 +609,22 @@ const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 // seguido de lo esperado.
 const BACKUP_MIN_GAP_MS = 24 * 60 * 60 * 1000;
 
+// En el perfil de Windows del usuario (%APPDATA%\Opera), no en
+// %ProgramData%. Antes la carpeta vivía en ProgramData y se restringía con
+// icacls a SYSTEM/Administradores — pero Opera corre como el usuario
+// normal, sin elevar, y con UAC un administrador sin elevar no usa la
+// pertenencia a Administradores: después del icacls el propio proceso ya no
+// podía escribir ni listar la carpeta, así que el backup automático fallaba
+// SIEMPRE desde el primer intento (comprobado en una PC real, auditoría
+// ronda 6). El perfil ya trae exactamente el aislamiento buscado (SYSTEM,
+// Administradores y el propio usuario; ninguna otra cuenta local), sin
+// icacls ni ventana TOCTOU.
 function backupDir(): string {
-  return path.join(programDataDir(), 'Opera', 'backups');
+  return path.join(app.getPath('userData'), 'backups');
 }
 
 function lastBackupMarkerPath(): string {
-  return path.join(programDataDir(), 'Opera', 'last-backup-at.txt');
+  return path.join(app.getPath('userData'), 'last-backup-at.txt');
 }
 
 function backupScriptPath(): string {
@@ -646,6 +632,7 @@ function backupScriptPath(): string {
 }
 
 let backupInProgress = false;
+let restoreInProgress = false;
 // Solo en memoria (no sobrevive un reinicio de Opera) -- a diferencia del
 // marcador de ÉXITO (persistido en disco), esto es nada más para que la UI
 // pueda mostrar "el último intento falló" mientras la app sigue abierta.
@@ -690,40 +677,11 @@ function getBackupStatus(): {
 //
 // Nunca relanza: una falla acá no debe tumbar Opera ni su UI, solo quedar
 // en el log de diagnóstico -- un backup es una red de seguridad, no un
-// requisito de arranque.
-async function runBackupIfDue(): Promise<void> {
-  if (backupInProgress) {
-    return;
-  }
-  const marker = lastBackupMarkerPath();
+// requisito de arranque. Devuelve si salió bien (lo usa la restauración,
+// que no sigue sin un respaldo previo).
+async function runBackupScript(): Promise<boolean> {
   try {
-    if (existsSync(marker)) {
-      const lastRunAt = Date.parse(readFileSync(marker, 'utf-8').trim());
-      if (
-        Number.isFinite(lastRunAt) &&
-        Date.now() - lastRunAt < BACKUP_MIN_GAP_MS
-      ) {
-        return;
-      }
-    }
-  } catch {
-    // Marcador corrupto -- se trata igual que "nunca hubo backup" y se
-    // sigue abajo, no hay razón para bloquear el respaldo por esto.
-  }
-
-  backupInProgress = true;
-  try {
-    const dir = backupDir();
-    if (!existsSync(dir)) {
-      // Ventana TOCTOU aceptada (auditoría 2026-09-06, ronda 5, Seguridad
-      // P2, mismo criterio que ScheduleResumeAndReboot en installer.nsh):
-      // entre este mkdirSync y el icacls de abajo, la carpeta existe un
-      // instante con el ACL heredado (sin restringir todavía). Explotarla
-      // exige monitorear activamente la creación de esta carpeta -- riesgo
-      // bajo, aceptado en vez de dejarlo implícito.
-      mkdirSync(dir, { recursive: true });
-      await restrictBackupDirToSystemAndAdmins(dir);
-    }
+    mkdirSync(backupDir(), { recursive: true });
     const { code, stderr } = await spawnAndWait(
       process.execPath,
       [backupScriptPath()],
@@ -752,11 +710,11 @@ async function runBackupIfDue(): Promise<void> {
         type: 'backup-db-stderr',
         message: stderr,
       });
-      return;
+      return false;
     }
-    mkdirSync(path.dirname(marker), { recursive: true });
-    writeFileSync(marker, new Date().toISOString());
+    writeFileSync(lastBackupMarkerPath(), new Date().toISOString());
     lastBackupAttemptFailed = false;
+    return true;
   } catch (error) {
     lastBackupAttemptFailed = true;
     appendRedactedErrorLog({
@@ -765,8 +723,229 @@ async function runBackupIfDue(): Promise<void> {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
+    return false;
+  }
+}
+
+async function runBackupIfDue(): Promise<void> {
+  if (backupInProgress || restoreInProgress) {
+    return;
+  }
+  const marker = lastBackupMarkerPath();
+  try {
+    if (existsSync(marker)) {
+      const lastRunAt = Date.parse(readFileSync(marker, 'utf-8').trim());
+      if (
+        Number.isFinite(lastRunAt) &&
+        Date.now() - lastRunAt < BACKUP_MIN_GAP_MS
+      ) {
+        return;
+      }
+    }
+  } catch {
+    // Marcador corrupto -- se trata igual que "nunca hubo backup" y se
+    // sigue abajo, no hay razón para bloquear el respaldo por esto.
+  }
+
+  backupInProgress = true;
+  try {
+    await runBackupScript();
   } finally {
     backupInProgress = false;
+  }
+}
+
+// Solo archivos que generó backup-db.ts (opera-<fecha ISO>.sql.gz). Se
+// valida también al restaurar: el nombre llega por IPC desde el renderer y
+// nunca debe poder apuntar fuera de la carpeta de respaldos.
+const BACKUP_FILE_PATTERN = /^opera-[0-9A-Za-z-]+\.sql\.gz$/;
+
+export interface BackupFile {
+  name: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+function listBackups(): BackupFile[] {
+  const dir = backupDir();
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir)
+    .filter((name) => BACKUP_FILE_PATTERN.test(name))
+    .map((name) => {
+      const stats = statSync(path.join(dir, name));
+      return {
+        name,
+        sizeBytes: stats.size,
+        createdAt: stats.mtime.toISOString(),
+      };
+    })
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// Antes del volcado: la base queda vacía, así el respaldo se aplica igual
+// venga de un pg_dump con o sin --clean (los anteriores a la ronda 6 no lo
+// tenían). Todo corre con --single-transaction: si cualquier sentencia
+// falla, Postgres deshace también este DROP y la base queda como estaba.
+const RESTORE_PREAMBLE = 'DROP SCHEMA public CASCADE;\nCREATE SCHEMA public;\n';
+
+// pg_dump no emite CREATE SCHEMA public (asume que existe), pero si alguna
+// versión lo hiciera, chocaría con el que crea el preámbulo y abortaría la
+// restauración entera — se descarta esa única línea, nada más.
+function skipPublicSchemaCreation(): Transform {
+  let pending = '';
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      const lines = (pending + chunk.toString('utf-8')).split('\n');
+      pending = lines.pop() ?? '';
+      const kept = lines.filter(
+        (line) => line.trim() !== 'CREATE SCHEMA public;',
+      );
+      callback(null, kept.length > 0 ? `${kept.join('\n')}\n` : '');
+    },
+    flush(callback) {
+      callback(null, pending.trim() === 'CREATE SCHEMA public;' ? '' : pending);
+    },
+  });
+}
+
+function pipeBackupIntoPsql(
+  file: string,
+): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('docker', [
+      'exec',
+      '-i',
+      CONTAINER_NAME,
+      'psql',
+      '-U',
+      POSTGRES_USER,
+      '-d',
+      POSTGRES_DB,
+      '-q',
+      '-v',
+      'ON_ERROR_STOP=1',
+      '--single-transaction',
+    ]);
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => resolve({ code, stderr }));
+    if (!child.stdin) {
+      reject(new Error('psql no expuso stdin'));
+      return;
+    }
+    child.stdin.write(RESTORE_PREAMBLE);
+    pipeline(
+      createReadStream(file),
+      createGunzip(),
+      skipPublicSchemaCreation(),
+      child.stdin,
+    ).catch((error: unknown) => {
+      // psql ya puede haber salido por su cuenta (ON_ERROR_STOP) y cerrado
+      // su stdin: eso aparece acá como EPIPE, y el código de salida de
+      // arriba ya cuenta la historia real.
+      stderr += `\n${error instanceof Error ? error.message : String(error)}`;
+    });
+  });
+}
+
+type RestoreResult = { ok: true } | { ok: false; error: string };
+
+// Restaura un respaldo sobre la base de esta instalación, sin terminal ni
+// comandos a mano (antes el README pedía `gunzip | docker exec ... psql`,
+// que en Windows ni siquiera existe y no sobrescribía la base). Orden:
+// 1) respaldo de seguridad del estado actual — si falla, no se toca nada;
+// 2) apagar el backend; 3) aplicar el respaldo en UNA transacción; 4)
+// volver a arrancar (start() corre las migraciones pendientes, así que un
+// respaldo de una versión anterior queda al día). Encadenado a startChain
+// para no cruzarse con un backend:retry en vuelo.
+async function restoreBackup(fileName: unknown): Promise<RestoreResult> {
+  if (
+    typeof fileName !== 'string' ||
+    !BACKUP_FILE_PATTERN.test(fileName) ||
+    path.basename(fileName) !== fileName
+  ) {
+    return { ok: false, error: 'Ese archivo no es un respaldo de Opera.' };
+  }
+  const file = path.join(backupDir(), fileName);
+  if (!existsSync(file)) {
+    return { ok: false, error: 'Ese respaldo ya no existe.' };
+  }
+  if (backupInProgress || restoreInProgress) {
+    return {
+      ok: false,
+      error:
+        'Ya hay un respaldo o una restauración en curso. Intenta en un momento.',
+    };
+  }
+
+  restoreInProgress = true;
+  let backendStopped = false;
+  const run = async (): Promise<RestoreResult> => {
+    setStatus({
+      state: 'starting',
+      message: 'Respaldando el estado actual antes de restaurar…',
+    });
+    if (!(await runBackupScript())) {
+      setStatus({ state: 'ready' });
+      return {
+        ok: false,
+        error:
+          'No se pudo respaldar el estado actual, así que no se restauró nada. El detalle quedó en el registro de errores.',
+      };
+    }
+
+    setStatus({ state: 'starting', message: 'Restaurando respaldo…' });
+    backendStopped = true;
+    await stopBackendProcess();
+    try {
+      const { code, stderr } = await pipeBackupIntoPsql(file);
+      if (code !== 0) {
+        appendRedactedErrorLog({
+          source: 'main',
+          type: 'restore-failed',
+          message: stderr,
+        });
+        return {
+          ok: false,
+          error:
+            'La restauración falló y no se aplicó ningún cambio: la base sigue como estaba. El detalle quedó en el registro de errores.',
+        };
+      }
+      return { ok: true };
+    } catch (error) {
+      appendRedactedErrorLog({
+        source: 'main',
+        type: 'restore-exception',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      return {
+        ok: false,
+        error:
+          'No se pudo ejecutar la restauración. El detalle quedó en el registro de errores.',
+      };
+    }
+  };
+
+  const scheduled = startChain.then(run);
+  startChain = scheduled.then(
+    () => undefined,
+    () => undefined,
+  );
+  try {
+    return await scheduled;
+  } finally {
+    restoreInProgress = false;
+    // Si se llegó a apagar el backend, vuelve a levantarse haya salido bien
+    // o mal (si falló, la transacción ya dejó la base intacta).
+    if (backendStopped) {
+      await start();
+    }
   }
 }
 
@@ -802,6 +981,12 @@ function start(): Promise<void> {
         PORT: BACKEND_PORT,
         NODE_ENV: 'production',
         SWAGGER_ENABLED: 'false',
+        // La API solo para esta PC (la ventana de Opera corre acá mismo) —
+        // sin esto escuchaba en todas las interfaces de la LAN.
+        HOST: '127.0.0.1',
+        // El cwd del backend cae dentro de Program Files (sin permiso de
+        // escritura para un usuario normal): el log va al perfil.
+        LOG_DIR: path.join(app.getPath('userData'), 'logs'),
       });
       await waitForBackendHealth();
       setStatus({ state: 'ready' });
@@ -842,6 +1027,10 @@ export function initBackendManager(window: BrowserWindow): void {
   ipcMain.handle('backend:get-status', () => currentStatus);
   ipcMain.handle('backend:retry', () => start());
   ipcMain.handle('backend:get-backup-status', () => getBackupStatus());
+  ipcMain.handle('backend:list-backups', () => listBackups());
+  ipcMain.handle('backend:restore-backup', (_event, fileName: unknown) =>
+    restoreBackup(fileName),
+  );
   void start();
 
   // `.unref()` -- no debe ser este timer quien mantenga vivo el proceso;
