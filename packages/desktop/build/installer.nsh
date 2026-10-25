@@ -10,6 +10,10 @@
 ;   4. La contraseña real de Postgres para esta máquina, generada una sola
 ;      vez acá (antes de que exista cualquier contenedor) y guardada con
 ;      permisos restringidos -- ver "Contraseña de Postgres" más abajo.
+;   5. Aviso previo si la virtualización está apagada en el BIOS, permiso
+;      de docker-users para la cuenta que va a usar Opera y pedido de
+;      reinicio al terminar de instalar Docker Desktop (ver
+;      DetectVirtualization/GrantDockerAccess).
 ;
 ; `perMachine: true` (electron-builder.json5) ya fuerza que TODO el
 ; instalador corra elevado (UAC) desde el arranque -- dism.exe y el
@@ -57,6 +61,10 @@
   Var ShortcutCheckbox
   Var ShortcutCheckboxState
   Var DockerAlreadyRunning
+  ; "0" solo si se pudo comprobar que la virtualización está apagada en el
+  ; BIOS; "1" si está activa o no se pudo saber (no se asusta a nadie por
+  ; una consulta que falló).
+  Var VirtualizationReady
   ; "1" cuando esta corrida es la tarea programada que retoma tras el
   ; reinicio (línea de comandos con /OperaResume), "0"/vacío en la corrida
   ; interactiva normal -- seteada en customInit, mucho antes de que exista
@@ -82,11 +90,24 @@
     ; Se chequea acá (no antes) porque recién ahora, en runtime, sabemos si
     ; hace falta ofrecer instalar Docker -- en build time no hay forma de
     ; saberlo.
+    ; "Ya está" = instalado, aunque no esté corriendo en este momento: Opera
+    ; lo abre sola cuando lo necesita (ver ensureDockerRunning en
+    ; backend-manager.ts). Antes solo contaba si `docker info` respondía, y
+    ; reinstalar Opera con Docker cerrado ofrecía reinstalar Docker entero.
     StrCpy $DockerAlreadyRunning "0"
-    nsExec::ExecToLog 'docker info'
-    Pop $0
-    ${If} $0 == "0"
+    ${If} ${FileExists} "$PROGRAMFILES64\Docker\Docker\Docker Desktop.exe"
       StrCpy $DockerAlreadyRunning "1"
+    ${Else}
+      nsExec::ExecToLog 'docker info'
+      Pop $0
+      ${If} $0 == "0"
+        StrCpy $DockerAlreadyRunning "1"
+      ${EndIf}
+    ${EndIf}
+
+    StrCpy $VirtualizationReady "1"
+    ${If} $DockerAlreadyRunning == "0"
+      !insertmacro DetectVirtualization
     ${EndIf}
 
     nsDialogs::Create 1018
@@ -102,16 +123,20 @@
       ; (auditoría 2026-09-01, ronda 2, datos/legal P2). Herrajes Toro (el
       ; uso real de este instalador) califica como "empresa pequeña" bajo
       ; esa licencia -- ver ADR 0008.
-      ${NSD_CreateLabel} 0 0 100% 66u "Opera necesita Docker Desktop para guardar su información. No lo encontramos instalado y funcionando en esta PC -- Opera puede instalarlo automáticamente (la descarga ya viene incluida en este instalador). Instalarlo desde acá acepta la licencia de Docker Desktop (docker.com/legal/docker-subscription-service-agreement). Si hace falta, la PC se va a reiniciar sola durante la instalación para terminar de activarlo."
+      ${NSD_CreateLabel} 0 0 100% 54u "Opera guarda su información con Docker Desktop, que no está instalado en esta PC. Este instalador ya lo trae incluido: deja marcada la primera casilla para instalarlo ahora. Al hacerlo aceptas la licencia de Docker Desktop (docker.com/legal/docker-subscription-service-agreement). Si Windows lo necesita, la PC se reinicia sola y la instalación sigue después."
       Pop $0
-      ${NSD_CreateCheckbox} 0 70u 100% 12u "Instalar Docker Desktop automáticamente (acepta su licencia)"
+      ${NSD_CreateCheckbox} 0 58u 100% 12u "Instalar Docker Desktop (acepto su licencia)"
       Pop $DockerCheckbox
       ${NSD_SetState} $DockerCheckbox ${BST_CHECKED}
-      ${NSD_CreateCheckbox} 0 95u 100% 12u "Crear acceso directo en el escritorio"
+      ${NSD_CreateCheckbox} 0 76u 100% 12u "Crear acceso directo en el escritorio"
       Pop $ShortcutCheckbox
       ${NSD_SetState} $ShortcutCheckbox ${BST_CHECKED}
+      ${If} $VirtualizationReady == "0"
+        ${NSD_CreateLabel} 0 96u 100% 40u "Atención: la virtualización parece estar desactivada en el BIOS de esta PC, y sin ella Docker Desktop no arranca. Puedes seguir con la instalación; antes de abrir Opera, actívala en el BIOS/UEFI (busca una opción como Intel Virtualization Technology, AMD-V o SVM Mode)."
+        Pop $0
+      ${EndIf}
     ${Else}
-      ${NSD_CreateLabel} 0 0 100% 24u "Docker Desktop ya está instalado y funcionando en esta PC -- Opera lo va a usar tal cual está."
+      ${NSD_CreateLabel} 0 0 100% 24u "Docker Desktop ya está instalado en esta PC. Opera lo usa tal como está y lo abre sola cuando hace falta."
       Pop $0
       ${NSD_CreateCheckbox} 0 30u 100% 12u "Crear acceso directo en el escritorio"
       Pop $ShortcutCheckbox
@@ -162,6 +187,7 @@
       ; checkbox, y no llegó por otro camino.
       FileOpen $0 "${DOCKER_CONSENT_MARKER}" w
       FileClose $0
+      !insertmacro RememberInteractiveUser
       !insertmacro InstallDockerDesktop
     ${EndIf}
   ${EndIf}
@@ -194,6 +220,60 @@
 ; Docker en silencio (ver customInstall). Vive junto al resto de los
 ; artefactos temporales de esta instalación, se borra en CleanupResumeTask.
 !define DOCKER_CONSENT_MARKER "$INSTDIR\resources\.docker-consent-given"
+
+; La cuenta de Windows que va a usar Opera, anotada en la corrida
+; interactiva: la corrida de resume corre como SYSTEM tras el reinicio y no
+; tiene forma de saber quién instaló. Se borra en CleanupResumeTask.
+!define DOCKER_USER_MARKER "$INSTDIR\resources\.docker-user"
+
+; Si la virtualización está apagada en el BIOS, Docker Desktop se instala
+; bien pero nunca arranca. Se avisa ANTES de instalar, en la página de
+; opciones: antes el aviso salía después de instalar, con un `docker info`
+; que fallaba siempre (Docker recién instalado todavía no está corriendo),
+; así que asustaba incluso en PCs donde todo estaba bien.
+; HypervisorPresent cubre el caso en que WSL/Hyper-V ya están activos (ahí
+; Windows reporta VirtualizationFirmwareEnabled en falso aunque funcione).
+!macro DetectVirtualization
+  nsExec::ExecToStack 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$$cs=Get-CimInstance Win32_ComputerSystem;$$cpu=Get-CimInstance Win32_Processor | Select-Object -First 1;if($$cs.HypervisorPresent -or $$cpu.VirtualizationFirmwareEnabled){Write-Host -NoNewline 1}else{Write-Host -NoNewline 0}"'
+  Pop $0
+  Pop $1
+  ${If} $0 == "0"
+  ${AndIf} $1 == "0"
+    StrCpy $VirtualizationReady "0"
+  ${EndIf}
+!macroend
+
+; Win32_ComputerSystem.UserName es la cuenta con la sesión abierta en la
+; PC, aunque el UAC se haya aceptado con otra cuenta de administrador (ahí
+; %USERNAME% sería el del administrador, no el de quien va a usar Opera).
+!macro RememberInteractiveUser
+  nsExec::ExecToStack 'powershell -NoProfile -ExecutionPolicy Bypass -Command "Write-Host -NoNewline (Get-CimInstance Win32_ComputerSystem).UserName"'
+  Pop $0
+  Pop $1
+  ${If} $0 != "0"
+  ${OrIf} $1 == ""
+    ExpandEnvStrings $1 "%USERDOMAIN%\%USERNAME%"
+  ${EndIf}
+  FileOpen $2 "${DOCKER_USER_MARKER}" w
+  FileWrite $2 "$1"
+  FileClose $2
+!macroend
+
+; Docker Desktop solo deja usarlo a las cuentas del grupo docker-users. Su
+; instalador agrega a quien lo ejecuta, que en la corrida de resume es
+; SYSTEM, no la persona: sin esto, después del reinicio Opera nunca podía
+; hablar con Docker. Si ya era miembro, `net` falla sin consecuencias.
+!macro GrantDockerAccess
+  ${If} ${FileExists} "${DOCKER_USER_MARKER}"
+    FileOpen $2 "${DOCKER_USER_MARKER}" r
+    FileRead $2 $1
+    FileClose $2
+    ${If} $1 != ""
+      nsExec::ExecToLog 'net localgroup docker-users "$1" /add'
+      Pop $0
+    ${EndIf}
+  ${EndIf}
+!macroend
 
 ; Ver el comentario grande al principio del archivo ("Contraseña de
 ; Postgres") para el razonamiento completo. Genera la contraseña real de
@@ -292,20 +372,22 @@
   ExecWait '"$INSTDIR\resources\docker\Docker Desktop Installer.exe" install --quiet --accept-license --backend=wsl2' $2
   DetailPrint "Opera: instalador de Docker Desktop terminó con código $2"
 
+  !insertmacro GrantDockerAccess
   !insertmacro CleanupResumeTask
 
-  nsExec::ExecToLog 'docker info'
-  Pop $0
-  ${If} $0 != "0"
-    ; Si esta corrida es la tarea programada tras el reinicio, corre como
-    ; SYSTEM en la sesión 0 -- un MessageBox ahí no lo ve nadie y se queda
-    ; esperando un clic que nunca llega, colgando la tarea para siempre. La
-    ; app (backend-manager.ts) ya avisa en su propia UI si no encuentra
-    ; Docker corriendo, así que alcanza con loguearlo acá.
-    ${If} $IsResumeInstall == "1"
-      DetailPrint "Opera: Docker Desktop no pudo iniciar (código docker info: $0) -- probablemente falte activar virtualización (Intel VT-x/AMD-V) en el BIOS/UEFI. Opera lo va a informar desde la app."
-    ${Else}
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Docker Desktop no pudo iniciar. La causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI de esta PC -- buscá una opción llamada algo como 'Intel Virtualization Technology', 'AMD-V' o 'SVM Mode' y activala ahí, después abrí Opera de nuevo."
+  ; Ya instalado, el instalador de Docker no hace falta (y antes del
+  ; Reboot de abajo, que corta la instalación ahí mismo).
+  Delete "$INSTDIR\resources\docker\Docker Desktop Installer.exe"
+  RMDir "$INSTDIR\resources\docker"
+
+  ; El permiso de docker-users recién instalado solo vale en sesiones
+  ; nuevas de Windows: hasta reiniciar (o cerrar sesión), Docker rechaza a
+  ; la cuenta y Opera no puede arrancar. En la corrida de resume no se
+  ; pregunta nada: corre como SYSTEM en la sesión 0, donde un MessageBox no
+  ; lo ve nadie y colgaría la tarea para siempre.
+  ${If} $IsResumeInstall != "1"
+    ${If} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION "Docker Desktop quedó instalado. Para que Opera pueda usarlo, Windows necesita reiniciar.$\r$\n$\r$\n¿Reiniciar ahora? Si eliges No, reinicia la PC antes de abrir Opera." IDYES`
+      Reboot
     ${EndIf}
   ${EndIf}
 !macroend
@@ -354,7 +436,7 @@
     ; propio resume (un segundo reinicio, rarísimo) correría como SYSTEM en
     ; sesión 0 y este MessageBox se quedaría colgado para siempre sin nadie
     ; que lo cierre.
-    MessageBox MB_OK|MB_ICONINFORMATION "Windows necesita reiniciarse para terminar de activar Docker Desktop. La PC se va a reiniciar sola -- cuando vuelva a iniciar sesión, la instalación de Opera continúa sola, sin que haga falta hacer nada más."
+    MessageBox MB_OK|MB_ICONINFORMATION "Windows necesita reiniciarse para activar los componentes que usa Docker Desktop. La PC se va a reiniciar ahora; al encender de nuevo, la instalación termina sola en unos minutos. Espera un momento antes de abrir Opera."
   ${EndIf}
   Reboot
 !macroend
@@ -364,4 +446,5 @@
   Pop $0
   Delete "${RESUME_EXE_PATH}"
   Delete "${DOCKER_CONSENT_MARKER}"
+  Delete "${DOCKER_USER_MARKER}"
 !macroend

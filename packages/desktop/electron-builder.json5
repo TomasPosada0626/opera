@@ -58,6 +58,10 @@
     perMachine: true,
     allowToChangeInstallationDirectory: true,
     deleteAppDataOnUninstall: false,
+    // Solo español: los textos propios (página de Docker, avisos de
+    // reinicio, build/installer.nsh) están en español, y en un Windows en
+    // inglés el resto del asistente salía en inglés.
+    installerLanguages: ['es_ES'],
     // Docker Desktop embebido + acceso directo de escritorio opcional -- ver
     // build/installer.nsh.
     include: 'build/installer.nsh',
