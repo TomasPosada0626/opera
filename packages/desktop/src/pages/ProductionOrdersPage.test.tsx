@@ -86,9 +86,7 @@ describe('ProductionOrdersPage', () => {
 
     renderWithClient(<ProductionOrdersPage />);
 
-    expect(
-      await screen.findByText('PT-1 — Silla de madera'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Silla de madera')).toBeInTheDocument();
     expect(screen.getByText('Pendiente')).toBeInTheDocument();
     expect(screen.getByText('Bodega principal')).toBeInTheDocument();
   });
@@ -109,7 +107,7 @@ describe('ProductionOrdersPage', () => {
 
     renderWithClient(<ProductionOrdersPage />);
 
-    await screen.findByText('PT-1 — Silla de madera');
+    await screen.findByText('Silla de madera');
     expect(
       screen.queryByRole('button', { name: 'Nueva orden' }),
     ).not.toBeInTheDocument();

@@ -1,7 +1,11 @@
 import { useState } from 'react';
-import { Eye, Plus, Search } from 'lucide-react';
-import { Link } from 'react-router';
+import { Plus, Search } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
+import {
+  PartyContactCell,
+  PartyDetailLink,
+  PartyNameCell,
+} from '../components/ui/PartyCells';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
@@ -48,21 +52,17 @@ function SuppliersPage() {
   }
 
   const columns: DataTableColumn<Supplier>[] = [
-    { key: 'name', header: 'Nombre', render: (supplier) => supplier.name },
     {
-      key: 'taxId',
-      header: 'NIT',
-      render: (supplier) => supplier.taxId ?? '—',
+      key: 'name',
+      header: 'Nombre',
+      render: (supplier) => (
+        <PartyNameCell party={supplier} to={`/proveedores/${supplier.id}`} />
+      ),
     },
     {
-      key: 'email',
-      header: 'Correo',
-      render: (supplier) => supplier.email ?? '—',
-    },
-    {
-      key: 'phone',
-      header: 'Teléfono',
-      render: (supplier) => supplier.phone ?? '—',
+      key: 'contact',
+      header: 'Contacto',
+      render: (supplier) => <PartyContactCell party={supplier} />,
     },
     {
       key: 'status',
@@ -79,7 +79,7 @@ function SuppliersPage() {
           {
             key: 'action',
             header: '',
-            className: 'text-right',
+            className: 'text-right whitespace-nowrap',
             render: (supplier: Supplier) => (
               <SupplierRowActions supplier={supplier} onEdit={openEditModal} />
             ),
@@ -89,15 +89,12 @@ function SuppliersPage() {
     {
       key: 'detail',
       header: '',
-      className: 'text-right',
+      className: 'w-10 text-right',
       render: (supplier) => (
-        <Link
+        <PartyDetailLink
+          name={supplier.name}
           to={`/proveedores/${supplier.id}`}
-          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
-        >
-          <Eye className="h-4 w-4" />
-          Ver detalle
-        </Link>
+        />
       ),
     },
   ];

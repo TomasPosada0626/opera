@@ -10,6 +10,7 @@ import { CompleteOrderAction } from '../components/production/CompleteOrderActio
 import { ProductionOrderForm } from '../components/production/ProductionOrderForm';
 import { useProductionOrders } from '../hooks/useProductionOrders';
 import { getCurrentUser } from '../lib/current-user';
+import { formatDate, formatMoney, formatQuantity } from '../lib/format';
 import type {
   ProductionOrder,
   ProductionOrderStatus,
@@ -32,10 +33,6 @@ const statusLabel: Record<ProductionOrderStatus, string> = {
   CANCELADA: 'Cancelada',
 };
 
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
-}
-
 function ProductionOrdersPage() {
   const [page, setPage] = useState(1);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -48,23 +45,34 @@ function ProductionOrdersPage() {
     {
       key: 'createdAt',
       header: 'Fecha',
+      className: 'whitespace-nowrap',
       render: (order) => formatDate(order.createdAt),
     },
     {
       key: 'product',
       header: 'Producto',
-      render: (order) => `${order.product.sku} — ${order.product.name}`,
+      render: (order) => (
+        <div className="flex flex-col">
+          <span className="text-ink font-medium">{order.product.name}</span>
+          <span className="code text-ink-faint text-xs">
+            {order.product.sku}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'warehouse',
       header: 'Bodega',
-      render: (order) => order.warehouse.name,
+      className: 'whitespace-nowrap',
+      render: (order) => (
+        <span className="text-ink-secondary">{order.warehouse.name}</span>
+      ),
     },
     {
       key: 'quantity',
       header: 'Cantidad',
-      className: 'text-right tabular-nums',
-      render: (order) => order.quantity,
+      className: 'text-right figures',
+      render: (order) => formatQuantity(order.quantity),
     },
     {
       key: 'status',
@@ -78,8 +86,13 @@ function ProductionOrdersPage() {
     {
       key: 'unitCost',
       header: 'Costo unitario',
-      className: 'text-right tabular-nums',
-      render: (order) => order.unitCost ?? '—',
+      className: 'text-right figures whitespace-nowrap',
+      render: (order) =>
+        order.unitCost === null ? (
+          <span className="text-ink-faint">—</span>
+        ) : (
+          formatMoney(order.unitCost)
+        ),
     },
     ...(isAdmin
       ? [

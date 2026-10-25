@@ -15,14 +15,7 @@ import { useSupplierProducts } from '../hooks/useSupplierProducts';
 import { useSupplierPurchases } from '../hooks/useSupplierPurchases';
 import { getCurrentUser } from '../lib/current-user';
 import { downloadFile } from '../lib/download-file';
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
-}
-
-function formatMoney(value: string): string {
-  return Number(value).toLocaleString('es-CO', { minimumFractionDigits: 2 });
-}
+import { formatDate, formatMoney, formatQuantity } from '../lib/format';
 
 function SupplierDetailPage() {
   const { supplierId } = useParams<{ supplierId: string }>();
@@ -135,7 +128,7 @@ function SupplierDetailPage() {
                         <td className="text-ink px-4 py-3">
                           {entry.product.sku} — {entry.product.name}
                         </td>
-                        <td className="text-ink px-4 py-3 text-right tabular-nums">
+                        <td className="text-ink px-4 py-3 text-right figures">
                           {formatMoney(entry.price)}
                         </td>
                         {isAdmin && (
@@ -209,10 +202,10 @@ function SupplierDetailPage() {
                         <td className="text-ink px-4 py-3">
                           {purchase.product.sku} — {purchase.product.name}
                         </td>
-                        <td className="text-ink px-4 py-3 text-right tabular-nums">
-                          {purchase.quantity}
+                        <td className="text-ink px-4 py-3 text-right figures">
+                          {formatQuantity(purchase.quantity)}
                         </td>
-                        <td className="text-ink px-4 py-3 text-right tabular-nums">
+                        <td className="text-ink px-4 py-3 text-right figures">
                           {formatMoney(purchase.unitCost)}
                         </td>
                         <td className="text-ink-muted px-4 py-3">

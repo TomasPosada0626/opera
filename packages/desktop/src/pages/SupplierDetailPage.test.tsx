@@ -166,8 +166,8 @@ describe('SupplierDetailPage', () => {
     // "MP-1 — Tabla de pino" aparece dos veces (tabla de precios y de
     // compras) — findByText fallaría con "elemento múltiple encontrado".
     expect(await screen.findAllByText('MP-1 — Tabla de pino')).toHaveLength(2);
-    expect(screen.getByText('15.000,00')).toBeInTheDocument();
-    expect(screen.getByText('4.500,00')).toBeInTheDocument();
+    expect(screen.getByText('$ 15.000')).toBeInTheDocument();
+    expect(screen.getByText('$ 4.500')).toBeInTheDocument();
     expect(screen.getByText('Admin')).toBeInTheDocument();
   });
 

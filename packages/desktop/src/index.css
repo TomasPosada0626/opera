@@ -61,6 +61,18 @@
   --animate-fade-in: fade-in 160ms ease-out both;
   --animate-slide-in: slide-in 260ms var(--ease-snappy) both;
   --animate-soft-pulse: soft-pulse 2.4s ease-in-out infinite;
+  --animate-progress: progress-slide 1.6s var(--ease-snappy) infinite;
+
+  /* Barra de progreso indeterminada (arranque de Opera): un tramo que
+     cruza la pista de lado a lado. */
+  @keyframes progress-slide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(250%);
+    }
+  }
 
   @keyframes pop-in {
     from {
@@ -169,12 +181,21 @@
   }
 }
 
-/* Cifras que se leen en columna: mismo ancho por dígito y la variante
-   mono, para que $ 1.250.000 y $ 980.000 queden alineados. */
+/* Cifras que se leen en columna: la misma Geist con dígitos de ancho fijo
+   (tabular-nums), para que $ 1.250.000 y $ 980.000 queden alineados. Antes
+   usaba la variante mono, y montos y conteos se veían como de terminal. */
 @utility figures {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.005em;
+}
+
+/* Códigos que se copian o se comparan carácter a carácter: SKU, código de
+   recuperación, identificadores. Acá sí la mono. */
+@utility code {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: 0;
 }
 
 /* Estilo único de inputs/selects/textarea — antes cada formulario copiaba

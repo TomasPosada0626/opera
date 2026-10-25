@@ -70,9 +70,15 @@ export function OrderStatusActions({
             size="sm"
             onClick={() => markProduction.mutate(order.id)}
             disabled={markProduction.isPending}
+            aria-label={compact ? 'Marcar en producción' : undefined}
+            title={compact ? 'Marcar en producción' : undefined}
           >
             <Factory />
-            {markProduction.isPending ? 'Marcando…' : 'Marcar en producción'}
+            {markProduction.isPending
+              ? 'Marcando…'
+              : compact
+                ? 'A producción'
+                : 'Marcar en producción'}
           </Button>
         )}
         {order.status === 'EN_PRODUCCION' && (
@@ -81,11 +87,15 @@ export function OrderStatusActions({
             size="sm"
             onClick={() => markWarehoused.mutate(order.id)}
             disabled={markWarehoused.isPending}
+            aria-label={compact ? 'Marcar enviado a almacén' : undefined}
+            title={compact ? 'Marcar enviado a almacén' : undefined}
           >
             <PackageCheck />
             {markWarehoused.isPending
               ? 'Marcando…'
-              : 'Marcar enviado a almacén'}
+              : compact
+                ? 'A almacén'
+                : 'Marcar enviado a almacén'}
           </Button>
         )}
       </div>

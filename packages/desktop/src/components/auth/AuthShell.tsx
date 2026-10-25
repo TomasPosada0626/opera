@@ -78,7 +78,7 @@ export function AuthShell({
         </div>
 
         <p className="text-ink-faint relative text-xs">
-          Funciona en tu red local, sin depender de internet.
+          Funciona en esta PC, sin depender de internet.
         </p>
       </aside>
 

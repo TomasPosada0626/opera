@@ -1,7 +1,11 @@
 import { useState } from 'react';
-import { Eye, Plus, Search } from 'lucide-react';
-import { Link } from 'react-router';
+import { Plus, Search } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
+import {
+  PartyContactCell,
+  PartyDetailLink,
+  PartyNameCell,
+} from '../components/ui/PartyCells';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
@@ -48,21 +52,17 @@ function CustomersPage() {
   }
 
   const columns: DataTableColumn<Customer>[] = [
-    { key: 'name', header: 'Nombre', render: (customer) => customer.name },
     {
-      key: 'taxId',
-      header: 'NIT',
-      render: (customer) => customer.taxId ?? '—',
+      key: 'name',
+      header: 'Nombre',
+      render: (customer) => (
+        <PartyNameCell party={customer} to={`/clientes/${customer.id}`} />
+      ),
     },
     {
-      key: 'email',
-      header: 'Correo',
-      render: (customer) => customer.email ?? '—',
-    },
-    {
-      key: 'phone',
-      header: 'Teléfono',
-      render: (customer) => customer.phone ?? '—',
+      key: 'contact',
+      header: 'Contacto',
+      render: (customer) => <PartyContactCell party={customer} />,
     },
     {
       key: 'status',
@@ -79,7 +79,7 @@ function CustomersPage() {
           {
             key: 'action',
             header: '',
-            className: 'text-right',
+            className: 'text-right whitespace-nowrap',
             render: (customer: Customer) => (
               <CustomerRowActions customer={customer} onEdit={openEditModal} />
             ),
@@ -89,15 +89,9 @@ function CustomersPage() {
     {
       key: 'detail',
       header: '',
-      className: 'text-right',
+      className: 'w-10 text-right',
       render: (customer) => (
-        <Link
-          to={`/clientes/${customer.id}`}
-          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
-        >
-          <Eye className="h-4 w-4" />
-          Ver detalle
-        </Link>
+        <PartyDetailLink name={customer.name} to={`/clientes/${customer.id}`} />
       ),
     },
   ];

@@ -12,6 +12,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useProducts } from '../hooks/useProducts';
 import { useStockSummary } from '../hooks/useStockSummary';
 import { getCurrentUser } from '../lib/current-user';
+import { formatQuantity } from '../lib/format';
 import { PRODUCT_TYPE_LABELS } from '../types/product';
 import type { Product } from '../types/product';
 
@@ -38,36 +39,64 @@ function InventoryPage() {
   }
 
   const columns: DataTableColumn<Product>[] = [
-    { key: 'sku', header: 'SKU', render: (product) => product.sku },
-    { key: 'name', header: 'Nombre', render: (product) => product.name },
+    {
+      key: 'name',
+      header: 'Producto',
+      render: (product) => (
+        <div className="flex flex-col">
+          <span className="text-ink font-medium">{product.name}</span>
+          <span className="code text-ink-faint text-xs">{product.sku}</span>
+        </div>
+      ),
+    },
     {
       key: 'type',
       header: 'Tipo',
-      render: (product) => PRODUCT_TYPE_LABELS[product.type],
+      className: 'whitespace-nowrap',
+      render: (product) => (
+        <span className="text-ink-secondary">
+          {PRODUCT_TYPE_LABELS[product.type]}
+        </span>
+      ),
     },
     {
       key: 'category',
       header: 'Categoría',
-      render: (product) => product.category.name,
+      render: (product) => (
+        <span className="text-ink-secondary">{product.category.name}</span>
+      ),
+    },
+    {
+      key: 'minStock',
+      header: 'Mínimo',
+      className: 'text-right figures whitespace-nowrap',
+      render: (product) =>
+        product.minStock === null ? (
+          <span className="text-ink-faint">—</span>
+        ) : (
+          <span className="text-ink-muted">
+            {formatQuantity(product.minStock)} {product.unit.abbreviation}
+          </span>
+        ),
     },
     {
       key: 'stock',
       header: 'Stock actual',
-      className: 'text-right tabular-nums',
+      className: 'text-right figures whitespace-nowrap',
       render: (product) => {
         const stock = stockByProduct.get(product.id);
         if (stock === undefined) {
           return <span className="text-ink-faint">—</span>;
         }
 
-        const label = `${stock} ${product.unit.abbreviation}`;
+        const label = `${formatQuantity(stock)} ${product.unit.abbreviation}`;
         const isLowStock =
           product.minStock !== null && Number(stock) < Number(product.minStock);
 
         return isLowStock ? (
           <Badge variant="warning">{label}</Badge>
         ) : (
-          <span>{label}</span>
+          <span className="text-ink font-medium">{label}</span>
         );
       },
     },

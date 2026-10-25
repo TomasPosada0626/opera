@@ -108,7 +108,7 @@ describe('CustomersPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a dash for optional fields left empty, and an Inactivo badge', async () => {
+  it('says when the NIT is missing, and shows an Inactivo badge', async () => {
     mockedApiFetch.mockResolvedValue(
       customersResponse([
         buildCustomer({ taxId: null, email: null, isActive: false }),
@@ -118,7 +118,7 @@ describe('CustomersPage', () => {
     renderWithClient(<CustomersPage />);
 
     await screen.findByText('Muebles del Valle S.A.S.');
-    expect(screen.getAllByText('—')).toHaveLength(2);
+    expect(screen.getByText('Sin NIT')).toBeInTheDocument();
     expect(screen.getByText('Inactivo')).toBeInTheDocument();
   });
 

@@ -154,7 +154,7 @@ function EditorForm({
             {row.component ? (
               <div className="border-line bg-chrome/60 flex h-9 items-center justify-between gap-2 rounded-lg border px-3 text-sm">
                 <span className="text-ink truncate">
-                  <span className="figures text-ink-faint mr-1.5 text-xs">
+                  <span className="code text-ink-faint mr-1.5 text-xs">
                     {row.component.sku}
                   </span>
                   {row.component.name}

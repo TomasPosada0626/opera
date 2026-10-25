@@ -17,6 +17,9 @@ interface KPICardProps {
   // A dónde lleva el KPI: un número que se puede investigar es más útil
   // que uno que solo se mira.
   to?: string;
+  // 'text' para un valor que no es una cifra (una fecha): más chico, para
+  // que no se parta en dos líneas ni le gane en peso a los montos.
+  valueKind?: 'figure' | 'text';
 }
 
 const iconClasses: Record<KPICardVariant, string> = {
@@ -27,7 +30,7 @@ const iconClasses: Record<KPICardVariant, string> = {
   neutral: 'bg-chrome-strong border-line-strong text-ink-secondary',
 };
 
-// La cifra manda: grande, en Geist Mono con dígitos tabulares, y la
+// La cifra manda: grande, con dígitos tabulares, y la
 // etiqueta queda en segundo plano (pequeña, mayúsculas, color tenue).
 export function KPICard({
   icon: Icon,
@@ -37,6 +40,7 @@ export function KPICard({
   hint,
   title,
   to,
+  valueKind = 'figure',
 }: KPICardProps) {
   const body = (
     <Card
@@ -56,7 +60,11 @@ export function KPICard({
       <div className="flex flex-col gap-1">
         <span
           title={title}
-          className="figures text-ink text-[26px] leading-none font-semibold"
+          className={`figures text-ink font-semibold tracking-[-0.02em] ${
+            valueKind === 'text'
+              ? 'text-lg leading-tight'
+              : 'text-[26px] leading-none'
+          }`}
         >
           {value}
         </span>
