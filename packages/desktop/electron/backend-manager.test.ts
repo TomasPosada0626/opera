@@ -191,6 +191,42 @@ function lastStatusSent(win: BrowserWindow): BackendStatus {
 
 let programDataDir = '';
 const originalProgramData = process.env['ProgramData'];
+let programFilesDir = '';
+const originalProgramFiles = process.env['ProgramFiles'];
+const originalPath = process.env['PATH'];
+
+// Simula una PC con Docker Desktop instalado (el .exe y su carpeta de
+// binarios en Program Files), sin que esté corriendo necesariamente.
+function installFakeDockerDesktop(): string {
+  const dir = path.join(programFilesDir, 'Docker', 'Docker');
+  mkdirSync(path.join(dir, 'resources', 'bin'), { recursive: true });
+  const exe = path.join(dir, 'Docker Desktop.exe');
+  writeFileSync(exe, '');
+  return exe;
+}
+
+// El lanzamiento de Docker Desktop: un proceso desacoplado que Opera no
+// espera.
+function fakeDetachedLauncher(): FakeChild & { unref: () => void } {
+  const child = new EventEmitter() as FakeChild & { unref: () => void };
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  child.unref = vi.fn();
+  return child;
+}
+
+// `whoami /groups`: imprime los grupos de la sesión por stdout.
+function fakeWhoami(groups: string): FakeChild {
+  const child = new EventEmitter() as FakeChild & { stdout: EventEmitter };
+  child.stderr = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.kill = vi.fn();
+  queueMicrotask(() => {
+    child.stdout.emit('data', Buffer.from(groups));
+    child.emit('exit', 0, null);
+  });
+  return child;
+}
 
 function postgresSecretPath(): string {
   return path.join(programDataDir, 'Opera', 'postgres-secret.json');
@@ -236,6 +272,10 @@ describe('backend-manager', () => {
     userDataDir = mkdtempSync(path.join(os.tmpdir(), 'opera-secrets-'));
     programDataDir = mkdtempSync(path.join(os.tmpdir(), 'opera-programdata-'));
     process.env['ProgramData'] = programDataDir;
+    programFilesDir = mkdtempSync(
+      path.join(os.tmpdir(), 'opera-programfiles-'),
+    );
+    process.env['ProgramFiles'] = programFilesDir;
     seedPostgresSecret();
     // Solo existe dentro de un proceso Electron real (y es `readonly` en su
     // tipo, mismo motivo que main.test.ts usa `Object.defineProperty` para
@@ -256,6 +296,13 @@ describe('backend-manager', () => {
   afterEach(() => {
     rmSync(userDataDir, { recursive: true, force: true });
     rmSync(programDataDir, { recursive: true, force: true });
+    rmSync(programFilesDir, { recursive: true, force: true });
+    if (originalProgramFiles === undefined) {
+      delete process.env['ProgramFiles'];
+    } else {
+      process.env['ProgramFiles'] = originalProgramFiles;
+    }
+    process.env['PATH'] = originalPath;
     if (originalProgramData === undefined) {
       delete process.env['ProgramData'];
     } else {
@@ -264,7 +311,7 @@ describe('backend-manager', () => {
     vi.unstubAllGlobals();
   });
 
-  it('si Docker Desktop no está corriendo, reporta error sin intentar nada más', async () => {
+  it('si Docker Desktop no está instalado, lo dice sin intentar nada más', async () => {
     queueSpawns([() => fakeCommand({ exitCode: 1 })]); // docker info falla
 
     const win = fakeWindow();
@@ -273,8 +320,128 @@ describe('backend-manager', () => {
     await vi.waitFor(() => {
       expect(lastStatusSent(win).state).toBe('error');
     });
-    expect(lastStatusSent(win).message).toMatch(/Docker Desktop/);
+    expect(lastStatusSent(win).message).toMatch(
+      /Docker Desktop no está instalado/,
+    );
     expect(spawnMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe('Docker Desktop instalado pero sin correr', () => {
+    it('lo abre sola, espera a que responda y sigue hasta quedar lista', async () => {
+      const exe = installFakeDockerDesktop();
+      queueSpawns([
+        () => fakeCommand({ exitCode: 1 }), // docker info: todavía no
+        fakeDetachedLauncher, // abre Docker Desktop
+        () => fakeCommand({ exitCode: 1 }), // docker info: arrancando
+        ...happyPathSpawns({ containerExists: true }), // ya responde
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.waitFor(
+        () => {
+          expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+        },
+        { timeout: 5_000 },
+      );
+      expect(spawnMock).toHaveBeenNthCalledWith(2, exe, [], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      expect(win.webContents.send).toHaveBeenCalledWith('backend:status', {
+        state: 'starting',
+        message:
+          'Iniciando Docker Desktop… La primera vez puede tardar un par de minutos.',
+      });
+    });
+
+    it('suma la carpeta de binarios de Docker al PATH si no estaba', () => {
+      // Solo la carpeta de binarios, sin el .exe: el arranque termina enseguida
+      // ("no instalado") en vez de quedar esperando a Docker Desktop.
+      mkdirSync(
+        path.join(programFilesDir, 'Docker', 'Docker', 'resources', 'bin'),
+        { recursive: true },
+      );
+      process.env['PATH'] = 'C:\\Windows\\System32';
+      queueSpawns([() => fakeCommand({ exitCode: 1 })]);
+
+      initBackendManager(fakeWindow());
+
+      expect(process.env['PATH']).toBe(
+        [
+          path.join(programFilesDir, 'Docker', 'Docker', 'resources', 'bin'),
+          'C:\\Windows\\System32',
+        ].join(path.delimiter),
+      );
+    });
+
+    it('si la cuenta todavía no está en docker-users, pide cerrar sesión', async () => {
+      vi.useFakeTimers();
+      try {
+        installFakeDockerDesktop();
+        spawnMock.mockImplementation((command: unknown, args: unknown) => {
+          const argv = args as string[];
+          if (command === 'docker') return fakeCommand({ exitCode: 1 });
+          if (command === 'whoami') {
+            return fakeWhoami('BUILTIN\\Usuarios  Grupo conocido\r\n');
+          }
+          if (argv.length === 0) return fakeDetachedLauncher();
+          throw new Error(`spawn inesperado: ${String(command)}`);
+        });
+
+        const win = fakeWindow();
+        initBackendManager(win);
+        await vi.advanceTimersByTimeAsync(181_000);
+
+        expect(lastStatusSent(win).state).toBe('error');
+        expect(lastStatusSent(win).message).toMatch(/Cierra sesión en Windows/);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('si la cuenta sí tiene permiso pero Docker no arranca, sugiere revisar la virtualización', async () => {
+      vi.useFakeTimers();
+      try {
+        installFakeDockerDesktop();
+        spawnMock.mockImplementation((command: unknown, args: unknown) => {
+          const argv = args as string[];
+          if (command === 'docker') return fakeCommand({ exitCode: 1 });
+          if (command === 'whoami') {
+            return fakeWhoami('PC-TORO\\docker-users  Alias\r\n');
+          }
+          if (argv.length === 0) return fakeDetachedLauncher();
+          throw new Error(`spawn inesperado: ${String(command)}`);
+        });
+
+        const win = fakeWindow();
+        initBackendManager(win);
+        await vi.advanceTimersByTimeAsync(181_000);
+
+        expect(lastStatusSent(win).message).toMatch(
+          /virtualización en el BIOS/,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  it('si `docker run` falla la primera vez, avisa que hace falta internet', async () => {
+    queueSpawns([
+      () => fakeCommand({ exitCode: 0 }), // docker info
+      () => fakeCommand({ exitCode: 1 }), // docker inspect: no existe
+      () => fakeCommand({ exitCode: 1 }), // docker run: no pudo descargar
+    ]);
+
+    const win = fakeWindow();
+    initBackendManager(win);
+
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win).state).toBe('error');
+    });
+    expect(lastStatusSent(win).message).toMatch(/necesita internet/);
   });
 
   // Rama sin cubrir señalada en la auditoría 2026-09-03 (ronda 3): los demás
@@ -282,7 +449,7 @@ describe('backend-manager', () => {
   // que `spawn` ni siquiera pudo lanzar el binario (docker no instalado / no
   // está en el PATH). El resultado visible es el mismo mensaje, pero es la
   // única rama de `docker()` que quedaba sin ejercitar.
-  it('si el binario docker no existe (ENOENT), reporta el mismo error que si no estuviera corriendo', async () => {
+  it('si el binario docker no existe (ENOENT), reporta el mismo error que si no estuviera instalado', async () => {
     queueSpawns([fakeSpawnError]);
 
     const win = fakeWindow();

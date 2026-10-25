@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, session } from 'electron';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readToken, writeToken, clearToken } from './secure-token-store';
 import { appendErrorLog, exportErrorLog } from './error-log-store';
@@ -21,6 +21,11 @@ vi.mock('electron', () => {
     return {
       loadURL: vi.fn(),
       loadFile: vi.fn(),
+      once: vi.fn(),
+      show: vi.fn(),
+      focus: vi.fn(),
+      restore: vi.fn(),
+      isMinimized: vi.fn(() => false),
       webContents: {
         setWindowOpenHandler: vi.fn(),
         on: vi.fn(),
@@ -37,9 +42,18 @@ vi.mock('electron', () => {
       quit: vi.fn(),
       on: vi.fn(),
       whenReady: vi.fn().mockResolvedValue(undefined),
+      requestSingleInstanceLock: vi.fn(() => true),
+      setAppUserModelId: vi.fn(),
     },
     BrowserWindow: BrowserWindowMock,
     ipcMain: { handle: vi.fn() },
+    Menu: { setApplicationMenu: vi.fn() },
+    nativeTheme: { shouldUseDarkColors: false },
+    screen: {
+      getPrimaryDisplay: vi.fn(() => ({
+        workAreaSize: { width: 1920, height: 1040 },
+      })),
+    },
     session: {
       defaultSession: {
         webRequest: { onHeadersReceived: vi.fn() },
@@ -118,6 +132,11 @@ function setViteDevServerUrl(value: string | undefined): void {
 interface FakeWindow {
   loadURL: ReturnType<typeof vi.fn>;
   loadFile: ReturnType<typeof vi.fn>;
+  once: ReturnType<typeof vi.fn>;
+  show: ReturnType<typeof vi.fn>;
+  focus: ReturnType<typeof vi.fn>;
+  restore: ReturnType<typeof vi.fn>;
+  isMinimized: ReturnType<typeof vi.fn>;
   webContents: {
     setWindowOpenHandler: ReturnType<typeof vi.fn>;
     on: ReturnType<typeof vi.fn>;
@@ -148,6 +167,39 @@ describe('electron/main (packaged, sin VITE_DEV_SERVER_URL)', () => {
   it('crea la ventana con loadFile (no loadURL) fuera de dev', () => {
     expect(win.loadFile).toHaveBeenCalled();
     expect(win.loadURL).not.toHaveBeenCalled();
+  });
+
+  it('abre la ventana a la medida de la pantalla, oculta hasta el primer cuadro', () => {
+    expect(BrowserWindow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: 1600,
+        height: 957,
+        show: false,
+        backgroundColor: '#f8fafc',
+      }),
+    );
+    expect(win.show).not.toHaveBeenCalled();
+
+    const readyToShow = win.once.mock.calls.find(
+      ([event]) => event === 'ready-to-show',
+    )?.[1] as () => void;
+    readyToShow();
+    expect(win.show).toHaveBeenCalled();
+  });
+
+  it('quita el menú por defecto de Electron en la app empaquetada', () => {
+    expect(Menu.setApplicationMenu).toHaveBeenCalledWith(null);
+  });
+
+  it('un segundo intento de abrir Opera trae al frente la ventana existente', () => {
+    const [secondInstance] = appOnHandlers('second-instance');
+    win.isMinimized.mockReturnValueOnce(true);
+    win.focus.mockClear();
+
+    secondInstance();
+
+    expect(win.restore).toHaveBeenCalled();
+    expect(win.focus).toHaveBeenCalled();
   });
 
   it('registra un Content-Security-Policy real en producción', () => {
@@ -336,6 +388,25 @@ describe('electron/main (packaged, sin VITE_DEV_SERVER_URL)', () => {
   });
 });
 
+describe('electron/main (otra Opera ya abierta)', () => {
+  it('sale sin crear ventana ni levantar otro backend', async () => {
+    vi.resetModules();
+    vi.mocked(BrowserWindow).mockClear();
+    vi.mocked(app.quit).mockClear();
+    vi.mocked(initBackendManager).mockClear();
+    vi.mocked(app.requestSingleInstanceLock).mockReturnValueOnce(false);
+    setViteDevServerUrl(undefined);
+
+    await import('./main');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(app.quit).toHaveBeenCalled();
+    expect(BrowserWindow).not.toHaveBeenCalled();
+    expect(initBackendManager).not.toHaveBeenCalled();
+  });
+});
+
 describe('electron/main (dev, con VITE_DEV_SERVER_URL)', () => {
   afterEach(() => {
     setViteDevServerUrl(undefined);
@@ -362,6 +433,20 @@ describe('electron/main (dev, con VITE_DEV_SERVER_URL)', () => {
     ).not.toHaveBeenCalled();
     expect(initAutoUpdater).not.toHaveBeenCalled();
     expect(initBackendManager).not.toHaveBeenCalled();
+  });
+
+  it('en dev conserva el menú de Electron (atajos de herramientas de desarrollo)', async () => {
+    vi.resetModules();
+    vi.mocked(Menu.setApplicationMenu).mockClear();
+    vi.mocked(BrowserWindow).mockClear();
+    setViteDevServerUrl('http://localhost:5173');
+
+    await import('./main');
+    await vi.waitFor(() => {
+      expect(BrowserWindow).toHaveBeenCalled();
+    });
+
+    expect(Menu.setApplicationMenu).not.toHaveBeenCalled();
   });
 
   it('window-all-closed cierra la app directo en dev, sin tocar el backend', async () => {

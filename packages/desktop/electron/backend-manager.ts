@@ -46,6 +46,9 @@ const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
 
 const POSTGRES_READY_TIMEOUT_MS = 30_000;
 const BACKEND_READY_TIMEOUT_MS = 20_000;
+// Docker Desktop recién instalado (o tras un reinicio) tarda bastante más
+// que Postgres en quedar listo: arranca su máquina virtual de WSL.
+const DOCKER_START_TIMEOUT_MS = 180_000;
 const POLL_INTERVAL_MS = 1_000;
 
 let win: BrowserWindow | null = null;
@@ -93,6 +96,29 @@ function spawnAndWait(
     });
     child.on('error', reject);
     child.on('exit', (code) => resolve({ code, stderr }));
+  });
+}
+
+// Como spawnAndWait, pero devuelve lo que el comando imprimió (o null si ni
+// siquiera se pudo lanzar).
+function spawnForOutput(
+  command: string,
+  args: string[],
+): Promise<string | null> {
+  return new Promise((resolve) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(command, args);
+    } catch {
+      resolve(null);
+      return;
+    }
+    let stdout = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.on('error', () => resolve(null));
+    child.on('exit', () => resolve(stdout));
   });
 }
 
@@ -168,6 +194,86 @@ function programDataDir(): string {
 
 function machineSecretPath(): string {
   return path.join(programDataDir(), 'Opera', 'postgres-secret.json');
+}
+
+function dockerDesktopDir(): string {
+  return path.join(
+    process.env['ProgramFiles'] ?? 'C:\\Program Files',
+    'Docker',
+    'Docker',
+  );
+}
+
+// Docker Desktop suma su carpeta de binarios al PATH del sistema al
+// instalarse, pero un proceso que ya estaba abierto (el Explorador que
+// lanza el acceso directo, justo después de instalar) puede seguir con el
+// PATH viejo hasta cerrar sesión: `docker` no aparecía y Opera decía que
+// Docker no estaba corriendo. Sumarla acá cubre a Opera y a todo lo que
+// lanza (el backend, el script de respaldo).
+function ensureDockerOnPath(): void {
+  const binDir = path.join(dockerDesktopDir(), 'resources', 'bin');
+  const current = process.env['PATH'] ?? '';
+  if (existsSync(binDir) && !current.split(path.delimiter).includes(binDir)) {
+    process.env['PATH'] = current
+      ? `${binDir}${path.delimiter}${current}`
+      : binDir;
+  }
+}
+
+// Si Docker Desktop no está corriendo, Opera lo abre sola y espera, en vez
+// de pedirle a la dueña que lo abra a mano: no siempre arranca solo al
+// iniciar sesión, y antes cada mañana empezaba con un error.
+async function ensureDockerRunning(): Promise<void> {
+  setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
+  if (await docker(['info'])) {
+    return;
+  }
+
+  const dockerDesktopExe = path.join(dockerDesktopDir(), 'Docker Desktop.exe');
+  if (!existsSync(dockerDesktopExe)) {
+    throw new Error(
+      'Docker Desktop no está instalado en esta PC. Vuelve a ejecutar el instalador de Opera y deja marcada la opción de instalar Docker Desktop.',
+    );
+  }
+
+  setStatus({
+    state: 'starting',
+    message:
+      'Iniciando Docker Desktop… La primera vez puede tardar un par de minutos.',
+  });
+  try {
+    const launcher = spawn(dockerDesktopExe, [], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    launcher.on('error', () => undefined);
+    launcher.unref();
+  } catch {
+    // Si ni siquiera se pudo lanzar, la espera de abajo vence y explica qué
+    // revisar.
+  }
+
+  try {
+    await waitUntil(
+      () => docker(['info']),
+      DOCKER_START_TIMEOUT_MS,
+      'Docker Desktop no respondió a tiempo.',
+    );
+  } catch {
+    throw new Error(await dockerUnavailableMessage());
+  }
+}
+
+// El instalador de Docker Desktop agrega la cuenta al grupo docker-users,
+// pero Windows solo lo aplica a las sesiones nuevas: hasta cerrar sesión
+// (o reiniciar), Docker rechaza a esa cuenta. `whoami /groups` lista los
+// grupos de ESTA sesión, que es justo lo que Docker mira.
+async function dockerUnavailableMessage(): Promise<string> {
+  const groups = await spawnForOutput('whoami', ['/groups']);
+  if (groups !== null && !/docker-users/i.test(groups)) {
+    return 'Docker Desktop está instalado, pero tu cuenta de Windows todavía no tiene permiso para usarlo. Cierra sesión en Windows (o reinicia la PC), vuelve a entrar y abre Opera de nuevo.';
+  }
+  return 'Docker Desktop no terminó de arrancar. Si acabas de reiniciar la PC, espera un minuto y vuelve a intentar. Si sigue igual, ábrelo desde el menú Inicio para ver qué dice: lo más común es que falte activar la virtualización en el BIOS de la PC.';
 }
 
 // La contraseña real de Postgres tiene que ser UNA SOLA POR MÁQUINA,
@@ -309,17 +415,7 @@ function appendRedactedErrorLog(entry: LoggedError): void {
 }
 
 async function ensurePostgres(): Promise<string> {
-  setStatus({ state: 'starting', message: 'Comprobando Docker Desktop…' });
-  if (!(await docker(['info']))) {
-    throw new Error(
-      // Docker Desktop tarda en arrancar solo después de un reinicio de
-      // Windows -- sin esta primera sugerencia, alguien que acaba de
-      // reiniciar (p. ej. el propio instalador activando WSL) leía "abrí
-      // Docker Desktop" como si algo estuviera mal, cuando en realidad solo
-      // hacía falta esperar (auditoría 2026-09-01, ronda 2).
-      'Docker Desktop no está corriendo. Si acabás de reiniciar la PC, esperá un minuto y volvé a intentar -- si el problema sigue, abrí Docker Desktop manualmente.',
-    );
-  }
+  await ensureDockerRunning();
 
   setStatus({ state: 'starting', message: 'Iniciando la base de datos…' });
   const exists = await docker(['inspect', CONTAINER_NAME]);
@@ -342,7 +438,15 @@ async function ensurePostgres(): Promise<string> {
     // (ronda 4). `POSTGRES_USER`/`POSTGRES_DB` no son secretos (nunca salen
     // de loopback), se quedan como estaban (auditoría 2026-09-06, ronda 5,
     // Seguridad P1).
-    await docker(
+    //
+    // La primera vez, `docker run` descarga la imagen de Postgres de Docker
+    // Hub: es el único paso del arranque que necesita internet.
+    setStatus({
+      state: 'starting',
+      message:
+        'Creando la base de datos… La primera vez descarga unos 150 MB y puede tardar unos minutos.',
+    });
+    const created = await docker(
       [
         'run',
         '-d',
@@ -364,6 +468,11 @@ async function ensurePostgres(): Promise<string> {
       ],
       { env: { ...process.env, POSTGRES_PASSWORD: postgresPassword } },
     );
+    if (!created) {
+      throw new Error(
+        'No se pudo crear la base de datos. La primera vez Opera necesita internet para descargarla (unos 150 MB): revisa la conexión y vuelve a intentar.',
+      );
+    }
   }
 
   setStatus({
@@ -423,7 +532,7 @@ async function runMigrations(databaseUrl: string): Promise<void> {
       message: stderr,
     });
     throw new Error(
-      'No se pudo preparar la base de datos. Volvé a intentar; si el problema sigue, revisá el registro de errores desde Opera.',
+      'No se pudo preparar la base de datos. Vuelve a intentar; si el problema sigue, revisa el registro de errores desde Opera.',
     );
   }
 }
@@ -971,7 +1080,7 @@ function start(): Promise<void> {
       await runMigrations(databaseUrl);
       if (await isPortInUse(Number(BACKEND_PORT))) {
         throw new Error(
-          `Ya hay otro programa usando el puerto ${BACKEND_PORT}. Cerrá cualquier otra ventana de Opera abierta (revisá también el Administrador de tareas) y volvé a intentar.`,
+          `Ya hay otro programa usando el puerto ${BACKEND_PORT}. Cierra cualquier otra ventana de Opera abierta (revisa también el Administrador de tareas) y vuelve a intentar.`,
         );
       }
       startBackendProcess({
@@ -1024,6 +1133,7 @@ let backupIntervalHandle: ReturnType<typeof setInterval> | null = null;
 // backend se levanta a mano de la forma de siempre.
 export function initBackendManager(window: BrowserWindow): void {
   win = window;
+  ensureDockerOnPath();
   ipcMain.handle('backend:get-status', () => currentStatus);
   ipcMain.handle('backend:retry', () => start());
   ipcMain.handle('backend:get-backup-status', () => getBackupStatus());

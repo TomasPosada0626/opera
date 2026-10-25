@@ -1,4 +1,12 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  screen,
+  session,
+} from 'electron';
 import path from 'node:path';
 import { clearToken, readToken, writeToken } from './secure-token-store';
 import {
@@ -65,9 +73,32 @@ function applyContentSecurityPolicy() {
   });
 }
 
+// Mismos tonos que --color-surface en src/index.css: lo que se ve mientras
+// carga el renderer, antes del primer cuadro.
+const WINDOW_BACKGROUND = { light: '#f8fafc', dark: '#0b0f19' };
+
+// Tamaño inicial: casi toda el área útil de la pantalla, con tope de
+// 1600x1000. Sin esto la ventana arrancaba en el mínimo (1024x640), chica
+// en cualquier monitor.
+function initialWindowSize(): { width: number; height: number } {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  return {
+    width: Math.min(1600, Math.round(width * 0.92)),
+    height: Math.min(1000, Math.round(height * 0.92)),
+  };
+}
+
 function createWindow() {
   win = new BrowserWindow({
     title: 'Opera',
+    ...initialWindowSize(),
+    center: true,
+    // Se muestra recién con el primer cuadro pintado (ready-to-show, más
+    // abajo): sin esto se veía un destello blanco y la página armándose.
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors
+      ? WINDOW_BACKGROUND.dark
+      : WINDOW_BACKGROUND.light,
     // Sin esto, nada impedía redimensionar a un tamaño donde el layout con
     // sidebar se rompe (señalado en la auditoría 2026-08-28) — no es un
     // tamaño de ventana inicial, solo el piso al que se puede achicar.
@@ -89,6 +120,10 @@ function createWindow() {
       sandbox: true,
       nodeIntegration: false,
     },
+  });
+
+  win.once('ready-to-show', () => {
+    win?.show();
   });
 
   // La app nunca abre ventanas nuevas ni navega fuera de sí misma a
@@ -215,9 +250,41 @@ ipcMain.handle('error-log:report', (_event, entry: unknown) =>
 ipcMain.handle('error-log:export', () => exportErrorLog());
 ipcMain.handle('updater:restart', () => restartAndInstall());
 
+// Una sola Opera a la vez: un segundo doble clic en el acceso directo
+// levantaba otra ventana con su propio backend, que chocaba con el primero
+// por el puerto y la base. Ahora el segundo intento trae al frente la
+// ventana que ya estaba abierta.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+app.on('second-instance', () => {
+  if (!win) {
+    return;
+  }
+  if (win.isMinimized()) {
+    win.restore();
+  }
+  win.show();
+  win.focus();
+});
+
 void app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) {
+    return;
+  }
   if (!VITE_DEV_SERVER_URL) {
     applyContentSecurityPolicy();
+    // El menú por defecto de Electron (File/Edit/View/Window/Help, en
+    // inglés) no tiene nada que Opera use. Copiar/pegar siguen funcionando
+    // en los campos sin él.
+    Menu.setApplicationMenu(null);
+  }
+  if (process.platform === 'win32') {
+    // Mismo appId que electron-builder.json5: la barra de tareas agrupa la
+    // ventana con el acceso directo en vez de mostrarla como otra app.
+    app.setAppUserModelId('com.opera-erp.desktop');
   }
   createWindow();
   // Solo en empaquetado — en dev (`pnpm dev`, cargando desde Vite) no hay
