@@ -73,11 +73,13 @@ Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend co
 ### Diagrama de contexto (C4 nivel 1)
 
 Opera es un sistema cerrado: un solo tipo de usuario (el Administrador del
-taller) opera todo el ERP, y no hay integraciones con sistemas externos —
-sin pasarela de pagos, sin proveedor de correo, sin ERP externo del que
-importar/exportar datos. Esa ausencia es deliberada, no un hueco: cada
-dato que el negocio necesita (clientes, proveedores, inventario, ventas) se
-gestiona dentro del propio sistema.
+taller) opera todo el ERP, sin pasarela de pagos ni ERP externo del que
+importar/exportar datos — cada dato que el negocio necesita (clientes,
+proveedores, inventario, ventas, cobro) se gestiona dentro del propio
+sistema. Las dos únicas salidas a internet son opcionales y degradan en
+silencio si no hay conexión: un servidor SMTP para "olvidé mi contraseña"
+(solo si se configura) y GitHub Releases para buscar actualizaciones de la
+app de escritorio.
 
 ```mermaid
 flowchart TB
@@ -103,7 +105,7 @@ flowchart LR
     end
 
     Admin -- "Usa" --> Desktop
-    Desktop -- "HTTPS / JSON<br/>JWT en cada request" --> API
+    Desktop -- "HTTP / JSON en la LAN (ADR 0007)<br/>JWT en cada request" --> API
     API -- "SQL vía Prisma<br/>(transacciones Serializable<br/>en operaciones críticas)" --> DB
 ```
 
@@ -142,6 +144,7 @@ mantenerse en dos lugares a la vez.
 | Autenticación            | JWT + Argon2                                          |
 | Frontend / Desktop       | Electron, React, Vite, TypeScript, Tailwind CSS       |
 | Formularios y validación | React Hook Form + Zod                                 |
+| Tipografía               | Geist + Geist Mono (`@fontsource`, empaquetadas)      |
 | Estado de datos remotos  | TanStack Query                                        |
 | Testing                  | Jest (unitarios/integración), Playwright (end-to-end) |
 | Documentación de API     | Swagger / OpenAPI (`@nestjs/swagger`)                 |
@@ -157,7 +160,7 @@ mantenerse en dos lugares a la vez.
 ```
 opera/
 ├── .github/
-│   └── workflows/   # CI (lint + build en cada PR)
+│   └── workflows/   # CI (audit, lint, tests, e2e, build, instalador), CodeQL, audit semanal, release
 ├── .husky/
 │   └── pre-commit   # lint-staged (ESLint + Prettier)
 ├── packages/
@@ -376,30 +379,34 @@ Las entidades centrales y las invariantes reales que el sistema hace cumplir por
 
 **Kardex (`StockMovement`).** Ledger append-only — nunca se edita ni se borra una fila (ver [ADR 0001](docs/adr/0001-kardex-append-only.md)). El stock actual de un producto en una bodega es siempre `SUM(quantity)` de sus movimientos, nunca un campo que se escribe directamente. Toda corrección es una entrada nueva que revierte, no una edición de la original. Movimientos manuales (`ENTRADA`/`SALIDA`/`AJUSTE`) y los generados por otros módulos (producción, remisiones) comparten esta misma tabla.
 
-**Producción.** `BillOfMaterials` (una receta activa por producto terminado, no versionada — una orden completada queda registrada como movimientos reales, no como referencia a "qué receta se usó") y `ProductionOrder` (`PENDIENTE` → `COMPLETADA`/`CANCELADA`). Completar una orden es una única transacción `Serializable`: revalida stock de cada componente, escribe una `SALIDA` por componente consumido y una `ENTRADA` del terminado, y calcula costo por promedio ponderado ([ADR 0002](docs/adr/0002-costeo-promedio-ponderado.md)) — todo o nada.
+**Producción.** `BillOfMaterials` (lista de materiales: qué materias primas e insumos lleva una unidad de un producto terminado; opcional por producto, editable en Productos → Materiales, no versionada — una orden completada queda registrada como movimientos reales, no como referencia a "qué lista se usó") y `ProductionOrder` (`PENDIENTE` → `COMPLETADA`/`CANCELADA`). Completar una orden es una única transacción `Serializable`: revalida stock de cada componente, escribe una `SALIDA` por componente consumido y una `ENTRADA` del terminado, y calcula costo por promedio ponderado ([ADR 0002](docs/adr/0002-costeo-promedio-ponderado.md)) — todo o nada.
 
-**Ventas: fabricación sobre pedido.** `Order` (`PENDIENTE` → `EN_PRODUCCION` → `EN_ALMACEN`, o `CANCELADO`) declara la intención de venta sin tocar stock — no hay inventario de terminado esperando venta, cada pedido se fabrica después de crearse. El stock del terminado entra al pasar a `EN_ALMACEN`. `Remission` (nota de remisión, con consecutivo autoincremental) es el hecho real de despacho: solo se puede crear contra un pedido `EN_ALMACEN`, valida que la cantidad remisionada no exceda lo pedido (acumulando líneas repetidas de la misma solicitud) ni el stock físico disponible, y genera la `SALIDA` real. Una remisión nunca se edita — corregirla es anularla (`voidedAt`/`voidReason`) y escribir una `ENTRADA` de reverso, dejando el historial completo e intacto. El estado de pago (`PAGADO`/`ABONADO`/`CARTERA`) es independiente del despacho y nunca aparece en el PDF/impresión que ve el cliente.
+**Ventas: fabricación sobre pedido.** `Order` (consecutivo `number`, fecha de envío estimada y notas; `PENDIENTE` → `EN_PRODUCCION` → `EN_ALMACEN` → `DESPACHADO`, o `CANCELADO`) declara la intención de venta sin tocar stock — no hay inventario de terminado esperando venta, cada pedido se fabrica después de crearse. El stock del terminado entra al pasar a `EN_ALMACEN`; si el producto tiene lista de materiales, en esa misma transacción se descuentan sus materias primas y el terminado entra con su costo ([ADR 0009](docs/adr/0009-lista-de-materiales-opcional-y-cobro-por-abonos.md)). Las marcas `createdAt` → `productionStartedAt` → `warehousedAt` → `dispatchedAt` dan el tiempo en cada estación, y un pedido con la fecha prometida vencida y sin despachar se marca como atrasado. `Remission` (nota de remisión, con consecutivo autoincremental) es el hecho real de despacho: solo se puede crear contra un pedido `EN_ALMACEN`, valida que la cantidad remisionada no exceda lo pedido (acumulando líneas repetidas de la misma solicitud) ni el stock físico disponible, y genera la `SALIDA` real. Una remisión nunca se edita — corregirla es anularla (`voidedAt`/`voidReason`) y escribir una `ENTRADA` de reverso, dejando el historial completo e intacto. Cuando lo remisionado cubre todo lo pedido, el pedido pasa solo a `DESPACHADO` (y vuelve a `EN_ALMACEN` si se anula una remisión).
+
+**Cobro.** Cada pago del cliente es un `RemissionPayment` (monto, medio, fecha, referencia), append-only como el Kardex: un abono mal registrado se anula con motivo, no se borra. El estado de pago de la remisión (`PAGADO`/`ABONADO`/`CARTERA`) y lo abonado son el resumen de esos abonos, calculado por el sistema — nunca se eligen a mano. No se puede abonar más que el saldo ni anular una remisión con abonos vigentes. El cobro nunca aparece en el PDF/impresión que ve el cliente.
 
 **Compras.** `Supplier`, `SupplierProduct` (precio vigente por par proveedor/producto) y `SupplierPurchase` (bitácora de qué se pidió, cuándo y a qué costo, con bodega de destino). Registrar la compra no mueve stock por sí solo — es solo la bitácora. Un `POST /supplier-purchases/:id/receive` explícito concilia "lo pedido" contra "lo que de verdad entró": dentro de una transacción con guard atómico contra doble-recepción, escribe una `ENTRADA` real por la cantidad completa y enlaza la compra a ese movimiento (`stockMovementId`). No admite recepciones parciales — el mismo criterio de scope que el resto del dominio (ver `Order`/`Remission`).
 
-**Clientes.** `Customer` con saldo pendiente calculado a partir de sus remisiones no anuladas y su estado de pago — nunca un campo de saldo que se actualiza a mano.
+**Clientes.** `Customer` con saldo pendiente calculado a partir de sus remisiones no anuladas (total despachado menos lo abonado) — nunca un campo de saldo que se actualiza a mano — y su historial de abonos.
 
 **Seguridad y auditoría.** `User`/`Role`/`Permission` (RBAC dinámico — hoy solo existe el rol `ADMIN`, el schema soporta más sin migración). El guard revalida contra la base de datos en cada request, no solo contra el JWT — un cambio de rol o una cuenta desactivada surte efecto de inmediato, no cuando expire el token. `AuditLog` registra estado anterior/posterior de cada mutación relevante — un ledger propio, con el mismo espíritu append-only que el Kardex.
 
 ## Módulos
 
-| Módulo              | Qué hace                                                                                                                                                                         |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Inventario**      | Bodegas, catálogo (productos/categorías/unidades), Kardex por producto/bodega, entradas/salidas/ajustes manuales, alertas de stock bajo.                                         |
-| **Producción**      | Recetas (BOM), órdenes de producción, costeo por promedio ponderado, cierre atómico que mueve el Kardex.                                                                         |
-| **Ventas**          | Pedidos con ciclo de vida completo (pendiente → producción → almacén), remisiones con consecutivo, impresión y descarga en PDF, anulación con reverso, estado de pago y cartera. |
-| **Compras**         | Proveedores, precio por producto, bitácora de compras, recepción que concilia lo pedido contra el Kardex real.                                                                   |
-| **Clientes**        | CRUD, saldo pendiente derivado de remisiones.                                                                                                                                    |
-| **Reportes**        | Inventario valorizado, ventas por rango de fecha, productos más vendidos — cada uno exportable a PDF/Excel.                                                                      |
-| **Dashboard**       | KPIs agregados de todos los módulos en un solo endpoint.                                                                                                                         |
-| **Búsqueda global** | Salto rápido por término a través de productos, clientes, proveedores, remisiones y órdenes de producción.                                                                       |
-| **Usuarios**        | CRUD, reseteo de contraseña, RBAC.                                                                                                                                               |
-| **Observabilidad**  | Logs estructurados con id de correlación (backend), captura de errores exportable (desktop), `/health` con verificación real de Postgres.                                        |
+| Módulo              | Qué hace                                                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Inventario**      | Bodegas, catálogo (productos/categorías/unidades), Kardex por producto/bodega, entradas/salidas/ajustes manuales, alertas de stock bajo.                                                                            |
+| **Producción**      | Lista de materiales por producto, órdenes de producción, costeo por promedio ponderado, cierre atómico que mueve el Kardex.                                                                                         |
+| **Ventas**          | Pedidos con consecutivo, fecha de envío y tiempo por estación (pendiente → producción → almacén → despachado), atrasados, remisiones con consecutivo, PDF e impresión con firma de recibido, anulación con reverso. |
+| **Cobro**           | Abonos por remisión con fecha, medio y referencia; anulación con motivo; saldo por cliente y reporte de cartera con antigüedad.                                                                                     |
+| **Compras**         | Proveedores, precio por producto, bitácora de compras, recepción que concilia lo pedido contra el Kardex real.                                                                                                      |
+| **Clientes**        | CRUD, detalle con pedidos, último pedido, saldo pendiente e historial de abonos.                                                                                                                                    |
+| **Reportes**        | Cartera por cliente, ventas por rango de fecha, productos más vendidos e inventario valorizado — cada uno exportable a Excel.                                                                                       |
+| **Dashboard**       | Lo que necesita atención: por cobrar, pedidos atrasados, pedidos por estación, stock crítico y actividad reciente.                                                                                                  |
+| **Auditoría**       | Registro de solo lectura de cada cambio relevante: quién, cuándo y qué campos cambiaron.                                                                                                                            |
+| **Búsqueda global** | Salto rápido por término a través de productos, clientes, proveedores, pedidos, remisiones y órdenes de producción.                                                                                                 |
+| **Usuarios**        | CRUD, reseteo de contraseña, RBAC.                                                                                                                                                                                  |
+| **Observabilidad**  | Logs estructurados con id de correlación (backend), captura de errores exportable (desktop), `/health` con verificación real de Postgres.                                                                           |
 
 ## Decisiones de arquitectura (ADRs)
 
@@ -413,6 +420,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0006 — Retención y archivado de AuditLog y StockMovement](docs/adr/0006-retencion-auditlog-stockmovement.md)
 - [0007 — Sin TLS en HTTP local ni SSL en la conexión a Postgres](docs/adr/0007-sin-tls-lan-de-confianza.md)
 - [0008 — Instalador autocontenido con Docker Desktop embebido](docs/adr/0008-instalador-autocontenido-docker-desktop.md)
+- [0009 — Lista de materiales opcional y cobro por abonos](docs/adr/0009-lista-de-materiales-opcional-y-cobro-por-abonos.md)
 
 ## Changelog
 
