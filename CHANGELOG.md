@@ -25,6 +25,19 @@ hacia atrás; este changelog arranca desde que se creó.
   Si un producto la tiene, al pasar su pedido a almacén se descuentan sus
   materias primas y el terminado entra con su costo.
 - Pantalla de Auditoría (`GET /audit` ya existía, no tenía pantalla).
+- Código de recuperación de contraseña sin correo: se muestra una vez al
+  crear la cuenta (`POST /setup/admin`), se regenera desde el menú de
+  usuario y se usa en "¿Olvidaste tu contraseña?"
+  (`POST /auth/reset-password-with-recovery-code`), que lo consume y
+  muestra el siguiente. `GET /auth/recovery-options`: la pantalla solo
+  ofrece el correo si SMTP está configurado. Aviso en la app para cuentas
+  que todavía no tienen código.
+- Restaurar un respaldo desde la app (menú de usuario → Respaldos):
+  respalda el estado actual primero, aplica el respaldo en una sola
+  transacción y pide iniciar sesión de nuevo. Antes había que hacerlo desde
+  una terminal con `gunzip`, que Windows no trae.
+- Pantallas de inicio de sesión, configuración inicial y recuperación con
+  un marco común (panel de marca + formulario).
 - Rediseño completo de la app de escritorio: Dashboard alrededor de lo que
   necesita atención, detalle de pedido con línea de tiempo de estaciones y
   panel de cobro, Reportes por pestañas, tipografía Geist, sistema de
@@ -102,6 +115,16 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Los respaldos automáticos de la app empaquetada fallaban siempre: la
+  carpeta `%ProgramData%\Opera\backups` quedaba con permisos solo para
+  SYSTEM/Administradores y la app corre como usuario normal. Ahora van a
+  `%APPDATA%\Opera\backups`.
+- El log del backend empaquetado intentaba escribirse dentro de Program
+  Files (sin permiso para un usuario normal); ahora va a
+  `%APPDATA%\Opera\logs` (`LOG_DIR`).
+- Pedir "olvidé mi contraseña" con el correo de alguien le cerraba la
+  sesión (guardar el código movía `User.updatedAt`); el estado de
+  recuperación vive ahora en su propia tabla.
 - El saldo pendiente del cliente sumaba también las remisiones anuladas.
 - El conteo de órdenes de producción del dashboard (y la búsqueda global)
   usaba un estado `EN_PROCESO` que no existe — siempre 0 — y no mostraba
@@ -179,6 +202,11 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Seguridad
 
+- El backend de la app de escritorio escuchaba en todas las interfaces de
+  la LAN; ahora solo en `127.0.0.1` (`HOST`).
+- El código de 6 dígitos por correo se invalida tras 5 intentos fallidos.
+- Exportar todos los datos de un cliente o proveedor exige rol ADMIN
+  explícito.
 - `POST /setup/admin` sin restricción de origen: cualquier dispositivo de
   la LAN podía llamarlo mientras el backend escucha en `0.0.0.0` — ahora
   requiere loopback (`LoopbackOnlyGuard`).
