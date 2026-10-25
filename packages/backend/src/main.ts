@@ -83,6 +83,13 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
-  await app.listen(configService.get<number>('PORT') ?? 3000);
+  // HOST sin definir = todas las interfaces (desarrollo, y un despliegue
+  // en la LAN con varios equipos, ver ADR 0007). La app de escritorio lo
+  // fija a 127.0.0.1: ahí el backend y la ventana corren en la misma PC, y
+  // escuchar en todas las interfaces exponía login, recuperación de
+  // contraseña y /setup a cualquiera en la red (auditoría ronda 6).
+  const port = configService.get<number>('PORT') ?? 3000;
+  const host = configService.get<string>('HOST');
+  await (host ? app.listen(port, host) : app.listen(port));
 }
 void bootstrap();

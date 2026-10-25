@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
@@ -59,6 +60,13 @@ import { SetupModule } from './setup/setup.module';
           .valid('development', 'production', 'test')
           .default('development'),
         PORT: Joi.number().port().default(3000),
+        // Ver main.ts: la app de escritorio lo fija a 127.0.0.1.
+        HOST: Joi.string().hostname().optional(),
+        // Carpeta del log rotado. Relativa al cwd por defecto (desarrollo);
+        // la app de escritorio la apunta al perfil del usuario, porque el
+        // cwd del backend empaquetado cae dentro de Program Files, donde
+        // un usuario normal no puede escribir.
+        LOG_DIR: Joi.string().optional(),
         SWAGGER_ENABLED: Joi.string().valid('true', 'false').default('false'),
         RATE_LIMIT_PER_MINUTE: Joi.number().positive().optional(),
         // SMTP para "olvidé mi contraseña" (MailService) — todas opcionales
@@ -101,7 +109,10 @@ import { SetupModule } from './setup/setup.module';
             {
               target: 'pino-roll',
               options: {
-                file: 'logs/opera-backend.log',
+                file: path.join(
+                  process.env.LOG_DIR ?? 'logs',
+                  'opera-backend.log',
+                ),
                 size: '10m',
                 limit: { count: 5 },
                 mkdir: true,

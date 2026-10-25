@@ -7,7 +7,7 @@
 // AuthService.forgotPassword). Sortear eso sembrando el hash ANTES de que
 // el spec llame al paso 1 real (POST /auth/forgot-password) no sirve: ese
 // mismo endpoint genera su propio código aleatorio y SOBREESCRIBE
-// passwordResetCodeHash con el suyo (encontrado corriendo esto por primera
+// PasswordRecovery.resetCodeHash con el suyo (encontrado corriendo esto por primera
 // vez contra el backend real -- el fixture pre-sembrado quedaba invalidado
 // apenas el spec pedía el código de verdad). En su lugar, `reseed-code` se
 // llama DESPUÉS del paso 1 real del spec, jugando el rol de "leer el
@@ -83,12 +83,18 @@ async function setup() {
 // ver el comentario de arriba sobre por qué no puede sembrarse antes.
 async function reseedCode() {
   const state = loadState();
-  await prisma.user.update({
+  const user = await prisma.user.findUniqueOrThrow({
     where: { email: state.resetEmail },
-    data: {
-      passwordResetCodeHash: await argon2.hash(state.resetCode, HASH_OPTIONS),
-      passwordResetExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
-    },
+  });
+  const reset = {
+    resetCodeHash: await argon2.hash(state.resetCode, HASH_OPTIONS),
+    resetExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    resetAttempts: 0,
+  };
+  await prisma.passwordRecovery.upsert({
+    where: { userId: user.id },
+    create: { userId: user.id, ...reset },
+    update: reset,
   });
   console.log('reseed complete');
 }

@@ -1,11 +1,30 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+} from '@nestjs/common';
+import { Request } from 'express';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from './decorators/public.decorator';
+import { AnyAuthenticated } from './decorators/any-authenticated.decorator';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordWithCodeDto } from './dto/reset-password-with-code.dto';
+import { ResetPasswordWithRecoveryCodeDto } from './dto/reset-password-with-recovery-code.dto';
+
+type AuthenticatedRequest = Request & { user: JwtPayload };
 
 // Configurable por env, no un ConfigService inyectado -- @Throttle() es un
 // decorador, se evalúa una sola vez al cargar el módulo, antes de que
@@ -87,5 +106,71 @@ export class AuthController {
       dto.newPassword,
     );
     return { message: 'Contraseña actualizada.' };
+  }
+
+  @Public()
+  @Get('recovery-options')
+  @ApiOperation({
+    summary: 'Qué vías de recuperación de contraseña hay en esta instalación',
+    description:
+      'email=true solo si SMTP está configurado. El código de recuperación offline siempre está disponible.',
+  })
+  @ApiResponse({ status: 200, description: '{ email, recoveryCode }' })
+  recoveryOptions() {
+    return this.authService.recoveryOptions();
+  }
+
+  @Public()
+  @Post('reset-password-with-recovery-code')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({
+    summary: 'Restablecer la contraseña con el código de recuperación',
+    description:
+      'Para instalaciones sin correo. El código usado se consume y se devuelve uno nuevo, que hay que anotar.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '{ recoveryCode } — el nuevo código de recuperación.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El correo o el código no coinciden.',
+  })
+  @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
+  resetPasswordWithRecoveryCode(@Body() dto: ResetPasswordWithRecoveryCodeDto) {
+    return this.authService.resetPasswordWithRecoveryCode(
+      dto.email,
+      dto.recoveryCode,
+      dto.newPassword,
+    );
+  }
+
+  @AnyAuthenticated()
+  @ApiBearerAuth()
+  @Get('recovery-code')
+  @ApiOperation({
+    summary: 'Si el usuario actual ya tiene código de recuperación',
+  })
+  @ApiResponse({ status: 200, description: '{ hasRecoveryCode, createdAt }' })
+  recoveryCodeStatus(@Req() req: AuthenticatedRequest) {
+    return this.authService.recoveryCodeStatus(req.user.sub);
+  }
+
+  @AnyAuthenticated()
+  @ApiBearerAuth()
+  @Post('recovery-code')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @ApiOperation({
+    summary: 'Generar un código de recuperación nuevo para el usuario actual',
+    description:
+      'Reemplaza al anterior. Se devuelve en claro esta única vez; después solo se guarda su hash.',
+  })
+  @ApiResponse({ status: 200, description: '{ recoveryCode }' })
+  async issueRecoveryCode(@Req() req: AuthenticatedRequest) {
+    return {
+      recoveryCode: await this.authService.issueRecoveryCode(req.user.sub),
+    };
   }
 }

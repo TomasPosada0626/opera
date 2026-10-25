@@ -49,7 +49,7 @@ export class SetupController {
   @ApiOperation({
     summary: 'Crea la primera cuenta de administrador de esta instalación',
     description:
-      'Solo funciona si todavía no existe ningún usuario. Devuelve un JWT, igual que /auth/login.',
+      'Solo funciona si todavía no existe ningún usuario. Devuelve un JWT, igual que /auth/login, y el primer código de recuperación de la cuenta (mostrarlo una sola vez).',
   })
   @ApiResponse({
     status: 201,
