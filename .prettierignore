@@ -4,3 +4,4 @@ dist-electron
 release
 coverage
 pnpm-lock.yaml
+.impeccable
