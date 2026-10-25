@@ -53,6 +53,7 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 - [Respaldo y restauración](#respaldo-y-restauración)
 - [Pruebas](#pruebas)
 - [Compilación](#compilación)
+- [Instalar Opera en otra PC](#instalar-opera-en-otra-pc)
 - [Solución de problemas comunes](#solución-de-problemas-comunes)
 - [Modelo de dominio](#modelo-de-dominio)
 - [Módulos](#módulos)
@@ -76,10 +77,11 @@ Opera es un sistema cerrado: un solo tipo de usuario (el Administrador del
 taller) opera todo el ERP, sin pasarela de pagos ni ERP externo del que
 importar/exportar datos — cada dato que el negocio necesita (clientes,
 proveedores, inventario, ventas, cobro) se gestiona dentro del propio
-sistema. Las dos únicas salidas a internet son opcionales y degradan en
-silencio si no hay conexión: un servidor SMTP para "olvidé mi contraseña"
-(solo si se configura) y GitHub Releases para buscar actualizaciones de la
-app de escritorio.
+sistema. Fuera de la primera vez que se abre la app instalada (descarga la
+imagen de PostgreSQL de Docker Hub), las únicas salidas a internet son
+opcionales y degradan en silencio si no hay conexión: un servidor SMTP para
+"olvidé mi contraseña" (solo si se configura) y GitHub Releases para buscar
+actualizaciones de la app de escritorio.
 
 ```mermaid
 flowchart TB
@@ -360,15 +362,42 @@ Desde ahí, ese instalador específico deja de disparar la advertencia de SmartS
 
 ### Publicar una nueva versión (actualización automática)
 
-El cliente de escritorio revisa GitHub Releases al arrancar (cada 6 horas mientras sigue abierto) y, si hay una versión nueva, la descarga en segundo plano y avisa con un banner ("Reiniciar y actualizar") — sin interrumpir a quien está trabajando, y sin fallar de forma visible si no hay internet (Opera es LAN-first, el chequeo de actualización es la única parte que sí necesita salir a internet, y lo hace en silencio si no puede).
+El cliente de escritorio revisa GitHub Releases al arrancar (cada 6 horas mientras sigue abierto) y, si hay una versión nueva, la descarga en segundo plano y avisa con un banner ("Reiniciar y actualizar") — sin interrumpir a quien está trabajando, y sin fallar de forma visible si no hay internet (el chequeo de actualización es la única parte de Opera que sale a internet, y si no puede lo hace en silencio).
 
-Para publicar una versión nueva:
+Para publicar una versión nueva, desde un commit de `main` que ya pasó CI:
 
-1. Sube la versión en `packages/desktop/package.json`.
-2. Genera un [token de GitHub](https://github.com/settings/tokens) con permiso `repo` (o un fine-grained token con `contents: write` sobre este repo) y expórtalo como `GH_TOKEN`.
-3. Corre `pnpm --filter desktop release` — compila, empaqueta, y sube el instalador como un GitHub Release con los metadatos que `electron-updater` necesita.
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
 
-El repo es público, así que el chequeo y la descarga de actualizaciones no necesitan ningún token embebido en la app que se distribuye — `GH_TOKEN` solo hace falta del lado de quien publica.
+El workflow `release.yml` empaqueta el instalador con la versión del tag y lo sube a un Release de GitHub **en borrador**: ahí se puede descargar y probar antes de que nadie lo reciba. Las instalaciones existentes solo se actualizan cuando el borrador se publica desde la página de Releases.
+
+El repo es público, así que el chequeo y la descarga de actualizaciones no necesitan ningún token embebido en la app que se distribuye.
+
+## Instalar Opera en otra PC
+
+Lo que necesita la PC donde se va a usar Opera:
+
+| Requisito      | Detalle                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| Windows        | Windows 10 (22H2) u 11, de 64 bits. Sirve la edición Home.                                                   |
+| Memoria        | 8 GB de RAM recomendados (Docker Desktop reserva parte).                                                     |
+| Disco          | Unos 10 GB libres (Docker Desktop, la base de datos y los respaldos).                                        |
+| Virtualización | Activada en el BIOS/UEFI (Intel VT-x o AMD-V). El instalador avisa si está apagada.                          |
+| Internet       | Solo la primera vez que se abre Opera, para descargar la base de datos (unos 150 MB). Después no hace falta. |
+
+Pasos:
+
+1. **Conseguir el instalador.** Descarga `Opera-Windows-<versión>-Setup.exe` del [Release de GitHub](https://github.com/TomasPosada0626/opera/releases) (o compílalo con `pnpm build`, queda en `packages/desktop/release/<versión>/`) y llévalo a la PC en una memoria USB.
+2. **Abrirlo.** Como el instalador no está firmado, Windows muestra "Windows protegió su PC": elige **Más información → Ejecutar de todas formas** (o fírmalo antes, ver [Firmar el instalador](#firmar-el-instalador)). Acepta el aviso de permisos de administrador.
+3. **Asistente.** Elige la carpeta y, en la página de Docker Desktop, deja marcadas las dos casillas (instalar Docker y crear el acceso directo). Si aparece el aviso de virtualización desactivada, sigue igual y actívala en el BIOS antes de abrir Opera.
+4. **Reinicios.** Si Windows necesita activar sus componentes de virtualización, la PC se reinicia sola a mitad de la instalación y, al volver a encender, la termina por su cuenta en unos minutos. Al terminar de instalar Docker Desktop, el instalador pide reiniciar: acepta (así la cuenta de Windows recibe el permiso para usar Docker).
+5. **Primer arranque.** Abre Opera desde el acceso directo. La primera vez abre Docker Desktop por su cuenta, descarga y crea la base de datos y la prepara; la pantalla de arranque muestra en qué paso va. Puede tardar unos minutos solo esta vez. Docker Desktop puede mostrar su propia ventana de bienvenida: se puede cerrar (sigue funcionando en la bandeja) y no hace falta crear una cuenta de Docker.
+6. **Crear la cuenta.** Opera pide crear la cuenta de administrador y después muestra el **código de recuperación**: anótalo en papel y guárdalo fuera del computador. Es la única forma de recuperar la contraseña si se olvida.
+7. **Listo.** Opera se abre sola cada vez que se hace doble clic en el acceso directo, aunque Docker Desktop esté cerrado. Los respaldos se hacen solos (uno por día, mientras Opera esté abierta) en `%APPDATA%\Opera\backups`; conviene copiar esa carpeta a una memoria USB o a la nube de vez en cuando.
+
+**Si ya había datos en otra PC**: en la PC anterior, copia el respaldo más reciente (`opera-<fecha>.sql.gz`) de `%APPDATA%\Opera\backups`. En la nueva, después de crear la cuenta, pégalo en esa misma carpeta y restáuralo desde el menú de usuario → **Respaldos**. Las cuentas y contraseñas pasan a ser las del respaldo.
 
 ## Solución de problemas comunes
 
@@ -378,7 +407,9 @@ El repo es público, así que el chequeo y la descarga de actualizaciones no nec
 
 **Instalador empaquetado** (ver [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)):
 
-- **Docker Desktop no arranca después de instalar Opera**: si la PC no tenía WSL/Virtual Machine Platform activado, Windows se reinició solo durante la instalación y Docker Desktop puede tardar un minuto en terminar de arrancar tras ese reinicio — esperá y volvé a abrir Opera. Si sigue sin arrancar, la causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI.
+- **Opera dice que Docker Desktop no terminó de arrancar**: Opera abre Docker Desktop sola y lo espera hasta 3 minutos. Si acabas de reiniciar, espera un minuto y toca **Reintentar**. Si sigue igual, abre Docker Desktop desde el menú Inicio para ver qué dice: la causa más común es la virtualización (Intel VT-x/AMD-V) desactivada en el BIOS/UEFI.
+- **Opera dice que tu cuenta de Windows no tiene permiso para usar Docker**: el permiso (grupo `docker-users`) se aplica al iniciar sesión. Cierra sesión en Windows o reinicia la PC y vuelve a abrir Opera.
+- **La primera vez dice que no pudo crear la base de datos**: esa primera vez Opera descarga la imagen de PostgreSQL (unos 150 MB). Conecta la PC a internet y toca **Reintentar**; después ya no la necesita.
 - **No encuentro el Postgres de Opera en el puerto de siempre**: el Postgres que administra el instalador empaquetado corre en el puerto `5433` (contenedor `opera-postgres-app`), no en el `5432` de `docker-compose.yml` (dev) — a propósito, para que nunca colisionen en la misma PC.
 - **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` (errores de la app), `logs/opera-backend.log` (log rotado del backend) y `opera-secrets.json` respectivamente. Los respaldos automáticos están en `backups/` de esa misma carpeta. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano.
 - **Otra PC de la red no se conecta al backend de la app empaquetada**: es a propósito. La app de escritorio arranca su backend escuchando solo en `127.0.0.1` (`HOST`), así que la API no queda expuesta al resto de la LAN; el renderer de la propia app es su único cliente.

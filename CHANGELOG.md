@@ -38,6 +38,21 @@ hacia atrás; este changelog arranca desde que se creó.
   una terminal con `gunzip`, que Windows no trae.
 - Pantallas de inicio de sesión, configuración inicial y recuperación con
   un marco común (panel de marca + formulario).
+- Si Docker Desktop no está corriendo, Opera lo abre sola y lo espera
+  (hasta 3 minutos) en vez de mostrar un error. Mensajes distintos para
+  Docker no instalado, cuenta sin permiso de `docker-users` (pide cerrar
+  sesión), Docker que no arranca (virtualización) y la primera descarga de
+  la base sin internet.
+- Pantalla de arranque con los pasos reales (Docker, base de datos,
+  preparación, apertura), barra de progreso y, si falla, botones para
+  reintentar y exportar el registro de errores.
+- Una sola ventana de Opera a la vez: abrirla de nuevo trae al frente la
+  que ya estaba abierta, en vez de levantar un segundo backend.
+- Instalador: aviso previo si la virtualización está apagada en el BIOS,
+  permiso de `docker-users` para la cuenta que va a usar Opera (también
+  tras el reinicio de WSL, que corre como SYSTEM), pedido de reinicio al
+  terminar de instalar Docker Desktop, y asistente solo en español.
+- Guía "Instalar Opera en otra PC" en el README.
 - Rediseño completo de la app de escritorio: Dashboard alrededor de lo que
   necesita atención, detalle de pedido con línea de tiempo de estaciones y
   panel de cobro, Reportes por pestañas, tipografía Geist, sistema de
@@ -115,6 +130,23 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Cantidades decimales mostradas tal como llegaban de la base: "10.000"
+  por diez unidades (en Colombia se lee diez mil) o "1171.2 kg"; costos sin
+  formato de pesos en Kardex, Producción y compras a proveedores. Ahora todo
+  pasa por los formateadores comunes en es-CO.
+- Los montos y conteos se veían en letra monoespaciada; ahora usan Geist
+  con dígitos tabulares (siguen alineados en columna). La mono queda para
+  SKU, códigos e identificadores.
+- El instalador mostraba "Docker Desktop no pudo iniciar… revisa el BIOS"
+  después de cada instalación nueva de Docker, que todavía no está corriendo
+  en ese momento. El aviso ahora sale antes de instalar y solo si de verdad
+  la virtualización está apagada.
+- Reinstalar Opera con Docker Desktop cerrado ofrecía reinstalar Docker
+  completo.
+- La app empaquetada mostraba el menú por defecto de Electron (en inglés),
+  arrancaba en una ventana de 1024x640 y con un destello blanco.
+- Listados de clientes y proveedores: NIT, teléfono y "Ver detalle" se
+  partían en varias líneas; el nombre ahora lleva al detalle.
 - Los respaldos automáticos de la app empaquetada fallaban siempre: la
   carpeta `%ProgramData%\Opera\backups` quedaba con permisos solo para
   SYSTEM/Administradores y la app corre como usuario normal. Ahora van a
