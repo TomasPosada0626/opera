@@ -1,5 +1,6 @@
-import { ChevronRight, Mail, Phone } from 'lucide-react';
+import { Mail, Phone } from 'lucide-react';
 import { Link } from 'react-router';
+import { DetailLink } from './DetailLink';
 
 interface Party {
   name: string;
@@ -69,13 +70,5 @@ export function PartyContactCell({ party }: { party: Party }) {
 }
 
 export function PartyDetailLink({ name, to }: { name: string; to: string }) {
-  return (
-    <Link
-      to={to}
-      aria-label={`Ver detalle de ${name}`}
-      className="text-ink-faint hover:text-ink hover:bg-chrome-strong focus-visible:ring-accent inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors outline-none focus-visible:ring-2"
-    >
-      <ChevronRight className="h-4 w-4" />
-    </Link>
-  );
+  return <DetailLink to={to} label={'Ver detalle de ' + name} />;
 }
