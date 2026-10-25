@@ -9,6 +9,29 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Seguimiento de pedidos: consecutivo legible (`Pedido No. 45`), fecha de
+  envío estimada y notas editables (`PATCH /orders/:id`), estado
+  `DESPACHADO` automático cuando lo remisionado cubre todo lo pedido, y
+  `dispatchedAt`/`cancelledAt` para medir el tiempo en cada estación.
+  Filtro `?overdue=true` de pedidos atrasados y búsqueda por número.
+- Cobro por abonos (`RemissionPayment`): cada pago con monto, medio, fecha
+  y referencia, anulable con motivo (`POST /remissions/:id/payments`,
+  `PATCH /remissions/:id/payments/:id/void`). El estado de pago se calcula
+  solo. Historial de abonos por cliente (`GET /customers/:id/payments`) y
+  reporte de cartera con antigüedad (`GET /reports/cartera`, + Excel). Ver
+  [ADR 0009](docs/adr/0009-lista-de-materiales-opcional-y-cobro-por-abonos.md).
+- Lista de materiales editable (`GET/PUT/DELETE
+/products/:id/bill-of-materials`, pantalla en Productos → Materiales).
+  Si un producto la tiene, al pasar su pedido a almacén se descuentan sus
+  materias primas y el terminado entra con su costo.
+- Pantalla de Auditoría (`GET /audit` ya existía, no tenía pantalla).
+- Rediseño completo de la app de escritorio: Dashboard alrededor de lo que
+  necesita atención, detalle de pedido con línea de tiempo de estaciones y
+  panel de cobro, Reportes por pestañas, tipografía Geist, sistema de
+  componentes refinado (PageHeader, Tabs, FilterChips, KPICard enlazable,
+  Modal con tamaños) y sidebar por secciones.
+- `.github/workflows/audit.yml`: `pnpm audit` semanal sobre `main`.
+
 - Instalador de Windows autocontenido: Electron administra Postgres y el
   backend como procesos propios (`electron/backend-manager.ts`), el
   instalador NSIS embebe y auto-instala Docker Desktop si hace falta (con
@@ -78,6 +101,15 @@ hacia atrás; este changelog arranca desde que se creó.
   camino tumbaba el build entero.
 
 ### Corregido
+
+- El saldo pendiente del cliente sumaba también las remisiones anuladas.
+- El conteo de órdenes de producción del dashboard (y la búsqueda global)
+  usaba un estado `EN_PROCESO` que no existe — siempre 0 — y no mostraba
+  las canceladas.
+- 79 vulnerabilidades de dependencias acumuladas en `main` desde el
+  2026-09-16 (4 críticas, 25 altas), que además bloqueaban en CI todos los
+  PRs de Dependabot. `pnpm audit` vuelve a 0.
+- 313 warnings de ESLint (casi todos en tests e2e) bajados a 0.
 
 - Condición de carrera real en `POST /setup/admin`: dos requests
   concurrentes (dos dispositivos de la LAN, o un doble clic) podían crear
