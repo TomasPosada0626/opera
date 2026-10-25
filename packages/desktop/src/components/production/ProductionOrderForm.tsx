@@ -62,7 +62,7 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">
+        <span className="text-ink-secondary text-[13px] font-medium">
           Producto terminado
         </span>
         <ProductPicker
@@ -86,7 +86,7 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
       <div className="flex flex-col gap-1">
         <label
           htmlFor="quantity"
-          className="text-ink-muted text-sm font-medium"
+          className="text-ink-secondary text-[13px] font-medium"
         >
           Cantidad a producir
         </label>
@@ -96,7 +96,7 @@ export function ProductionOrderForm({ onSuccess }: ProductionOrderFormProps) {
           step="any"
           {...register('quantity', { valueAsNumber: true })}
           aria-invalid={!!errors.quantity}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
         />
         {errors.quantity && (
           <p className="text-danger text-xs">{errors.quantity.message}</p>

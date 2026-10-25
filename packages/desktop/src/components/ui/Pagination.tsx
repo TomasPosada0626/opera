@@ -18,15 +18,16 @@ export function Pagination({
 
   return (
     <div className="flex items-center justify-between px-1 py-1">
-      <span className="text-ink-muted text-sm">
-        Página {page} de {totalPages}
+      <span className="text-ink-muted text-[13px]">
+        Página <span className="figures text-ink">{page}</span> de{' '}
+        <span className="figures text-ink">{totalPages}</span>
       </span>
       <div className="flex gap-2">
         <Button
           variant="secondary"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="px-3 py-1.5"
+          size="sm"
         >
           <ChevronLeft className="h-4 w-4" />
           Anterior
@@ -35,7 +36,7 @@ export function Pagination({
           variant="secondary"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="px-3 py-1.5"
+          size="sm"
         >
           Siguiente
           <ChevronRight className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -72,21 +73,20 @@ function CategoriesPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-ink text-xl font-medium">Categorías</h1>
-          <p className="text-ink-muted mt-1 text-sm">
-            Categorías del catálogo de productos.
-          </p>
-        </div>
-        {isAdmin && (
-          <Button onClick={openCreateModal} className="shrink-0">
-            <Plus className="h-4 w-4" />
-            Nueva categoría
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Catálogo"
+        title="Categorías"
+        description="Agrupan los productos del catálogo para buscarlos, filtrarlos y reportarlos."
+        actions={
+          isAdmin && (
+            <Button onClick={openCreateModal}>
+              <Plus />
+              Nueva categoría
+            </Button>
+          )
+        }
+      />
 
       <div className="relative w-full max-w-sm">
         <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -96,7 +96,7 @@ function CategoriesPage() {
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="Buscar por nombre…"
           aria-label="Buscar categorías"
-          className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+          className="field h-9 w-full pr-3 pl-9"
         />
       </div>
 

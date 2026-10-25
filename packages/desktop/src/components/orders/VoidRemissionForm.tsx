@@ -47,7 +47,7 @@ export function VoidRemissionForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="voidReason"
-          className="text-ink-muted text-sm font-medium"
+          className="text-ink-secondary text-[13px] font-medium"
         >
           Motivo de la anulación
         </label>
@@ -56,7 +56,7 @@ export function VoidRemissionForm({
           rows={3}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field px-3 py-2"
         />
       </div>
 

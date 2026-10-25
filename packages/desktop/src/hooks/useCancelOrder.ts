@@ -12,6 +12,7 @@ export function useCancelOrder() {
       apiFetch<Order>(`/orders/${orderId}/cancel`, { method: 'PATCH' }),
     onSuccess: (order) => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
     },
     meta: { successMessage: 'Pedido cancelado.' },

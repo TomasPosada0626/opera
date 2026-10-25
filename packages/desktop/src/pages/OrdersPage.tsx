@@ -1,111 +1,163 @@
 import { useState } from 'react';
-import { Eye, Plus } from 'lucide-react';
-import { Link } from 'react-router';
-import { Badge } from '../components/ui/Badge';
+import { ArrowRight, Hash, Plus } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
+import { FilterChips } from '../components/ui/FilterChips';
 import { Modal } from '../components/ui/Modal';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderForm } from '../components/orders/OrderForm';
 import { OrderStatusActions } from '../components/orders/OrderStatusActions';
+import {
+  DeliveryDate,
+  OrderStatusBadge,
+} from '../components/orders/OrderBadges';
+import { useDashboardSummary } from '../hooks/useDashboardSummary';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useOrders } from '../hooks/useOrders';
 import { getCurrentUser } from '../lib/current-user';
+import { formatDate, formatDuration, formatMoney } from '../lib/format';
+import {
+  currentStationSince,
+  deliveredFor,
+  deliveryState,
+  isOrderOpen,
+  orderTotal,
+} from '../lib/order-status';
 import type { Order, OrderStatus } from '../types/order';
 
 const PAGE_SIZE = 20;
 
-const statusBadgeVariant: Record<
-  OrderStatus,
-  'success' | 'warning' | 'danger'
-> = {
-  PENDIENTE: 'warning',
-  EN_PRODUCCION: 'warning',
-  EN_ALMACEN: 'success',
-  CANCELADO: 'danger',
-};
+type OrderFilter = OrderStatus | 'ATRASADOS' | undefined;
 
-const statusLabel: Record<OrderStatus, string> = {
-  PENDIENTE: 'Pendiente',
-  EN_PRODUCCION: 'En producción',
-  EN_ALMACEN: 'En almacén',
-  CANCELADO: 'Cancelado',
-};
-
-// Todos primero, luego el orden natural del flujo — no alfabético.
-const statusFilters: { value: OrderStatus | undefined; label: string }[] = [
-  { value: undefined, label: 'Todos' },
-  { value: 'PENDIENTE', label: 'Pendiente' },
-  { value: 'EN_PRODUCCION', label: 'En producción' },
-  { value: 'EN_ALMACEN', label: 'En almacén' },
-  { value: 'CANCELADO', label: 'Cancelado' },
-];
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
-}
-
-// El total no viene del backend (deriva de las líneas, ver schema.prisma) —
-// se calcula igual aquí, no se inventa un campo que el servidor no manda.
-function orderTotal(order: Order): number {
-  return order.items.reduce(
-    (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
+// Proporción despachada del pedido (sin remisiones anuladas): una barra
+// corta dice "a medias" sin abrir el detalle.
+function dispatchProgress(order: Order): number {
+  const ordered = order.items.reduce((sum, i) => sum + Number(i.quantity), 0);
+  if (ordered === 0) {
+    return 0;
+  }
+  const delivered = order.items.reduce(
+    (sum, item) => sum + deliveredFor(order, item.id),
     0,
   );
+  return Math.min(1, delivered / ordered);
 }
 
 function OrdersPage() {
+  const [searchParams] = useSearchParams();
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | undefined>(
-    undefined,
+  // ?filtro=atrasados llega desde el KPI del dashboard.
+  const [filter, setFilter] = useState<OrderFilter>(
+    searchParams.get('filtro') === 'atrasados' ? 'ATRASADOS' : undefined,
   );
+  const [numberSearch, setNumberSearch] = useState('');
+  const debouncedNumber = useDebouncedValue(numberSearch.trim(), 300);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
+  const summary = useDashboardSummary().data;
 
   const ordersQuery = useOrders({
     page,
     pageSize: PAGE_SIZE,
-    status: statusFilter,
+    status: filter === 'ATRASADOS' ? undefined : filter,
+    overdue: filter === 'ATRASADOS',
+    search: debouncedNumber || undefined,
+    // Atrasados: primero el que más tiempo lleva incumplido.
+    ...(filter === 'ATRASADOS'
+      ? { sortBy: 'estimatedDeliveryDate' as const, sortOrder: 'asc' as const }
+      : {}),
   });
   const orders = ordersQuery.data?.data ?? [];
+  const now = new Date();
 
-  function selectStatusFilter(status: OrderStatus | undefined) {
-    setStatusFilter(status);
+  function selectFilter(value: OrderFilter) {
+    setFilter(value);
     setPage(1);
   }
 
   const columns: DataTableColumn<Order>[] = [
     {
-      key: 'createdAt',
-      header: 'Fecha',
-      render: (order) => formatDate(order.createdAt),
+      key: 'number',
+      header: 'Pedido',
+      render: (order) => (
+        <div className="flex flex-col">
+          <span className="figures text-ink font-semibold">
+            #{order.number}
+          </span>
+          <span className="text-ink-faint text-xs">
+            {formatDate(order.createdAt)}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'customer',
       header: 'Cliente',
-      render: (order) => order.customer.name,
-    },
-    {
-      key: 'warehouse',
-      header: 'Bodega',
-      render: (order) => order.warehouse.name,
+      render: (order) => (
+        <div className="flex max-w-56 flex-col">
+          <span className="text-ink truncate font-medium">
+            {order.customer.name}
+          </span>
+          <span className="text-ink-faint truncate text-xs">
+            {order.items.length === 1
+              ? order.items[0].product.name
+              : `${order.items.length} productos`}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'status',
       header: 'Estado',
       render: (order) => (
-        <Badge variant={statusBadgeVariant[order.status]}>
-          {statusLabel[order.status]}
-        </Badge>
+        <div className="flex flex-col items-start gap-1">
+          <OrderStatusBadge status={order.status} />
+          {isOrderOpen(order.status) && (
+            <span className="text-ink-faint text-xs">
+              hace {formatDuration(currentStationSince(order), now)}
+            </span>
+          )}
+        </div>
       ),
+    },
+    {
+      key: 'delivery',
+      header: 'Envío estimado',
+      render: (order) => <DeliveryDate order={order} compact />,
+    },
+    {
+      key: 'progress',
+      header: 'Despachado',
+      render: (order) => {
+        const progress = dispatchProgress(order);
+        return (
+          <div className="flex w-24 flex-col gap-1">
+            <div className="bg-chrome-strong h-1.5 overflow-hidden rounded-full">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${
+                  progress >= 1 ? 'bg-success' : 'bg-accent'
+                }`}
+                style={{ width: `${Math.round(progress * 100)}%` }}
+              />
+            </div>
+            <span className="figures text-ink-faint text-[11px]">
+              {Math.round(progress * 100)}%
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: 'total',
       header: 'Total',
-      className: 'text-right tabular-nums',
-      render: (order) =>
-        orderTotal(order).toLocaleString('es-CO', {
-          minimumFractionDigits: 2,
-        }),
+      className: 'text-right',
+      render: (order) => (
+        <span className="figures text-ink font-medium">
+          {formatMoney(orderTotal(order))}
+        </span>
+      ),
     },
     ...(isAdmin
       ? [
@@ -113,7 +165,9 @@ function OrdersPage() {
             key: 'actions',
             header: '',
             className: 'text-right',
-            render: (order: Order) => <OrderStatusActions order={order} />,
+            render: (order: Order) => (
+              <OrderStatusActions order={order} compact />
+            ),
           } satisfies DataTableColumn<Order>,
         ]
       : []),
@@ -124,58 +178,80 @@ function OrdersPage() {
       render: (order) => (
         <Link
           to={`/pedidos/${order.id}`}
-          className="text-ink-muted hover:text-ink hover:bg-chrome-strong inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm transition-colors"
+          aria-label={`Ver detalle del pedido ${order.number}`}
+          className="text-ink-muted hover:text-accent hover:bg-accent-surface focus-visible:ring-accent group inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 outline-none focus-visible:ring-2"
         >
-          <Eye className="h-4 w-4" />
           Ver detalle
+          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
         </Link>
       ),
     },
   ];
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-ink text-xl font-medium">Pedidos</h1>
-          <p className="text-ink-muted mt-1 text-sm">
-            Pedidos de venta y su estado de entrega.
-          </p>
-        </div>
-        {isAdmin && (
-          <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo pedido
-          </Button>
-        )}
-      </div>
+  const counts = summary?.orders;
 
-      <div
-        role="group"
-        aria-label="Filtrar por estado"
-        className="flex flex-wrap gap-1.5"
-      >
-        {statusFilters.map((filter) => {
-          const isActive = filter.value === statusFilter;
-          return (
-            <button
-              key={filter.label}
-              type="button"
-              aria-pressed={isActive}
-              onClick={() => selectStatusFilter(filter.value)}
-              className={`rounded-full border px-3 py-1 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'border-accent bg-accent text-on-accent'
-                  : 'border-line text-ink-muted hover:bg-chrome-strong hover:text-ink'
-              }`}
-            >
-              {filter.label}
-            </button>
-          );
-        })}
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Operación"
+        title="Pedidos"
+        description="Cada pedido de la toma al despacho: en qué estación está, cuánto lleva ahí y si va a tiempo para la fecha prometida."
+        actions={
+          isAdmin && (
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus />
+              Nuevo pedido
+            </Button>
+          )
+        }
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <FilterChips<OrderFilter>
+          label="Filtrar por estado"
+          value={filter}
+          onChange={selectFilter}
+          options={[
+            { value: undefined, label: 'Todos' },
+            {
+              value: 'ATRASADOS',
+              label: 'Atrasados',
+              count: summary?.overdueOrders.count,
+            },
+            {
+              value: 'PENDIENTE',
+              label: 'Pendiente',
+              count: counts?.PENDIENTE,
+            },
+            {
+              value: 'EN_PRODUCCION',
+              label: 'En producción',
+              count: counts?.EN_PRODUCCION,
+            },
+            {
+              value: 'EN_ALMACEN',
+              label: 'En almacén',
+              count: counts?.EN_ALMACEN,
+            },
+            { value: 'DESPACHADO', label: 'Despachado' },
+            { value: 'CANCELADO', label: 'Cancelado' },
+          ]}
+        />
+        <div className="relative">
+          <Hash className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
+          <input
+            type="search"
+            inputMode="numeric"
+            aria-label="Buscar pedido por número"
+            placeholder="Número de pedido"
+            value={numberSearch}
+            onChange={(event) => {
+              setNumberSearch(event.target.value);
+              setPage(1);
+            }}
+            className="field figures h-8 w-44 pr-3 pl-8"
+          />
+        </div>
       </div>
 
       <DataTable
@@ -183,7 +259,19 @@ function OrdersPage() {
         rows={orders}
         rowKey={(order) => order.id}
         isLoading={ordersQuery.isLoading}
-        emptyMessage="No hay pedidos registrados."
+        emptyMessage={
+          filter === 'ATRASADOS'
+            ? 'Ningún pedido atrasado.'
+            : 'No hay pedidos registrados.'
+        }
+        emptyHint={
+          filter === 'ATRASADOS'
+            ? 'Todo lo que está en curso va a tiempo para su fecha prometida.'
+            : undefined
+        }
+        rowTone={(order) =>
+          deliveryState(order).kind === 'overdue' ? 'danger' : undefined
+        }
       />
 
       {ordersQuery.data && (
@@ -195,7 +283,12 @@ function OrdersPage() {
       )}
 
       {isCreateModalOpen && (
-        <Modal title="Nuevo pedido" onClose={() => setIsCreateModalOpen(false)}>
+        <Modal
+          title="Nuevo pedido"
+          description="El stock no se mueve hasta que el pedido llega a almacén."
+          size="lg"
+          onClose={() => setIsCreateModalOpen(false)}
+        >
           <OrderForm onSuccess={() => setIsCreateModalOpen(false)} />
         </Modal>
       )}

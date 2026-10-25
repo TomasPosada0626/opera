@@ -21,11 +21,7 @@ export function DeleteSupplierProductAction({
 
   return (
     <div className="flex justify-end">
-      <Button
-        variant="ghost"
-        onClick={() => setConfirming(true)}
-        className="px-3 py-1.5"
-      >
+      <Button variant="ghost" onClick={() => setConfirming(true)} size="sm">
         <Trash2 className="h-4 w-4" />
         Eliminar
       </Button>

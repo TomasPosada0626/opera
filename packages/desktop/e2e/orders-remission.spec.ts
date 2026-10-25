@@ -48,7 +48,12 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
   await page.getByLabel('Correo').fill(fixtures.email);
   await page.getByLabel('Contraseña').fill(fixtures.password);
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
+  ).toBeVisible();
 
   // 2. Crear el pedido por el formulario real: cliente + bodega + producto +
   // cantidad (5) de la fábrica de datos.
@@ -88,11 +93,18 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
   // PENDIENTE y ninguna de las dos transiciones mueve stock por sí misma
   // salvo la segunda (ver orders.service.ts: markWarehoused sí escribe la
   // ENTRADA del terminado).
+  // "En producción"/"En almacén" también son etiquetas de la línea de
+  // tiempo del pedido (visibles siempre), así que la señal de cada
+  // transición es el botón de la siguiente.
   await page.getByRole('button', { name: 'Marcar en producción' }).click();
-  await expect(page.getByText('En producción', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Marcar enviado a almacén' }),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Marcar enviado a almacén' }).click();
-  await expect(page.getByText('En almacén', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Nueva remisión' }),
+  ).toBeVisible();
 
   // 5. Despachar parcialmente (3 de 5) vía la remisión real.
   await page.getByRole('button', { name: 'Nueva remisión' }).click();
@@ -108,7 +120,8 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
   const itemRow = page.getByRole('row', {
     name: new RegExp(fixtures.productSku),
   });
-  await expect(itemRow.locator('td').nth(2)).toHaveText('3');
+  // Columna "Entregado": "3 / 5".
+  await expect(itemRow.locator('td').nth(1)).toContainText(/3\s*\/\s*5/);
 
   // 7. Bonus: el link "Imprimir" navega a la vista de impresión real y
   // muestra la remisión — ruta hoy sin cobertura.

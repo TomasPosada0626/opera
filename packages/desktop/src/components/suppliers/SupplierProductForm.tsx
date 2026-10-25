@@ -47,12 +47,17 @@ export function SupplierProductForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">Producto</span>
+        <span className="text-ink-secondary text-[13px] font-medium">
+          Producto
+        </span>
         <ProductPicker value={product} onChange={setProduct} />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="price" className="text-ink-muted text-sm font-medium">
+        <label
+          htmlFor="price"
+          className="text-ink-secondary text-[13px] font-medium"
+        >
           Precio
         </label>
         <input
@@ -63,7 +68,7 @@ export function SupplierProductForm({
           placeholder="0"
           value={price}
           onChange={(event) => setPrice(event.target.value)}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
         />
       </div>
 

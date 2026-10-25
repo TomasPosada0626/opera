@@ -26,11 +26,7 @@ export function SupplierRowActions({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => onEdit(supplier)}
-          className="px-3 py-1.5"
-        >
+        <Button variant="ghost" onClick={() => onEdit(supplier)} size="sm">
           <Pencil className="h-4 w-4" />
           Editar
         </Button>
@@ -39,7 +35,7 @@ export function SupplierRowActions({
             variant="ghost"
             onClick={() => deactivateSupplier.mutate(supplier.id)}
             disabled={deactivateSupplier.isPending}
-            className="px-3 py-1.5"
+            size="sm"
           >
             <UserX className="h-4 w-4" />
             {deactivateSupplier.isPending ? 'Desactivando…' : 'Desactivar'}
@@ -51,7 +47,7 @@ export function SupplierRowActions({
           <Button
             variant="ghost"
             onClick={() => setConfirmingAnonymize(true)}
-            className="px-3 py-1.5"
+            size="sm"
           >
             <Eraser className="h-4 w-4" />
             Borrar datos

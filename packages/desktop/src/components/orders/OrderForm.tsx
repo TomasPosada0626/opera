@@ -1,19 +1,25 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Plus, ShoppingCart, X } from 'lucide-react';
 import { z } from 'zod';
 import { CustomerPicker } from '../customers/CustomerPicker';
 import { ProductPicker } from '../inventory/ProductPicker';
 import { WarehouseSelect } from '../form/WarehouseSelect';
+import { FieldError, FieldLabel, FormError } from '../form/Field';
 import { Button } from '../ui/Button';
 import { useCreateOrder } from '../../hooks/useCreateOrder';
-import { ApiError } from '../../lib/api-client';
+import { formatMoney, toDateInputValue } from '../../lib/format';
 import type { Customer } from '../../types/customer';
 import type { Product } from '../../types/product';
 
 const orderSchema = z.object({
   warehouseId: z.string().min(1, 'Selecciona una bodega'),
+  // Obligatoria en el formulario (en la API es opcional para scripts y
+  // pedidos viejos): sin fecha prometida no hay forma de saber si un
+  // pedido va atrasado.
+  estimatedDeliveryDate: z.string().min(1, 'Elige la fecha de envío'),
+  notes: z.string().max(1000, 'Máximo 1000 caracteres').optional(),
 });
 type OrderFormValues = z.infer<typeof orderSchema>;
 
@@ -33,6 +39,14 @@ function emptyLine(): OrderLineDraft {
   };
 }
 
+// Una semana después de hoy: el plazo típico de un pedido a fabricar, para
+// que la mayoría de las veces solo haya que confirmarlo.
+function defaultDeliveryDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 7);
+  return toDateInputValue(date);
+}
+
 interface OrderFormProps {
   onSuccess: () => void;
 }
@@ -48,14 +62,25 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors },
-  } = useForm<OrderFormValues>({ resolver: zodResolver(orderSchema) });
+  } = useForm<OrderFormValues>({
+    resolver: zodResolver(orderSchema),
+    defaultValues: { estimatedDeliveryDate: defaultDeliveryDate(), notes: '' },
+  });
   const [lines, setLines] = useState<OrderLineDraft[]>([emptyLine()]);
   const [linesError, setLinesError] = useState<string | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
+  const notes = useWatch({ control, name: 'notes' }) ?? '';
 
   const createOrder = useCreateOrder();
+
+  const total = lines.reduce(
+    (sum, line) =>
+      sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0),
+    0,
+  );
 
   function updateLine(key: string, patch: Partial<OrderLineDraft>) {
     setLines((prev) =>
@@ -99,7 +124,13 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
     setLinesError(null);
 
     createOrder.mutate(
-      { customerId: customer.id, warehouseId: values.warehouseId, items },
+      {
+        customerId: customer.id,
+        warehouseId: values.warehouseId,
+        items,
+        estimatedDeliveryDate: values.estimatedDeliveryDate,
+        notes: values.notes?.trim() || undefined,
+      },
       { onSuccess },
     );
   }
@@ -108,28 +139,54 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
     <form
       onSubmit={(event) => void handleSubmit(onSubmit)(event)}
       noValidate
-      className="flex flex-col gap-4"
+      className="flex flex-col gap-5"
     >
-      <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">Cliente</span>
-        <CustomerPicker value={customer} onChange={setCustomer} />
-        {customerError && (
-          <p className="text-danger text-xs">{customerError}</p>
-        )}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2 flex flex-col gap-1.5">
+          <span className="text-ink-secondary text-[13px] font-medium">
+            Cliente
+          </span>
+          <CustomerPicker value={customer} onChange={setCustomer} />
+          <FieldError message={customerError ?? undefined} />
+        </div>
+
+        <WarehouseSelect
+          registration={register('warehouseId')}
+          error={errors.warehouseId}
+          onAutoSelect={(id) => setValue('warehouseId', id)}
+        />
+
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="estimatedDeliveryDate">
+            Fecha de envío estimada
+          </FieldLabel>
+          <input
+            id="estimatedDeliveryDate"
+            type="date"
+            aria-invalid={!!errors.estimatedDeliveryDate}
+            className="field h-9 px-3"
+            {...register('estimatedDeliveryDate')}
+          />
+          <FieldError message={errors.estimatedDeliveryDate?.message} />
+        </div>
       </div>
 
-      <WarehouseSelect
-        registration={register('warehouseId')}
-        error={errors.warehouseId}
-        onAutoSelect={(id) => setValue('warehouseId', id)}
-      />
-
-      <div className="flex flex-col gap-3">
-        <span className="text-ink-muted text-sm font-medium">Productos</span>
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between">
+          <span className="text-ink-secondary text-[13px] font-medium">
+            Productos
+          </span>
+          <span className="text-ink-muted text-xs">
+            Total{' '}
+            <span className="figures text-ink text-sm font-semibold">
+              {formatMoney(total)}
+            </span>
+          </span>
+        </div>
         {lines.map((line, index) => (
           <div
             key={line.key}
-            className="border-line flex flex-col gap-2 rounded-md border p-3"
+            className="border-line bg-chrome/50 flex flex-col gap-2 rounded-xl border p-3"
           >
             <div className="flex items-start gap-2">
               <div className="flex-1">
@@ -143,13 +200,13 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
                   type="button"
                   onClick={() => removeLine(line.key)}
                   aria-label={`Quitar línea ${index + 1}`}
-                  className="text-ink-muted hover:text-danger focus-visible:ring-accent shrink-0 rounded-md p-2 outline-none focus-visible:ring-2"
+                  className="text-ink-muted hover:text-danger hover:bg-danger-surface focus-visible:ring-accent shrink-0 rounded-lg p-2 transition-colors outline-none focus-visible:ring-2"
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
               <input
                 type="number"
                 step="any"
@@ -160,7 +217,7 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
                 onChange={(event) =>
                   updateLine(line.key, { quantity: event.target.value })
                 }
-                className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+                className="field h-9 px-3"
               />
               <input
                 type="number"
@@ -172,40 +229,50 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
                 onChange={(event) =>
                   updateLine(line.key, { unitPrice: event.target.value })
                 }
-                className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+                className="field h-9 px-3"
               />
+              <span className="figures text-ink-muted w-28 text-right text-[13px]">
+                {formatMoney(
+                  (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0),
+                )}
+              </span>
             </div>
           </div>
         ))}
         <Button
           type="button"
           variant="secondary"
+          size="sm"
           onClick={() => setLines((prev) => [...prev, emptyLine()])}
           className="self-start"
         >
-          <Plus className="h-4 w-4" />
+          <Plus />
           Agregar producto
         </Button>
-        {linesError && (
-          <p role="alert" className="text-danger text-xs">
-            {linesError}
-          </p>
-        )}
+        <FieldError message={linesError ?? undefined} />
       </div>
 
-      {createOrder.isError && (
-        <p
-          role="alert"
-          className="bg-danger-surface text-danger rounded-md px-3 py-2 text-sm"
-        >
-          {createOrder.error instanceof ApiError
-            ? createOrder.error.message
-            : 'No se pudo crear el pedido. Intenta de nuevo.'}
-        </p>
-      )}
+      <div className="flex flex-col gap-1.5">
+        <FieldLabel htmlFor="orderNotes" hint={`${notes.length}/1000`}>
+          Notas
+        </FieldLabel>
+        <textarea
+          id="orderNotes"
+          rows={2}
+          placeholder="Acabado, medidas especiales, dirección de entrega…"
+          className="field px-3 py-2"
+          {...register('notes')}
+        />
+        <FieldError message={errors.notes?.message} />
+      </div>
 
-      <Button type="submit" disabled={createOrder.isPending} className="mt-1">
-        <ShoppingCart className="h-4 w-4" />
+      <FormError
+        error={createOrder.error}
+        fallback="No se pudo crear el pedido. Intenta de nuevo."
+      />
+
+      <Button type="submit" disabled={createOrder.isPending}>
+        <ShoppingCart />
         {createOrder.isPending ? 'Creando…' : 'Crear pedido'}
       </Button>
     </form>

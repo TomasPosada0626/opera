@@ -44,7 +44,12 @@ test('crear un proveedor, agregarle un precio y registrar una compra por la UI r
   await page.getByLabel('Correo').fill(fixtures.email);
   await page.getByLabel('Contraseña').fill(fixtures.password);
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
+  ).toBeVisible();
 
   // 2. Crear el proveedor por el formulario real — nombre único con
   // timestamp para poder ubicarlo en la tabla sin ambigüedad.

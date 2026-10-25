@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import {
@@ -16,12 +16,20 @@ import OrderDetailPage from './OrderDetailPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
 import { downloadFile } from '../lib/download-file';
-import type { Order, Remission } from '../types/order';
+import {
+  buildOrder,
+  buildPayment,
+  buildRemission,
+  fakeJwt,
+} from '../test/factories';
+import type { Order } from '../types/order';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
   apiFetchBlob: vi.fn(),
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    shortages = [];
+  },
 }));
 
 vi.mock('../lib/download-file', () => ({
@@ -31,81 +39,29 @@ vi.mock('../lib/download-file', () => ({
 const mockedApiFetch = apiFetch as unknown as Mock;
 const mockedDownloadFile = downloadFile as unknown as Mock;
 
-function renderWithClient(ui: ReactElement, initialPath = '/pedidos/order-1') {
+function renderOrder(order: Order | null) {
+  mockedApiFetch.mockResolvedValue(order);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <MemoryRouter initialEntries={['/pedidos/order-1']}>
         <Routes>
-          <Route path="/pedidos/:orderId" element={ui} />
+          <Route path="/pedidos/:orderId" element={<OrderDetailPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
-  );
+  ) as ReturnType<typeof render> & { ui?: ReactElement };
 }
 
-function fakeJwt(roles: string[]): string {
-  const payload = {
-    sub: 'user-1',
-    email: 'admin@opera.local',
-    roles,
-    permissions: [],
-  };
-  return `header.${btoa(JSON.stringify(payload))}.signature`;
-}
-
-function buildOrder(overrides: Partial<Order> = {}): Order {
-  return {
-    id: 'order-1',
-    status: 'PENDIENTE',
-    customer: {
-      id: 'customer-1',
-      name: 'Muebles del Valle S.A.S.',
-      taxId: null,
-      email: null,
-      phone: null,
-      address: null,
-      isActive: true,
-    },
-    warehouse: {
-      id: 'warehouse-1',
-      name: 'Bodega principal',
-      location: null,
-      isActive: true,
-    },
-    items: [
-      {
-        id: 'item-1',
-        productId: 'product-1',
-        product: { id: 'product-1', sku: 'PT-1', name: 'Silla de madera' },
-        quantity: '10',
-        unitPrice: '20',
-      },
-    ],
-    remissions: [],
-    createdAt: '2026-01-15T10:00:00.000Z',
-    productionStartedAt: null,
-    warehousedAt: null,
-    ...overrides,
-  };
-}
-
-function buildRemission(overrides: Partial<Remission> = {}): Remission {
-  return {
-    id: 'remission-1',
-    number: 1,
-    createdAt: '2026-01-16T10:00:00.000Z',
-    user: { id: 'user-1', name: 'Admin' },
-    items: [],
-    paymentStatus: 'CARTERA',
-    amountPaid: null,
-    voidedAt: null,
-    voidReason: null,
-    ...overrides,
-  };
-}
+const warehousedOrder = buildOrder({
+  status: 'EN_ALMACEN',
+  productionStartedAt: '2026-01-16T10:00:00.000Z',
+  warehousedAt: '2026-01-18T10:00:00.000Z',
+  estimatedDeliveryDate: '2026-01-25T00:00:00.000Z',
+  notes: 'Color nogal',
+});
 
 describe('OrderDetailPage', () => {
   beforeEach(() => {
@@ -117,379 +73,290 @@ describe('OrderDetailPage', () => {
     clearAuthToken();
   });
 
-  it('renders order items with quantity, delivered so far, and subtotal', async () => {
-    mockedApiFetch.mockResolvedValue(buildOrder());
-
-    renderWithClient(<OrderDetailPage />);
+  it('shows the order number, customer, status and notes', async () => {
+    renderOrder(warehousedOrder);
 
     expect(
-      await screen.findByText('Muebles del Valle S.A.S.'),
+      await screen.findByRole('heading', { name: 'Muebles del Valle S.A.S.' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('PT-1 — Silla de madera')).toBeInTheDocument();
-    expect(screen.getByText('10')).toBeInTheDocument();
-    expect(screen.getByText('0')).toBeInTheDocument(); // nada entregado
-    // total: 10 * 20 = 200.00, aparece en subtotal de línea y en el total
-    expect(screen.getAllByText('200,00')).toHaveLength(2);
+    expect(screen.getByText('Pedido #12')).toBeInTheDocument();
+    expect(screen.getAllByText('En almacén').length).toBeGreaterThan(0);
+    expect(screen.getByText('Color nogal')).toBeInTheDocument();
   });
 
-  it('sums delivered quantity across remissions for the same order line', async () => {
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-          buildRemission({
-            id: 'remission-2',
-            number: 2,
-            createdAt: '2026-01-17T10:00:00.000Z',
-            items: [{ id: 'ri-2', orderItemId: 'item-1', quantity: '2' }],
-          }),
-        ],
-      }),
-    );
+  it('shows the four stations with how long each one took', async () => {
+    renderOrder(warehousedOrder);
 
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('PT-1 — Silla de madera');
-    expect(screen.getByText('6')).toBeInTheDocument(); // 4 + 2 entregado
-    expect(screen.getByText('Remisión No. 1')).toBeInTheDocument();
-    expect(screen.getByText('Remisión No. 2')).toBeInTheDocument();
-  });
-
-  it('shows the empty message when nothing has been remised yet', async () => {
-    mockedApiFetch.mockResolvedValue(buildOrder());
-
-    renderWithClient(<OrderDetailPage />);
-
-    expect(
-      await screen.findByText(
-        'Todavía no se ha despachado nada de este pedido.',
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it('hides "Nueva remisión" for a non-ADMIN user', async () => {
-    setAuthToken(fakeJwt(['STAFF']));
-    mockedApiFetch.mockResolvedValue(buildOrder());
-
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('Muebles del Valle S.A.S.');
-    expect(
-      screen.queryByRole('button', { name: 'Nueva remisión' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('opens the remission modal with remaining quantity per line for an ADMIN user', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
-    );
-    const user = userEvent.setup();
-
-    renderWithClient(<OrderDetailPage />);
-
-    const button = await screen.findByRole('button', {
-      name: 'Nueva remisión',
+    const timeline = await screen.findByRole('list', {
+      name: 'Estaciones del pedido',
     });
-    await user.click(button);
-
-    expect(
-      await screen.findByRole('dialog', { name: 'Nueva remisión' }),
-    ).toBeInTheDocument();
-    // Pedido 10, ya entregado 4 -> pendiente 6.
-    expect(screen.getByText('Pendiente: 6 de 10')).toBeInTheDocument();
+    expect(within(timeline).getByText('Pendiente')).toBeInTheDocument();
+    expect(within(timeline).getByText('Despachado')).toBeInTheDocument();
+    // Pendiente -> En producción: 1 día; En producción -> En almacén: 2 días.
+    expect(within(timeline).getByText('Estuvo 1 día')).toBeInTheDocument();
+    expect(within(timeline).getByText('Estuvo 2 días')).toBeInTheDocument();
+    expect(within(timeline).getByText(/^Lleva /)).toBeInTheDocument();
   });
 
-  it('shows the payment status badge for each remission', async () => {
-    mockedApiFetch.mockResolvedValue(
+  it('says when nothing is found', async () => {
+    renderOrder(null);
+
+    expect(
+      await screen.findByText('Pedido no encontrado.'),
+    ).toBeInTheDocument();
+  });
+
+  it('renders order items with delivered so far and the order total', async () => {
+    renderOrder(
       buildOrder({
+        status: 'EN_ALMACEN',
+        remissions: [
+          buildRemission({ id: 'r1', number: 1 }),
+          buildRemission({
+            id: 'r2',
+            number: 2,
+            items: [{ id: 'ri-2', orderItemId: 'item-1', quantity: '1' }],
+          }),
+        ],
+      }),
+    );
+
+    const row = (await screen.findByText('Silla de madera')).closest('tr')!;
+    // 2 + 1 entregados de 3.
+    expect(within(row).getByText('3')).toBeInTheDocument();
+    expect(within(row).getByText(/\/ 3/)).toBeInTheDocument();
+    expect(screen.getByText('Total del pedido')).toBeInTheDocument();
+  });
+
+  it('summarizes collection: dispatched, paid and pending', async () => {
+    renderOrder(
+      buildOrder({
+        status: 'DESPACHADO',
         remissions: [
           buildRemission({
+            total: '75',
+            amountPaid: '25',
             paymentStatus: 'ABONADO',
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+            payments: [buildPayment()],
           }),
         ],
       }),
     );
 
-    renderWithClient(<OrderDetailPage />);
-
-    expect(await screen.findByText('Remisión No. 1')).toBeInTheDocument();
-    expect(screen.getByText('Abonó')).toBeInTheDocument();
-  });
-
-  it('shows "Editar pago" only for an ADMIN user, and opens the edit modal', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
-    );
-    const user = userEvent.setup();
-
-    renderWithClient(<OrderDetailPage />);
-
-    const button = await screen.findByRole('button', { name: 'Editar pago' });
-    await user.click(button);
-
+    expect(await screen.findByText('Saldo pendiente')).toBeInTheDocument();
     expect(
-      await screen.findByRole('dialog', { name: 'Editar pago' }),
+      screen.getByText('33% cobrado de lo despachado'),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Estado de pago')).toHaveValue('CARTERA');
   });
 
-  it('hides "Editar pago" for a non-ADMIN user', async () => {
-    setAuthToken(fakeJwt(['STAFF']));
-    mockedApiFetch.mockResolvedValue(
+  it('lists each remission with its payment status and its payments', async () => {
+    renderOrder(
       buildOrder({
+        status: 'EN_ALMACEN',
         remissions: [
           buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
+            amountPaid: '25',
+            paymentStatus: 'ABONADO',
+            payments: [
+              buildPayment({ note: 'Nequi' }),
+              buildPayment({
+                id: 'payment-2',
+                amount: '10',
+                voidedAt: '2026-01-22T10:00:00.000Z',
+                voidReason: 'Rechazada',
+              }),
+            ],
           }),
         ],
       }),
     );
 
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('Remisión No. 1');
-    expect(
-      screen.queryByRole('button', { name: 'Editar pago' }),
-    ).not.toBeInTheDocument();
+    expect((await screen.findAllByText('Abonado')).length).toBeGreaterThan(1);
+    expect(screen.getByText('Nequi')).toBeInTheDocument();
+    expect(screen.getByText('Anulado: Rechazada')).toBeInTheDocument();
   });
 
-  it('shows the "Marcar en producción" action for an ADMIN user', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(buildOrder());
-
-    renderWithClient(<OrderDetailPage />);
-
-    expect(
-      await screen.findByRole('button', { name: 'Marcar en producción' }),
-    ).toBeInTheDocument();
-  });
-
-  it('hides the status action for a non-ADMIN user', async () => {
-    setAuthToken(fakeJwt(['STAFF']));
-    mockedApiFetch.mockResolvedValue(buildOrder());
-
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('Muebles del Valle S.A.S.');
-    expect(
-      screen.queryByRole('button', { name: 'Marcar en producción' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows "Cancelar pedido" alongside the status action for PENDIENTE and EN_PRODUCCION', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
+  it('shows "Anulada" with its reason for a voided remission', async () => {
+    renderOrder(
       buildOrder({
-        status: 'EN_PRODUCCION',
-        productionStartedAt: '2026-01-01T00:00:00.000Z',
-      }),
-    );
-
-    renderWithClient(<OrderDetailPage />);
-
-    expect(
-      await screen.findByRole('button', { name: 'Marcar enviado a almacén' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Cancelar pedido' }),
-    ).toBeInTheDocument();
-  });
-
-  it('shows "Cancelar pedido" for an EN_ALMACEN order without remissions', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(buildOrder({ status: 'EN_ALMACEN' }));
-
-    renderWithClient(<OrderDetailPage />);
-
-    expect(
-      await screen.findByRole('button', { name: 'Cancelar pedido' }),
-    ).toBeInTheDocument();
-  });
-
-  it('hides "Cancelar pedido" once the order has a remission', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
-    );
-
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('Muebles del Valle S.A.S.');
-    expect(
-      screen.queryByRole('button', { name: 'Cancelar pedido' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('hides "Cancelar pedido" for an already CANCELADO order', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(buildOrder({ status: 'CANCELADO' }));
-
-    renderWithClient(<OrderDetailPage />);
-
-    await screen.findByText('Muebles del Valle S.A.S.');
-    expect(
-      screen.queryByRole('button', { name: 'Cancelar pedido' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows "Anular" for an active remission and opens the void modal', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
+        status: 'EN_ALMACEN',
         remissions: [
           buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
-    );
-    const user = userEvent.setup();
-
-    renderWithClient(<OrderDetailPage />);
-
-    const button = await screen.findByRole('button', { name: 'Anular' });
-    await user.click(button);
-
-    expect(
-      await screen.findByRole('dialog', { name: 'Anular remisión No. 1' }),
-    ).toBeInTheDocument();
-  });
-
-  it('shows "Anulada" with its reason, and excludes it from delivered/actions, for a voided remission', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-            voidedAt: '2026-01-17T10:00:00.000Z',
+            voidedAt: '2026-01-21T10:00:00.000Z',
             voidReason: 'Cantidad equivocada',
           }),
         ],
       }),
     );
 
-    renderWithClient(<OrderDetailPage />);
-
     expect(await screen.findByText('Anulada')).toBeInTheDocument();
     expect(screen.getByText('Motivo: Cantidad equivocada')).toBeInTheDocument();
-    // Anulada -> no cuenta como entregado (0), y sin acciones de edición.
-    expect(screen.getByText('0')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Editar pago' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Anular' }),
-    ).not.toBeInTheDocument();
   });
 
   it('downloads the remission PDF with a filename derived from its number', async () => {
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
+    renderOrder(
+      buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
     );
     const user = userEvent.setup();
 
-    renderWithClient(<OrderDetailPage />);
-
-    const button = await screen.findByRole('button', {
-      name: 'Descargar PDF',
-    });
-    await user.click(button);
+    await user.click(
+      await screen.findByRole('button', { name: /Descargar PDF/ }),
+    );
 
     expect(mockedDownloadFile).toHaveBeenCalledWith(
       '/remissions/remission-1/pdf',
-      'remision-1.pdf',
+      'remision-7.pdf',
     );
   });
 
-  it('closes the "Nueva remisión" modal via its close button', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(buildOrder());
-    const user = userEvent.setup();
-
-    renderWithClient(<OrderDetailPage />);
-
-    await user.click(
-      await screen.findByRole('button', { name: 'Nueva remisión' }),
+  it('hides every admin action for a non-ADMIN user', async () => {
+    setAuthToken(fakeJwt(['STAFF']));
+    renderOrder(
+      buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
     );
-    await screen.findByRole('dialog', { name: 'Nueva remisión' });
-    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
 
+    await screen.findByText('Remisión No.');
     expect(
-      screen.queryByRole('dialog', { name: 'Nueva remisión' }),
+      screen.queryByRole('button', { name: /Nueva remisión/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Registrar abono/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Editar seguimiento/ }),
     ).not.toBeInTheDocument();
   });
 
-  it('closes the "Editar pago" modal via its close button', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
-    );
-    const user = userEvent.setup();
+  describe('as ADMIN', () => {
+    beforeEach(() => {
+      setAuthToken(fakeJwt(['ADMIN']));
+    });
 
-    renderWithClient(<OrderDetailPage />);
+    it('opens and closes the remission modal with the pending quantity per line', async () => {
+      renderOrder(warehousedOrder);
+      const user = userEvent.setup();
 
-    await user.click(
-      await screen.findByRole('button', { name: 'Editar pago' }),
-    );
-    await screen.findByRole('dialog', { name: 'Editar pago' });
-    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+      await user.click(
+        await screen.findByRole('button', { name: /Nueva remisión/ }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Nueva remisión' });
+      expect(within(dialog).getByText(/Pendiente:/)).toBeInTheDocument();
 
-    expect(
-      screen.queryByRole('dialog', { name: 'Editar pago' }),
-    ).not.toBeInTheDocument();
-  });
+      await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
 
-  it('closes the "Anular remisión" modal via its close button', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(
-      buildOrder({
-        remissions: [
-          buildRemission({
-            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '4' }],
-          }),
-        ],
-      }),
-    );
-    const user = userEvent.setup();
+    it('only offers a new remission once the order is in the warehouse', async () => {
+      renderOrder(buildOrder({ status: 'EN_PRODUCCION' }));
 
-    renderWithClient(<OrderDetailPage />);
+      await screen.findByText('Remisiones');
+      expect(
+        screen.queryByRole('button', { name: /Nueva remisión/ }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'Se puede despachar cuando el pedido llegue a almacén.',
+        ),
+      ).toBeInTheDocument();
+    });
 
-    await user.click(await screen.findByRole('button', { name: 'Anular' }));
-    await screen.findByRole('dialog', { name: 'Anular remisión No. 1' });
-    await user.click(screen.getByRole('button', { name: 'Cerrar' }));
+    it('opens the payment modal for a remission with a pending balance', async () => {
+      renderOrder(
+        buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
+      );
+      const user = userEvent.setup();
 
-    expect(
-      screen.queryByRole('dialog', { name: 'Anular remisión No. 1' }),
-    ).not.toBeInTheDocument();
+      await user.click(
+        await screen.findByRole('button', { name: /Registrar abono/ }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Registrar abono' });
+      expect(within(dialog).getByText('Saldo')).toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('opens the void-payment modal from the payment row', async () => {
+      renderOrder(
+        buildOrder({
+          status: 'EN_ALMACEN',
+          remissions: [
+            buildRemission({
+              amountPaid: '25',
+              paymentStatus: 'ABONADO',
+              payments: [buildPayment()],
+            }),
+          ],
+        }),
+      );
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: /Anular abono de/ }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Anular abono' });
+      await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('blocks voiding a remission that still has valid payments', async () => {
+      renderOrder(
+        buildOrder({
+          status: 'EN_ALMACEN',
+          remissions: [
+            buildRemission({
+              amountPaid: '25',
+              paymentStatus: 'ABONADO',
+              payments: [buildPayment()],
+            }),
+          ],
+        }),
+      );
+
+      expect(
+        await screen.findByRole('button', { name: /^Anular$/ }),
+      ).toBeDisabled();
+    });
+
+    it('opens and closes the void-remission modal', async () => {
+      renderOrder(
+        buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
+      );
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole('button', { name: /^Anular$/ }));
+      const dialog = screen.getByRole('dialog', {
+        name: 'Anular remisión No. 7',
+      });
+      await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('opens and closes the tracking editor', async () => {
+      renderOrder(warehousedOrder);
+      const user = userEvent.setup();
+
+      await user.click(
+        await screen.findByRole('button', { name: /Editar seguimiento/ }),
+      );
+      const dialog = screen.getByRole('dialog', { name: 'Editar seguimiento' });
+      expect(
+        within(dialog).getByLabelText('Fecha de envío estimada'),
+      ).toHaveValue('2026-01-25');
+
+      await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('hides "Cancelar pedido" once the order has an active remission', async () => {
+      renderOrder(
+        buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
+      );
+
+      await screen.findByText('Remisión No.');
+      expect(
+        screen.queryByRole('button', { name: /Cancelar pedido/ }),
+      ).not.toBeInTheDocument();
+    });
   });
 });

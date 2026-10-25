@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ArrowLeft, FileSpreadsheet, Plus } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { FileSpreadsheet, Mail, Phone, Plus } from 'lucide-react';
+import { useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
+import { PageHeader } from '../components/ui/PageHeader';
 import { DeleteSupplierProductAction } from '../components/suppliers/DeleteSupplierProductAction';
 import { ReceivePurchaseAction } from '../components/suppliers/ReceivePurchaseAction';
 import { SupplierProductForm } from '../components/suppliers/SupplierProductForm';
@@ -38,28 +39,39 @@ function SupplierDetailPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link
-          to="/proveedores"
-          className="text-ink-muted hover:text-ink inline-flex items-center gap-1.5 text-sm transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a proveedores
-        </Link>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-ink text-xl font-medium">
-              {supplier ? supplier.name : 'Proveedor'}
-            </h1>
-            {supplier && (
-              <Badge variant={supplier.isActive ? 'success' : 'danger'}>
+      <PageHeader
+        back={{ to: '/proveedores', label: 'Volver a proveedores' }}
+        eyebrow="Proveedor"
+        title={supplier ? supplier.name : 'Proveedor'}
+        meta={
+          supplier && (
+            <>
+              <Badge variant={supplier.isActive ? 'success' : 'danger'} dot>
                 {supplier.isActive ? 'Activo' : 'Inactivo'}
               </Badge>
-            )}
-          </div>
-          {supplier && (
+              {supplier.taxId && (
+                <span className="figures">NIT {supplier.taxId}</span>
+              )}
+              {supplier.phone && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Phone className="h-3.5 w-3.5" />
+                  {supplier.phone}
+                </span>
+              )}
+              {supplier.email && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Mail className="h-3.5 w-3.5" />
+                  {supplier.email}
+                </span>
+              )}
+            </>
+          )
+        }
+        actions={
+          supplier && (
             <Button
               variant="secondary"
+              size="sm"
               onClick={() =>
                 void downloadFile(
                   `/suppliers/${supplier.id}/export`,
@@ -67,12 +79,12 @@ function SupplierDetailPage() {
                 )
               }
             >
-              <FileSpreadsheet className="h-4 w-4" />
+              <FileSpreadsheet />
               Exportar datos
             </Button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {supplierQuery.isLoading && (
         <p className="text-ink-muted text-sm">Cargando…</p>

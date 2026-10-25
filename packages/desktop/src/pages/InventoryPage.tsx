@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Notebook, Plus, Search } from 'lucide-react';
 import { Link } from 'react-router';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -87,24 +88,20 @@ function InventoryPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-ink text-xl font-medium">Inventario</h1>
-          <p className="text-ink-muted mt-1 text-sm">
-            Catálogo de productos y stock actual.
-          </p>
-        </div>
-        {isAdmin && (
-          <Button
-            onClick={() => setIsMovementModalOpen(true)}
-            className="shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo movimiento
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Operación"
+        title="Inventario"
+        description="Stock actual por producto, calculado del Kardex. Cada entrada, salida o ajuste queda registrado con su motivo y no se puede borrar."
+        actions={
+          isAdmin && (
+            <Button onClick={() => setIsMovementModalOpen(true)}>
+              <Plus />
+              Nuevo movimiento
+            </Button>
+          )
+        }
+      />
 
       <div className="relative w-full max-w-sm">
         <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -114,7 +111,7 @@ function InventoryPage() {
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="Buscar por nombre o SKU…"
           aria-label="Buscar productos"
-          className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+          className="field h-9 w-full pr-3 pl-9"
         />
       </div>
 

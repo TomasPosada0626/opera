@@ -20,7 +20,7 @@ export function ReceivePurchaseAction({
         variant="secondary"
         onClick={() => receivePurchase.mutate(purchaseId)}
         disabled={receivePurchase.isPending}
-        className="px-3 py-1.5"
+        size="sm"
       >
         <PackageCheck className="h-4 w-4" />
         {receivePurchase.isPending ? 'Recibiendo…' : 'Marcar recibida'}

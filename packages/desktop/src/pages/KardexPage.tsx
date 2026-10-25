@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
-import { Link, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Pagination } from '../components/ui/Pagination';
 import { useKardex } from '../hooks/useKardex';
@@ -100,30 +100,23 @@ function KardexPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <Link
-          to="/inventario"
-          className="text-ink-muted hover:text-ink inline-flex items-center gap-1.5 text-sm transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a inventario
-        </Link>
-        <h1 className="text-ink mt-2 text-xl font-medium">
-          Kardex{productQuery.data ? ` — ${productQuery.data.name}` : ''}
-        </h1>
-        <p className="text-ink-muted mt-1 text-sm">
-          {productQuery.data
-            ? `SKU ${productQuery.data.sku}`
-            : 'Historial de movimientos de inventario.'}
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        back={{ to: '/inventario', label: 'Volver a inventario' }}
+        eyebrow="Kardex"
+        title={productQuery.data ? productQuery.data.name : 'Kardex'}
+        description={
+          productQuery.data
+            ? `SKU ${productQuery.data.sku} · historial completo de entradas, salidas y ajustes. Ningún movimiento se edita ni se borra.`
+            : 'Historial de movimientos de inventario.'
+        }
+      />
 
       <select
         value={warehouseId}
         onChange={(event) => handleWarehouseChange(event.target.value)}
         aria-label="Filtrar por bodega"
-        className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full max-w-xs rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+        className="field h-9 w-full max-w-xs px-3"
       >
         <option value="">Todas las bodegas</option>
         {warehousesQuery.data?.data.map((warehouse) => (

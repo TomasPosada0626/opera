@@ -15,6 +15,7 @@ export function useMarkOrderProduction() {
     // useMarkOrderWarehoused).
     onSuccess: (order) => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
     },
     meta: { successMessage: 'Pedido enviado a producción.' },

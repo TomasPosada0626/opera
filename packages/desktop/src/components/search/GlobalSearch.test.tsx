@@ -41,6 +41,7 @@ function buildResult(
     customers: [],
     suppliers: [],
     remissions: [],
+    orders: [],
     productionOrders: [],
     ...overrides,
   };
@@ -194,7 +195,7 @@ describe('GlobalSearch', () => {
           {
             id: 'order-1',
             product: { id: 'product-1', sku: 'PT-1', name: 'Silla de madera' },
-            status: 'EN_PROCESO',
+            status: 'CANCELADA',
           },
         ],
       }),
@@ -211,6 +212,36 @@ describe('GlobalSearch', () => {
       { timeout: 2000 },
     );
     expect(screen.getByText('Órdenes de producción')).toBeInTheDocument();
-    expect(screen.getByText('En proceso')).toBeInTheDocument();
+    expect(screen.getByText('Cancelada')).toBeInTheDocument();
+  });
+
+  it('finds a sales order by number and links to its detail', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildResult({
+        orders: [
+          {
+            id: 'order-9',
+            number: 45,
+            status: 'EN_PRODUCCION',
+            customer: { id: 'c1', name: 'Ferretería Sur' },
+          },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithRouter(<GlobalSearch />);
+
+    await user.type(screen.getByPlaceholderText(/Buscar productos/), '45');
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByText('Pedido No. 45 — Ferretería Sur'),
+        ).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+    expect(screen.getByText('Pedidos')).toBeInTheDocument();
+    expect(screen.getByText('En producción')).toBeInTheDocument();
   });
 });

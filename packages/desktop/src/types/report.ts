@@ -24,3 +24,15 @@ export interface TopProductRow {
   quantitySold: string;
   revenue: string;
 }
+
+// Cartera: lo que debe cada cliente hoy (GET /reports/cartera).
+export interface ReceivablesRow {
+  customerId: string;
+  customerName: string;
+  remissionCount: number;
+  totalBilled: string;
+  totalPaid: string;
+  balance: string;
+  oldestPendingAt: string;
+  daysPending: number;
+}

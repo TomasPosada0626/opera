@@ -14,7 +14,17 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   isLoading?: boolean;
   emptyMessage?: string;
+  // Texto secundario del estado vacío ("Crea el primero con «Nuevo pedido»").
+  emptyHint?: string;
+  // Resalta filas que necesitan atención (p. ej. pedidos atrasados) con
+  // una barra de color a la izquierda, sin teñir la fila completa.
+  rowTone?: (row: T) => 'danger' | 'warning' | undefined;
 }
+
+const toneClasses = {
+  danger: 'shadow-[inset_3px_0_0_var(--color-danger)]',
+  warning: 'shadow-[inset_3px_0_0_var(--color-warning)]',
+};
 
 // Primitivo de listado (#42, sistema de diseño #85, refinado tras feedback
 // visual): encabezados en tono terciario sobre un fondo levemente distinto
@@ -28,18 +38,20 @@ export function DataTable<T>({
   rowKey,
   isLoading = false,
   emptyMessage = 'Sin resultados.',
+  emptyHint,
+  rowTone,
 }: DataTableProps<T>) {
   return (
-    <div className="border-line bg-surface-raised overflow-hidden rounded-xl border shadow-md shadow-black/[0.06] dark:shadow-black/50">
+    <div className="border-line bg-surface-raised overflow-hidden rounded-xl border shadow-sm shadow-black/[0.04] dark:shadow-black/40">
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-line bg-chrome-strong border-b">
+            <tr className="border-line bg-chrome border-b">
               {columns.map((column) => (
                 <th
                   key={column.key}
                   scope="col"
-                  className={`text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase ${column.className ?? ''}`}
+                  className={`text-ink-muted px-4 py-2.5 text-[11px] font-semibold tracking-[0.08em] whitespace-nowrap uppercase ${column.className ?? ''}`}
                 >
                   {column.header}
                 </th>
@@ -49,38 +61,52 @@ export function DataTable<T>({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10">
+                <td colSpan={columns.length} className="px-4 py-14">
                   <div className="text-ink-muted flex flex-col items-center gap-2 text-sm">
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="text-accent h-5 w-5 animate-spin" />
                     Cargando…
                   </div>
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10">
-                  <div className="text-ink-muted flex flex-col items-center gap-2 text-sm">
-                    <Inbox className="h-5 w-5" />
-                    {emptyMessage}
+                <td colSpan={columns.length} className="px-4 py-14">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div className="border-line bg-chrome text-ink-faint flex h-11 w-11 items-center justify-center rounded-xl border">
+                      <Inbox className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-ink text-sm font-medium">
+                        {emptyMessage}
+                      </p>
+                      {emptyHint && (
+                        <p className="text-ink-muted mt-0.5 text-[13px]">
+                          {emptyHint}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr
-                  key={rowKey(row)}
-                  className="border-line hover:bg-chrome/60 border-b transition-colors last:border-b-0"
-                >
-                  {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`text-ink px-4 py-3 ${column.className ?? ''}`}
-                    >
-                      {column.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              rows.map((row) => {
+                const tone = rowTone?.(row);
+                return (
+                  <tr
+                    key={rowKey(row)}
+                    className={`border-line hover:bg-chrome/70 border-b transition-colors duration-150 last:border-b-0 ${tone ? toneClasses[tone] : ''}`}
+                  >
+                    {columns.map((column) => (
+                      <td
+                        key={column.key}
+                        className={`text-ink px-4 py-3 align-middle ${column.className ?? ''}`}
+                      >
+                        {column.render(row)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

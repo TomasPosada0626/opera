@@ -96,14 +96,13 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <label htmlFor="type" className="text-ink-muted text-sm font-medium">
+        <label
+          htmlFor="type"
+          className="text-ink-secondary text-[13px] font-medium"
+        >
           Tipo de movimiento
         </label>
-        <select
-          id="type"
-          {...register('type')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
-        >
+        <select id="type" {...register('type')} className="field h-9 px-3">
           <option value="ENTRADA">Entrada</option>
           <option value="SALIDA">Salida</option>
           <option value="AJUSTE">Ajuste</option>
@@ -111,7 +110,9 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">Producto</span>
+        <span className="text-ink-secondary text-[13px] font-medium">
+          Producto
+        </span>
         <ProductPicker
           value={selectedProduct}
           onChange={(product) => {
@@ -133,7 +134,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
       <div className="flex flex-col gap-1">
         <label
           htmlFor="quantity"
-          className="text-ink-muted text-sm font-medium"
+          className="text-ink-secondary text-[13px] font-medium"
         >
           Cantidad{type === 'AJUSTE' ? ' (negativa para reducir)' : ''}
         </label>
@@ -143,7 +144,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
           step="any"
           {...register('quantity', { valueAsNumber: true })}
           aria-invalid={!!errors.quantity}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
         />
         {errors.quantity && (
           <p className="text-danger text-xs">{errors.quantity.message}</p>
@@ -154,7 +155,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="unitCost"
-            className="text-ink-muted text-sm font-medium"
+            className="text-ink-secondary text-[13px] font-medium"
           >
             Costo unitario (opcional)
           </label>
@@ -167,7 +168,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
                 value === '' ? undefined : Number(value),
             })}
             aria-invalid={!!errors.unitCost}
-            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+            className="field h-9 px-3"
           />
           {errors.unitCost && (
             <p className="text-danger text-xs">{errors.unitCost.message}</p>
@@ -176,7 +177,10 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
       )}
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="reason" className="text-ink-muted text-sm font-medium">
+        <label
+          htmlFor="reason"
+          className="text-ink-secondary text-[13px] font-medium"
+        >
           Motivo{type === 'AJUSTE' ? '' : ' (opcional)'}
         </label>
         <input
@@ -184,7 +188,7 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
           type="text"
           {...register('reason')}
           aria-invalid={!!errors.reason}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
         />
         {errors.reason && (
           <p className="text-danger text-xs">{errors.reason.message}</p>

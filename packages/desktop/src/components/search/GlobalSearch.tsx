@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useGlobalSearch } from '../../hooks/useGlobalSearch';
+import { ORDER_STATUS_LABEL } from '../../lib/order-status';
 import type { GlobalSearchResult } from '../../types/search';
 
 const productionStatusLabel: Record<
@@ -10,8 +11,8 @@ const productionStatusLabel: Record<
   string
 > = {
   PENDIENTE: 'Pendiente',
-  EN_PROCESO: 'En proceso',
   COMPLETADA: 'Completada',
+  CANCELADA: 'Cancelada',
 };
 
 interface ResultGroup {
@@ -52,6 +53,15 @@ function buildGroups(data: GlobalSearchResult | undefined): ResultGroup[] {
         key: supplier.id,
         label: supplier.name,
         path: `/proveedores/${supplier.id}`,
+      })),
+    },
+    {
+      label: 'Pedidos',
+      items: data.orders.map((order) => ({
+        key: order.id,
+        label: `Pedido No. ${order.number} — ${order.customer.name}`,
+        sublabel: ORDER_STATUS_LABEL[order.status],
+        path: `/pedidos/${order.id}`,
       })),
     },
     {
@@ -103,7 +113,7 @@ export function GlobalSearch() {
   }
 
   return (
-    <div ref={containerRef} className="relative w-72">
+    <div ref={containerRef} className="relative w-80">
       <div className="relative">
         <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
         <input
@@ -120,12 +130,12 @@ export function GlobalSearch() {
             }
           }}
           placeholder="Buscar productos, clientes, remisiones…"
-          className="border-line bg-surface text-ink placeholder:text-ink-faint focus:border-accent focus:ring-accent/35 w-full rounded-md border py-1.5 pr-3 pl-9 text-sm outline-none focus:ring-2"
+          className="field h-9 w-full pr-3 pl-9"
         />
       </div>
 
       {showDropdown && (
-        <div className="border-line bg-surface-raised absolute top-full z-10 mt-1 max-h-96 w-full overflow-y-auto rounded-md border shadow-md shadow-black/[0.06] dark:shadow-black/50">
+        <div className="border-line bg-surface-raised animate-pop-in absolute top-full z-30 mt-1.5 max-h-[28rem] w-[26rem] overflow-y-auto rounded-xl border p-1 shadow-2xl shadow-black/15 dark:shadow-black/60">
           {searchQuery.isLoading && (
             <p className="text-ink-muted px-3 py-3 text-sm">Buscando…</p>
           )}
@@ -136,7 +146,7 @@ export function GlobalSearch() {
           )}
           {groups.map((group) => (
             <div key={group.label} className="py-1">
-              <p className="text-ink-faint px-3 pt-1.5 pb-1 text-xs font-medium tracking-wide uppercase">
+              <p className="text-ink-faint px-3 pt-2 pb-1 text-[10.5px] font-semibold tracking-[0.14em] uppercase">
                 {group.label}
               </p>
               {group.items.map((item) => (
@@ -144,9 +154,11 @@ export function GlobalSearch() {
                   key={item.key}
                   type="button"
                   onClick={() => goTo(item.path)}
-                  className="hover:bg-chrome-strong flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm"
+                  className="hover:bg-accent-surface group flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors"
                 >
-                  <span className="text-ink truncate">{item.label}</span>
+                  <span className="text-ink group-hover:text-accent truncate">
+                    {item.label}
+                  </span>
                   {item.sublabel && (
                     <span className="text-ink-muted shrink-0 text-xs">
                       {item.sublabel}

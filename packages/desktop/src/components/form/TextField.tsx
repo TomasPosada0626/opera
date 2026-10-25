@@ -19,10 +19,10 @@ export function TextField({
   error,
 }: TextFieldProps) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       <label
         htmlFor={registration.name}
-        className="text-ink-muted text-sm font-medium"
+        className="text-ink-secondary text-[13px] font-medium"
       >
         {label}
       </label>
@@ -31,7 +31,7 @@ export function TextField({
         type={type}
         aria-invalid={!!error}
         aria-describedby={error ? `${registration.name}-error` : undefined}
-        className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 outline-none focus:ring-2"
+        className="field h-9 px-3"
         {...registration}
       />
       {error && (

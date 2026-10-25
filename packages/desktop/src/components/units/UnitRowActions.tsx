@@ -15,11 +15,7 @@ export function UnitRowActions({ unit, onEdit }: UnitRowActionsProps) {
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => onEdit(unit)}
-          className="px-3 py-1.5"
-        >
+        <Button variant="ghost" onClick={() => onEdit(unit)} size="sm">
           <Pencil className="h-4 w-4" />
           Editar
         </Button>
@@ -28,7 +24,7 @@ export function UnitRowActions({ unit, onEdit }: UnitRowActionsProps) {
             variant="ghost"
             onClick={() => deactivateUnit.mutate(unit.id)}
             disabled={deactivateUnit.isPending}
-            className="px-3 py-1.5"
+            size="sm"
           >
             <Ban className="h-4 w-4" />
             {deactivateUnit.isPending ? 'Desactivando…' : 'Desactivar'}

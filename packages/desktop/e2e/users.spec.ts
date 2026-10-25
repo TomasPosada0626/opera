@@ -50,7 +50,12 @@ test('crear, resetear contraseña y desactivar un usuario desde la UI real', asy
   await page.getByLabel('Correo').fill(fixtures.email);
   await page.getByLabel('Contraseña').fill(fixtures.password);
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
+  ).toBeVisible();
 
   // 2. Crear un usuario nuevo por el formulario real.
   await page.goto('/#/usuarios');

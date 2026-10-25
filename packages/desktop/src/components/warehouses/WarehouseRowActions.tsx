@@ -18,11 +18,7 @@ export function WarehouseRowActions({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => onEdit(warehouse)}
-          className="px-3 py-1.5"
-        >
+        <Button variant="ghost" onClick={() => onEdit(warehouse)} size="sm">
           <Pencil className="h-4 w-4" />
           Editar
         </Button>
@@ -31,7 +27,7 @@ export function WarehouseRowActions({
             variant="ghost"
             onClick={() => deactivateWarehouse.mutate(warehouse.id)}
             disabled={deactivateWarehouse.isPending}
-            className="px-3 py-1.5"
+            size="sm"
           >
             <Ban className="h-4 w-4" />
             {deactivateWarehouse.isPending ? 'Desactivando…' : 'Desactivar'}

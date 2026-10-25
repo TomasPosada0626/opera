@@ -4,7 +4,9 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
+import { BillOfMaterialsEditor } from '../components/products/BillOfMaterialsEditor';
 import { ProductForm } from '../components/products/ProductForm';
 import { ProductRowActions } from '../components/products/ProductRowActions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -19,6 +21,9 @@ function ProductsPage() {
   const [searchInput, setSearchInput] = useState('');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [materialsProduct, setMaterialsProduct] = useState<Product | null>(
+    null,
+  );
   const search = useDebouncedValue(searchInput, 300);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
@@ -49,12 +54,29 @@ function ProductsPage() {
     {
       key: 'product',
       header: 'Producto',
-      render: (product) => `${product.sku} — ${product.name}`,
+      render: (product) => (
+        <div className="flex flex-col">
+          <span className="text-ink font-medium">{product.name}</span>
+          <span className="figures text-ink-faint text-xs">{product.sku}</span>
+        </div>
+      ),
     },
     {
       key: 'type',
       header: 'Tipo',
-      render: (product) => PRODUCT_TYPE_LABELS[product.type],
+      render: (product) => (
+        <Badge
+          variant={
+            product.type === 'FINISHED_GOOD'
+              ? 'accent'
+              : product.type === 'RAW_MATERIAL'
+                ? 'warning'
+                : 'neutral'
+          }
+        >
+          {PRODUCT_TYPE_LABELS[product.type]}
+        </Badge>
+      ),
     },
     {
       key: 'category',
@@ -71,9 +93,13 @@ function ProductsPage() {
       header: 'Estado',
       render: (product) =>
         product.isActive ? (
-          <Badge variant="success">Activo</Badge>
+          <Badge variant="success" dot>
+            Activo
+          </Badge>
         ) : (
-          <Badge variant="danger">Inactivo</Badge>
+          <Badge variant="danger" dot>
+            Inactivo
+          </Badge>
         ),
     },
     ...(isAdmin
@@ -83,7 +109,11 @@ function ProductsPage() {
             header: '',
             className: 'text-right',
             render: (product: Product) => (
-              <ProductRowActions product={product} onEdit={openEditModal} />
+              <ProductRowActions
+                product={product}
+                onEdit={openEditModal}
+                onEditMaterials={setMaterialsProduct}
+              />
             ),
           },
         ]
@@ -91,21 +121,20 @@ function ProductsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-ink text-xl font-medium">Productos</h1>
-          <p className="text-ink-muted mt-1 text-sm">
-            Catálogo de productos terminados, materias primas e insumos.
-          </p>
-        </div>
-        {isAdmin && (
-          <Button onClick={openCreateModal} className="shrink-0">
-            <Plus className="h-4 w-4" />
-            Nuevo producto
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Catálogo"
+        title="Productos"
+        description="Productos terminados, materias primas e insumos. Cada terminado puede tener su lista de materiales para que el stock se descuente solo."
+        actions={
+          isAdmin && (
+            <Button onClick={openCreateModal}>
+              <Plus />
+              Nuevo producto
+            </Button>
+          )
+        }
+      />
 
       <div className="relative w-full max-w-sm">
         <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
@@ -115,7 +144,7 @@ function ProductsPage() {
           onChange={(event) => handleSearchChange(event.target.value)}
           placeholder="Buscar por nombre o SKU…"
           aria-label="Buscar productos"
-          className="border-line bg-surface-raised text-ink focus:border-accent focus:ring-accent/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+          className="field h-9 w-full pr-3 pl-9"
         />
       </div>
 
@@ -143,6 +172,20 @@ function ProductsPage() {
           <ProductForm
             product={editingProduct ?? undefined}
             onSuccess={closeFormModal}
+          />
+        </Modal>
+      )}
+
+      {materialsProduct && (
+        <Modal
+          title="Lista de materiales"
+          description={`${materialsProduct.sku} — ${materialsProduct.name}`}
+          size="lg"
+          onClose={() => setMaterialsProduct(null)}
+        >
+          <BillOfMaterialsEditor
+            product={materialsProduct}
+            onDone={() => setMaterialsProduct(null)}
           />
         </Modal>
       )}

@@ -6,6 +6,9 @@ export interface CreateOrderInput {
   customerId: string;
   warehouseId: string;
   items: { productId: string; quantity: number; unitPrice: number }[];
+  // "AAAA-MM-DD" — fecha de envío prometida al cliente.
+  estimatedDeliveryDate?: string;
+  notes?: string;
 }
 
 export function useCreateOrder() {
@@ -23,6 +26,7 @@ export function useCreateOrder() {
     // useCreateRemission, que sí mueven stock de verdad.
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
     meta: { successMessage: 'Pedido creado.' },
   });

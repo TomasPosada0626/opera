@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import {
@@ -111,9 +111,8 @@ describe('ProductsPage', () => {
 
     renderWithClient(<ProductsPage />);
 
-    expect(
-      await screen.findByText('PT-1 — Silla de madera'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Silla de madera')).toBeInTheDocument();
+    expect(screen.getByText('PT-1')).toBeInTheDocument();
     expect(screen.getByText('Producto terminado')).toBeInTheDocument();
     expect(screen.getByText('Muebles')).toBeInTheDocument();
     expect(screen.getByText('un')).toBeInTheDocument();
@@ -136,9 +135,9 @@ describe('ProductsPage', () => {
 
     renderWithClient(<ProductsPage />);
 
-    await screen.findByText('PT-1 — Silla de madera');
+    await screen.findByText('Silla de madera');
     expect(
-      screen.queryByRole('button', { name: 'Nuevo producto' }),
+      screen.queryByRole('button', { name: /Nuevo producto/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -309,5 +308,36 @@ describe('ProductsPage', () => {
       },
       { timeout: 2000 },
     );
+  });
+
+  it('opens the bill-of-materials editor for a finished good', async () => {
+    setAuthToken(fakeJwt(['ADMIN']));
+    mockedApiFetch.mockImplementation((path: string) => {
+      if (path.includes('/bill-of-materials')) {
+        return Promise.resolve({
+          id: null,
+          productId: 'product-1',
+          isActive: false,
+          items: [],
+        });
+      }
+      return Promise.resolve(paginated([buildProduct()]));
+    });
+    const user = userEvent.setup();
+
+    renderWithClient(<ProductsPage />);
+
+    await user.click(await screen.findByRole('button', { name: /Materiales/ }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Lista de materiales',
+    });
+    expect(
+      await within(dialog).findByRole('button', {
+        name: /Guardar lista de materiales/,
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

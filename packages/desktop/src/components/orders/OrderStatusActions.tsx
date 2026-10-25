@@ -1,32 +1,30 @@
 import { Ban, Factory, PackageCheck } from 'lucide-react';
+import { FormError } from '../form/Field';
 import { Button } from '../ui/Button';
 import { useCancelOrder } from '../../hooks/useCancelOrder';
 import { useMarkOrderProduction } from '../../hooks/useMarkOrderProduction';
 import { useMarkOrderWarehoused } from '../../hooks/useMarkOrderWarehoused';
-import { ApiError } from '../../lib/api-client';
+import { currentStationSince } from '../../lib/order-status';
+import { formatDuration } from '../../lib/format';
 import type { Order } from '../../types/order';
 
 interface OrderStatusActionsProps {
   order: Order;
-}
-
-const MS_PER_DAY = 86_400_000;
-
-// Contador de días derivado en el cliente a partir de productionStartedAt —
-// no hay un campo de "días en producción" en el backend, se calcula igual
-// que orderTotal() en OrdersPage.
-function daysInProduction(productionStartedAt: string): number {
-  return Math.floor(
-    (Date.now() - new Date(productionStartedAt).getTime()) / MS_PER_DAY,
-  );
+  // En la fila del listado solo cabe el botón; el detalle muestra además
+  // el tiempo en la estación y el error con su explicación completa.
+  compact?: boolean;
 }
 
 // Vive en su propia fila/bloque (no en la página) porque cada acción
 // necesita su propio estado de mutación/error — mismo motivo que
 // CompleteOrderAction.tsx. Se usa tanto en la fila de OrdersPage como en el
-// detalle de OrderDetailPage, así que el estado (PENDIENTE/EN_PRODUCCION/
-// EN_ALMACEN/CANCELADO) decide qué mostrar en un solo lugar.
-export function OrderStatusActions({ order }: OrderStatusActionsProps) {
+// detalle de OrderDetailPage, así que el estado decide qué mostrar en un
+// solo lugar. EN_ALMACEN -> DESPACHADO no es un botón: lo hace la remisión
+// que completa el pedido.
+export function OrderStatusActions({
+  order,
+  compact = false,
+}: OrderStatusActionsProps) {
   const markProduction = useMarkOrderProduction();
   const markWarehoused = useMarkOrderWarehoused();
   const cancelOrder = useCancelOrder();
@@ -38,92 +36,67 @@ export function OrderStatusActions({ order }: OrderStatusActionsProps) {
   // UserRowActions ocultando "Desactivar" para la propia cuenta).
   const canCancel =
     order.status !== 'CANCELADO' &&
+    order.status !== 'DESPACHADO' &&
     order.remissions.every((remission) => remission.voidedAt);
 
-  const cancelButton = canCancel && (
-    <div className="flex flex-col items-end gap-1">
-      <Button
-        variant="ghost"
-        onClick={() => cancelOrder.mutate(order.id)}
-        disabled={cancelOrder.isPending}
-        className="px-3 py-1.5"
-      >
-        <Ban className="h-4 w-4" />
-        {cancelOrder.isPending ? 'Cancelando…' : 'Cancelar pedido'}
-      </Button>
-      {cancelOrder.isError && (
-        <p className="text-danger max-w-48 text-right text-xs">
-          {cancelOrder.error instanceof ApiError
-            ? cancelOrder.error.message
-            : 'No se pudo cancelar el pedido.'}
-        </p>
-      )}
-    </div>
-  );
+  const error =
+    markProduction.error ?? markWarehoused.error ?? cancelOrder.error;
 
-  if (order.status === 'PENDIENTE') {
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex flex-col items-end gap-1">
+  return (
+    <div
+      className={`flex flex-col gap-2 ${compact ? 'items-end' : 'items-stretch'}`}
+    >
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {!compact && order.status === 'EN_PRODUCCION' && (
+          <span className="text-ink-muted mr-1 text-xs">
+            {formatDuration(currentStationSince(order), new Date())} en
+            producción
+          </span>
+        )}
+        {canCancel && !compact && (
           <Button
-            variant="secondary"
+            variant="ghost"
+            size="sm"
+            onClick={() => cancelOrder.mutate(order.id)}
+            disabled={cancelOrder.isPending}
+          >
+            <Ban />
+            {cancelOrder.isPending ? 'Cancelando…' : 'Cancelar pedido'}
+          </Button>
+        )}
+        {order.status === 'PENDIENTE' && (
+          <Button
+            variant={compact ? 'secondary' : 'primary'}
+            size="sm"
             onClick={() => markProduction.mutate(order.id)}
             disabled={markProduction.isPending}
-            className="px-3 py-1.5"
           >
-            <Factory className="h-4 w-4" />
+            <Factory />
             {markProduction.isPending ? 'Marcando…' : 'Marcar en producción'}
           </Button>
-          {markProduction.isError && (
-            <p className="text-danger max-w-48 text-right text-xs">
-              {markProduction.error instanceof ApiError
-                ? markProduction.error.message
-                : 'No se pudo marcar en producción.'}
-            </p>
-          )}
-        </div>
-        {cancelButton}
-      </div>
-    );
-  }
-
-  if (order.status === 'EN_PRODUCCION') {
-    const days = order.productionStartedAt
-      ? daysInProduction(order.productionStartedAt)
-      : 0;
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex flex-col items-end gap-1">
-          <p className="text-ink-muted text-xs">
-            {days === 1 ? '1 día en producción' : `${days} días en producción`}
-          </p>
+        )}
+        {order.status === 'EN_PRODUCCION' && (
           <Button
-            variant="secondary"
+            variant={compact ? 'secondary' : 'primary'}
+            size="sm"
             onClick={() => markWarehoused.mutate(order.id)}
             disabled={markWarehoused.isPending}
-            className="px-3 py-1.5"
           >
-            <PackageCheck className="h-4 w-4" />
+            <PackageCheck />
             {markWarehoused.isPending
               ? 'Marcando…'
               : 'Marcar enviado a almacén'}
           </Button>
-          {markWarehoused.isError && (
-            <p className="text-danger max-w-48 text-right text-xs">
-              {markWarehoused.error instanceof ApiError
-                ? markWarehoused.error.message
-                : 'No se pudo marcar enviado a almacén.'}
-            </p>
-          )}
-        </div>
-        {cancelButton}
+        )}
       </div>
-    );
-  }
-
-  if (canCancel) {
-    return <div className="flex flex-col items-end gap-2">{cancelButton}</div>;
-  }
-
-  return <span className="text-ink-faint">—</span>;
+      {error && (
+        <div className={compact ? 'max-w-64' : ''}>
+          <FormError
+            error={error}
+            fallback="No se pudo cambiar el estado del pedido."
+          />
+        </div>
+      )}
+    </div>
+  );
 }

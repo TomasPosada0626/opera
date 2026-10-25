@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import DashboardPage from './DashboardPage';
 import { apiFetch } from '../lib/api-client';
-import type { DashboardSummary } from '../types/dashboard';
+import { buildDashboardSummary } from '../test/factories';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
@@ -24,51 +24,114 @@ function renderWithClient(ui: ReactElement) {
   );
 }
 
-function buildSummary(
-  overrides: Partial<DashboardSummary> = {},
-): DashboardSummary {
-  return {
-    inventory: {
-      totalStockValue: '475',
-      lowStockCount: 0,
-      lowStockProducts: [],
-    },
-    production: { PENDIENTE: 1, EN_PROCESO: 2, COMPLETADA: 4 },
-    orders: { PENDIENTE: 3, EN_PRODUCCION: 1, EN_ALMACEN: 5, CANCELADO: 0 },
-    recentPurchases: [],
-    recentSales: [],
-    recentActivity: [],
-    recentWarnings: 0,
-    ...overrides,
-  };
-}
-
 describe('DashboardPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
   });
 
-  it('renders the KPI tiles from the dashboard summary', async () => {
-    mockedApiFetch.mockResolvedValue(buildSummary());
+  it('renders the KPI tiles linked to where each number can be investigated', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildDashboardSummary({
+        receivables: { total: '1250000', remissionCount: 3 },
+        overdueOrders: { count: 2, orders: [] },
+        orders: {
+          PENDIENTE: 3,
+          EN_PRODUCCION: 1,
+          EN_ALMACEN: 5,
+          DESPACHADO: 4,
+          CANCELADO: 0,
+        },
+      }),
+    );
 
     renderWithClient(<DashboardPage />);
 
-    expect(await screen.findByText('475,00')).toBeInTheDocument();
-    // Pedidos pendientes = PENDIENTE (3) + EN_PRODUCCION (1)
-    expect(await screen.findByText('4')).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(
+      await screen.findByText('3 remisiones pendientes'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Por cobrar/ })).toHaveAttribute(
+      'href',
+      '/reportes?vista=cartera',
+    );
+    expect(
+      screen.getByRole('link', { name: /Pedidos atrasados: 2/ }),
+    ).toHaveAttribute('href', '/pedidos?filtro=atrasados');
+    // En curso = 3 + 1 + 5.
+    expect(
+      screen.getByRole('link', { name: /Pedidos en curso: 9/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('5 listos para despachar')).toBeInTheDocument();
+  });
+
+  it('shows the pipeline of orders by station', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildDashboardSummary({
+        orders: {
+          PENDIENTE: 1,
+          EN_PRODUCCION: 0,
+          EN_ALMACEN: 0,
+          DESPACHADO: 0,
+          CANCELADO: 0,
+        },
+      }),
+    );
+
+    renderWithClient(<DashboardPage />);
+
+    expect(
+      await screen.findByText('1 pedido sin despachar'),
+    ).toBeInTheDocument();
+  });
+
+  it('lists overdue orders with how many days late each one is', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildDashboardSummary({
+        overdueOrders: {
+          count: 1,
+          orders: [
+            {
+              id: 'order-9',
+              number: 9,
+              customerName: 'Ferretería Sur',
+              status: 'EN_PRODUCCION',
+              estimatedDeliveryDate: '2020-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      }),
+    );
+
+    renderWithClient(<DashboardPage />);
+
+    const link = (await screen.findByText('Ferretería Sur')).closest('a');
+    expect(link).toHaveAttribute('href', '/pedidos/order-9');
+    expect(screen.getByText(/^\+\d+ d$/)).toBeInTheDocument();
+  });
+
+  it('says so when nothing is overdue and stock is fine', async () => {
+    mockedApiFetch.mockResolvedValue(buildDashboardSummary());
+
+    renderWithClient(<DashboardPage />);
+
+    expect(
+      await screen.findByText('Ningún pedido atrasado.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Todo el stock está sobre el mínimo.'),
+    ).toBeInTheDocument();
   });
 
   it('renders recent sales and purchases in their own tables', async () => {
     mockedApiFetch.mockResolvedValue(
-      buildSummary({
+      buildDashboardSummary({
         recentSales: [
           {
             id: 'order-1',
+            number: 4,
             customerName: 'Muebles del Valle',
             status: 'PENDIENTE',
-            total: '120',
-            createdAt: '2026-08-01T00:00:00.000Z',
+            total: '75',
+            createdAt: '2026-01-15T10:00:00.000Z',
           },
         ],
         recentPurchases: [
@@ -78,7 +141,7 @@ describe('DashboardPage', () => {
             productName: 'Tabla de pino',
             quantity: '10',
             unitCost: '5',
-            purchasedAt: '2026-08-01T00:00:00.000Z',
+            purchasedAt: '2026-01-14T10:00:00.000Z',
           },
         ],
       }),
@@ -91,17 +154,17 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Tabla de pino')).toBeInTheDocument();
   });
 
-  it('renders recent activity with the acting user and formatted timestamp', async () => {
+  it('renders recent activity in plain language', async () => {
     mockedApiFetch.mockResolvedValue(
-      buildSummary({
+      buildDashboardSummary({
         recentActivity: [
           {
             id: 'audit-1',
-            entity: 'Order',
-            entityId: 'order-1',
-            action: 'CREATE',
+            entity: 'Remission',
+            entityId: 'remission-1',
+            action: 'ADD_PAYMENT',
             userName: 'Admin',
-            timestamp: '2026-08-01T15:30:00.000Z',
+            timestamp: '2026-01-15T10:00:00.000Z',
           },
         ],
       }),
@@ -109,32 +172,31 @@ describe('DashboardPage', () => {
 
     renderWithClient(<DashboardPage />);
 
-    expect(await screen.findByText('Order')).toBeInTheDocument();
-    expect(screen.getByText('CREATE')).toBeInTheDocument();
-    expect(screen.getAllByText('Admin').length).toBeGreaterThan(0);
+    expect(await screen.findByText(/registró un abono en/)).toBeInTheDocument();
+    expect(screen.getByText('remisión')).toBeInTheDocument();
   });
 
-  it('shows the recent-warnings KPI, highlighted when there are any', async () => {
-    mockedApiFetch.mockResolvedValue(buildSummary({ recentWarnings: 3 }));
+  it('shows the recent-warnings notice only when there are any', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildDashboardSummary({ recentWarnings: 3 }),
+    );
 
     renderWithClient(<DashboardPage />);
 
-    // El label es estático (aparece ya en el primer render, antes de que
-    // la query resuelva) — hay que esperar por el valor, no por el label,
-    // para no leer el "—" del estado de loading.
-    expect(await screen.findByText('3')).toBeInTheDocument();
-    expect(screen.getByText('Advertencias (24h)')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/3 advertencias del sistema/),
+    ).toBeInTheDocument();
   });
 
-  it('shows the low-stock product list only when there are critical products', async () => {
+  it('shows the low-stock product list with its minimum', async () => {
     mockedApiFetch.mockResolvedValue(
-      buildSummary({
+      buildDashboardSummary({
         inventory: {
-          totalStockValue: '0',
+          totalStockValue: '100',
           lowStockCount: 1,
           lowStockProducts: [
             {
-              id: 'p1',
+              id: 'product-1',
               sku: 'PT-1',
               name: 'Silla de madera',
               currentStock: '2',
@@ -150,8 +212,7 @@ describe('DashboardPage', () => {
     expect(
       await screen.findByText(/PT-1 — Silla de madera/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Productos con stock crítico' }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/2 \/ mín\. 5/)).toBeInTheDocument();
+    expect(screen.getByText('1 con stock crítico')).toBeInTheDocument();
   });
 });

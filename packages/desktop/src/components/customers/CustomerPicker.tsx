@@ -74,7 +74,7 @@ export function CustomerPicker({
         placeholder="Buscar cliente por nombre…"
         aria-label="Buscar cliente"
         aria-invalid={!!error}
-        className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+        className="field w-full py-2 pr-3 pl-9"
       />
       {showResults && (
         <ul className="border-line bg-surface-raised absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg">

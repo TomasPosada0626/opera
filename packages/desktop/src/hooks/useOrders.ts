@@ -8,6 +8,12 @@ interface UseOrdersParams {
   pageSize: number;
   status?: OrderStatus;
   customerId?: string;
+  // Solo los que ya pasaron su fecha de envío sin despacharse.
+  overdue?: boolean;
+  // Número de pedido exacto.
+  search?: string;
+  sortBy?: 'createdAt' | 'number' | 'estimatedDeliveryDate' | 'status';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export function useOrders({
@@ -15,9 +21,25 @@ export function useOrders({
   pageSize,
   status,
   customerId,
+  overdue,
+  search,
+  sortBy,
+  sortOrder,
 }: UseOrdersParams) {
   return useQuery({
-    queryKey: ['orders', { page, pageSize, status, customerId }],
+    queryKey: [
+      'orders',
+      {
+        page,
+        pageSize,
+        status,
+        customerId,
+        overdue,
+        search,
+        sortBy,
+        sortOrder,
+      },
+    ],
     queryFn: () => {
       const params = new URLSearchParams({
         page: String(page),
@@ -28,6 +50,16 @@ export function useOrders({
       }
       if (customerId) {
         params.set('customerId', customerId);
+      }
+      if (overdue) {
+        params.set('overdue', 'true');
+      }
+      if (search) {
+        params.set('search', search);
+      }
+      if (sortBy) {
+        params.set('sortBy', sortBy);
+        params.set('sortOrder', sortOrder ?? 'desc');
       }
       return apiFetch<PaginatedResult<Order>>(`/orders?${params.toString()}`);
     },

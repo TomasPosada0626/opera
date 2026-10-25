@@ -114,13 +114,16 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
       />
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="type" className="text-ink-muted text-sm font-medium">
+        <label
+          htmlFor="type"
+          className="text-ink-secondary text-[13px] font-medium"
+        >
           Tipo
         </label>
         <select
           id="type"
           {...register('type')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
           aria-invalid={!!errors.type}
         >
           {Object.entries(PRODUCT_TYPE_LABELS).map(([value, label]) => (
@@ -137,14 +140,14 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
       <div className="flex flex-col gap-1">
         <label
           htmlFor="categoryId"
-          className="text-ink-muted text-sm font-medium"
+          className="text-ink-secondary text-[13px] font-medium"
         >
           Categoría
         </label>
         <select
           id="categoryId"
           {...register('categoryId')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
           aria-invalid={!!errors.categoryId}
         >
           <option value="">Selecciona una categoría</option>
@@ -160,13 +163,16 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="unitId" className="text-ink-muted text-sm font-medium">
+        <label
+          htmlFor="unitId"
+          className="text-ink-secondary text-[13px] font-medium"
+        >
           Unidad
         </label>
         <select
           id="unitId"
           {...register('unitId')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
           aria-invalid={!!errors.unitId}
         >
           <option value="">Selecciona una unidad</option>
@@ -185,7 +191,7 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="minStock"
-            className="text-ink-muted text-sm font-medium"
+            className="text-ink-secondary text-[13px] font-medium"
           >
             Stock mínimo (opcional)
           </label>
@@ -196,7 +202,7 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
             min="0"
             {...register('minStock')}
             aria-invalid={!!errors.minStock}
-            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+            className="field h-9 px-3"
           />
           {errors.minStock && (
             <p className="text-danger text-xs">{errors.minStock.message}</p>
@@ -205,7 +211,7 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
         <div className="flex flex-col gap-1">
           <label
             htmlFor="maxStock"
-            className="text-ink-muted text-sm font-medium"
+            className="text-ink-secondary text-[13px] font-medium"
           >
             Stock máximo (opcional)
           </label>
@@ -216,7 +222,7 @@ export function ProductForm({ product, onSuccess }: ProductFormProps) {
             min="0"
             {...register('maxStock')}
             aria-invalid={!!errors.maxStock}
-            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+            className="field h-9 px-3"
           />
           {errors.maxStock && (
             <p className="text-danger text-xs">{errors.maxStock.message}</p>

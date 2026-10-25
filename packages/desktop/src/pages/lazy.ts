@@ -29,4 +29,5 @@ export const SupplierDetailPage = lazy(() => import('./SupplierDetailPage'));
 export const PrintRemissionPage = lazy(() => import('./PrintRemissionPage'));
 export const ReportsPage = lazy(() => import('./ReportsPage'));
 export const UsersPage = lazy(() => import('./UsersPage'));
+export const AuditPage = lazy(() => import('./AuditPage'));
 export const NotFoundPage = lazy(() => import('./NotFoundPage'));

@@ -109,9 +109,9 @@ describe('KardexPage', () => {
     renderWithClient(<KardexPage />);
 
     expect(
-      await screen.findByRole('heading', { name: 'Kardex — Tornillo 1/4' }),
+      await screen.findByRole('heading', { name: 'Tornillo 1/4' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('SKU SKU-1')).toBeInTheDocument();
+    expect(screen.getByText(/SKU SKU-1/)).toBeInTheDocument();
   });
 
   it('renders a row per movement with the quantity, unit and a type badge', async () => {
