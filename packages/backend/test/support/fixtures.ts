@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import request from 'supertest';
+import { App } from 'supertest/types';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
 interface TestUser {
@@ -37,7 +38,7 @@ async function ensureRole(prisma: PrismaService, name: string) {
 // roleName omitido = usuario autenticado sin ningún rol (para probar el
 // camino de rechazo 403 del RbacGuard en rutas @Roles('ADMIN')).
 export async function createUserAndLogin(
-  app: INestApplication,
+  app: INestApplication<App>,
   prisma: PrismaService,
   opts: { emailPrefix: string; roleName?: string },
 ): Promise<TestUser> {

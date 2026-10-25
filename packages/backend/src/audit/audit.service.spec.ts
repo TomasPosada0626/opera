@@ -14,11 +14,11 @@ describe('AuditService', () => {
     service = new AuditService(prisma as unknown as PrismaService);
   });
 
-  it('creates an audit log entry with before/after snapshots', () => {
+  it('creates an audit log entry with before/after snapshots', async () => {
     const before = { name: 'Old' };
     const after = { name: 'New' };
 
-    service.log({
+    await service.log({
       userId: 'user-1',
       entity: 'Product',
       entityId: 'product-1',
@@ -39,8 +39,8 @@ describe('AuditService', () => {
     });
   });
 
-  it('omits before/after when not provided (e.g. a CREATE action)', () => {
-    service.log({
+  it('omits before/after when not provided (e.g. a CREATE action)', async () => {
+    await service.log({
       userId: 'user-1',
       entity: 'Product',
       entityId: 'product-1',
@@ -75,10 +75,10 @@ describe('AuditService', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('round-trips the snapshot through JSON so Date fields become plain values', () => {
+  it('round-trips the snapshot through JSON so Date fields become plain values', async () => {
     const before = { name: 'Old', createdAt: new Date('2026-01-01T00:00:00Z') };
 
-    service.log({
+    await service.log({
       userId: 'user-1',
       entity: 'Product',
       entityId: 'product-1',

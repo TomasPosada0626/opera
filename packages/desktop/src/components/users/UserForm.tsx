@@ -1,4 +1,4 @@
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { UserPlus } from 'lucide-react';
 import { z } from 'zod';
@@ -43,7 +43,7 @@ export function UserForm({ user, onSuccess }: UserFormProps) {
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     formState: { errors },
   } = useForm<UserFormValues>({
@@ -56,7 +56,7 @@ export function UserForm({ user, onSuccess }: UserFormProps) {
     },
   });
 
-  const selectedRoleIds = watch('roleIds');
+  const selectedRoleIds = useWatch({ control, name: 'roleIds' });
 
   function toggleRole(roleId: string, checked: boolean) {
     setValue(

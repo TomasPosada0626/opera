@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import type { App } from 'supertest/types';
 import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { InventoryModule } from '../src/inventory/inventory.module';
@@ -12,7 +13,7 @@ import { InventoryService } from '../src/inventory/inventory.service';
 describe('Inventory concurrency (e2e)', () => {
   jest.setTimeout(30_000);
 
-  let app: INestApplication;
+  let app: INestApplication<App>;
   let prisma: PrismaService;
   let inventoryService: InventoryService;
 

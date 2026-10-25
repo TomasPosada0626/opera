@@ -40,7 +40,7 @@ describe('JwtAuthGuard', () => {
   it('delegates to the passport strategy when the route is not @Public()', () => {
     reflector.getAllAndOverride.mockReturnValue(false);
 
-    guard.canActivate(context);
+    void guard.canActivate(context);
 
     expect(superCanActivate).toHaveBeenCalledWith(context);
   });
@@ -48,7 +48,7 @@ describe('JwtAuthGuard', () => {
   it('delegates to the passport strategy when no @Public() metadata is set at all', () => {
     reflector.getAllAndOverride.mockReturnValue(undefined);
 
-    guard.canActivate(context);
+    void guard.canActivate(context);
 
     expect(superCanActivate).toHaveBeenCalledWith(context);
   });
