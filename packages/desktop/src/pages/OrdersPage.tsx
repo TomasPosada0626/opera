@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { ArrowRight, Hash, Plus } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router';
+import { Hash, Plus } from 'lucide-react';
+import { useSearchParams } from 'react-router';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { FilterChips } from '../components/ui/FilterChips';
 import { Modal } from '../components/ui/Modal';
+import { DetailLink } from '../components/ui/DetailLink';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Pagination } from '../components/ui/Pagination';
 import { OrderForm } from '../components/orders/OrderForm';
@@ -174,16 +175,12 @@ function OrdersPage() {
     {
       key: 'detail',
       header: '',
-      className: 'text-right',
+      className: 'w-10 text-right',
       render: (order) => (
-        <Link
+        <DetailLink
           to={`/pedidos/${order.id}`}
-          aria-label={`Ver detalle del pedido ${order.number}`}
-          className="text-ink-muted hover:text-accent hover:bg-accent-surface focus-visible:ring-accent group inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-all duration-200 outline-none focus-visible:ring-2"
-        >
-          Ver detalle
-          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-        </Link>
+          label={`Ver detalle del pedido ${order.number}`}
+        />
       ),
     },
   ];
