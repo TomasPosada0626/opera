@@ -9,17 +9,16 @@ const BACKEND_DIR = path.resolve(__dirname, '../../backend');
 // (éxito + credenciales inválidas) y el flujo completo de "olvidé mi
 // contraseña" contra los endpoints reales — la funcionalidad de seguridad
 // más nueva del sistema, hasta ahora sin ninguna cobertura end-to-end real
-// (señalado en la auditoría 2026-08-28, hallazgo #9). El código de
-// verificación en sí no se puede "leer" de un correo real en CI (SMTP no
-// está configurado) — después del paso 1 real, `reseed-code` juega el rol
-// de "leer el correo" reescribiendo el hash a un código ya conocido por
-// el test; ver e2e-fixtures/auth.ts para el detalle de por qué no puede
-// sembrarse antes (el propio endpoint real genera y guarda el suyo).
+// (señalado en la auditoría 2026-08-28, hallazgo #9). CI no tiene SMTP,
+// igual que la app de escritorio, así que la pantalla ofrece directo el
+// código de recuperación offline: el fixture siembra uno conocido y el
+// spec recorre esa vía real (desde la ronda 6). El flujo por correo sigue
+// cubierto por test/auth.e2e-spec.ts del backend.
 interface FixtureState {
   loginEmail: string;
   loginPassword: string;
   resetEmail: string;
-  resetCode: string;
+  recoveryCode: string;
   newPassword: string;
 }
 
@@ -75,42 +74,41 @@ test('rechaza credenciales inválidas y luego inicia sesión con las reales', as
   ).toBeVisible();
 });
 
-test('recupera la contraseña con el flujo completo de dos pasos', async ({
+test('recupera la contraseña con el código de recuperación y rota el código', async ({
   page,
 }) => {
   await page.goto('/#/login');
   await page.getByRole('link', { name: '¿Olvidaste tu contraseña?' }).click();
   await expect(page).toHaveURL(/\/#\/olvide-contrasena/);
 
-  // Paso 1: pide el código contra el endpoint real. Respuesta siempre
-  // genérica (nunca revela si el correo existe) -- ver ForgotPasswordPage.
-  // El propio endpoint ya generó y guardó su propio código aleatorio acá
-  // -- reseed-code lo reemplaza por uno conocido, jugando el rol de "leer
-  // el correo" que en CI no se puede leer de verdad.
-  await page.getByLabel('Correo').fill(fixtures.resetEmail);
-  await page.getByRole('button', { name: 'Enviar código' }).click();
-  await expect(page.getByLabel('Código')).toBeVisible();
-  execSync('pnpm run e2e:fixtures:auth:reseed-code', { cwd: BACKEND_DIR });
-
-  // Paso 2, código equivocado -- el backend real lo rechaza.
-  await page.getByLabel('Código').fill('000000');
-  await page.getByLabel('Nueva contraseña').fill(fixtures.newPassword);
-  await page.getByLabel('Confirmar contraseña').fill(fixtures.newPassword);
-  await page.getByRole('button', { name: 'Actualizar contraseña' }).click();
-  await expect(page.getByRole('alert')).toHaveText(
-    'Código inválido o expirado',
+  // Sin SMTP (igual que la app de escritorio), la pantalla va directo al
+  // código de recuperación — no ofrece un correo que nunca va a llegar.
+  await expect(page.getByRole('button', { name: 'Enviar código' })).toHaveCount(
+    0,
   );
 
-  // Paso 2, código real (sembrado por el fixture) -- el backend real lo
-  // acepta y actualiza la contraseña de verdad. toHaveValue espera a que
-  // React Hook Form termine de procesar el nuevo valor antes de enviar --
-  // sin esto, el submit puede dispararse contra el valor todavía viejo
-  // ("000000") por una carrera fill()/click() (encontrado corriendo esto
-  // por primera vez contra el backend real).
-  await page.getByLabel('Código').fill(fixtures.resetCode);
-  await expect(page.getByLabel('Código')).toHaveValue(fixtures.resetCode);
-  await page.getByRole('button', { name: 'Actualizar contraseña' }).click();
+  // Código equivocado -- el backend real lo rechaza.
+  await page.getByLabel('Correo').fill(fixtures.resetEmail);
+  await page.getByLabel('Código de recuperación').fill('AAAA-AAAA-AAAA-AAAA');
+  await page.getByLabel('Nueva contraseña').fill(fixtures.newPassword);
+  await page.getByLabel('Confirmar contraseña').fill(fixtures.newPassword);
+  await page.getByRole('button', { name: 'Restablecer contraseña' }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'El correo o el código de recuperación no coinciden',
+  );
+
+  // Código real, escrito como lo copiaría alguien de un papel (minúsculas,
+  // espacios) -- el backend lo normaliza y lo acepta.
+  const typed = fixtures.recoveryCode.toLowerCase().replace(/-/g, ' ');
+  await page.getByLabel('Código de recuperación').fill(typed);
+  await expect(page.getByLabel('Código de recuperación')).toHaveValue(typed);
+  await page.getByRole('button', { name: 'Restablecer contraseña' }).click();
   await expect(page.getByText('Contraseña actualizada.')).toBeVisible();
+
+  // El código usado se consumió: la pantalla muestra uno nuevo.
+  const newCode = await page.getByTestId('recovery-code').textContent();
+  expect(newCode).toMatch(/^[0-9A-Z]{4}(-[0-9A-Z]{4}){3}$/);
+  expect(newCode).not.toBe(fixtures.recoveryCode);
 
   // Cierra el loop: inicia sesión con la contraseña nueva, prueba de que el
   // cambio quedó persistido de verdad, no solo en el estado de la UI.

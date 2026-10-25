@@ -4,10 +4,9 @@ import { useMutation } from '@tanstack/react-query';
 import { LogIn } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import { z } from 'zod';
+import { AuthShell } from '../components/auth/AuthShell';
 import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
-import { Logo } from '../components/ui/Logo';
-import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
 
@@ -42,78 +41,62 @@ function LoginPage() {
   });
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4">
-      {/* Foco de luz ambiental detrás de la tarjeta — la pantalla de login
-          es la primera impresión del producto; sin esto es un formulario
-          flotando en el vacío. Deliberadamente sutil (blur enorme, opacidad
-          baja): da profundidad sin volverse un fondo de marketing. */}
-      <div
-        aria-hidden="true"
-        className="bg-accent/[0.14] dark:bg-accent/[0.2] pointer-events-none absolute top-[38%] left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[110px]"
-      />
-      <div className="fixed top-4 right-4">
-        <ThemeToggle />
-      </div>
-      <div className="relative w-full max-w-sm">
-        <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <Logo size={48} showWordmark />
-          <span className="text-sm text-ink-muted">
-            Gestión operativa empresarial
-          </span>
-        </div>
-
-        <form
-          onSubmit={(event) =>
-            void handleSubmit((values) => loginMutation.mutate(values))(event)
-          }
-          noValidate
-          className="border-line bg-surface-raised flex flex-col gap-4 rounded-xl border p-6 shadow-2xl shadow-black/10 dark:shadow-black/70"
-        >
-          <TextField
-            label="Correo"
-            type="email"
-            registration={register('email')}
-            error={errors.email}
-          />
-          <TextField
-            label="Contraseña"
-            type="password"
-            registration={register('password')}
-            error={errors.password}
-          />
-
-          {loginMutation.isError && (
-            <p
-              role="alert"
-              className="bg-danger-surface text-danger rounded-md px-3 py-2 text-sm"
-            >
-              {loginMutation.error instanceof ApiError &&
-              loginMutation.error.statusCode === 401
-                ? 'Correo o contraseña incorrectos.'
-                : 'No se pudo iniciar sesión. Intenta de nuevo.'}
-            </p>
-          )}
-
-          <Button
-            type="submit"
-            disabled={loginMutation.isPending}
-            className="mt-2"
-          >
-            <LogIn className="h-4 w-4" />
-            {loginMutation.isPending ? 'Ingresando…' : 'Ingresar'}
-          </Button>
-        </form>
-
-        <div className="mt-4 text-center">
+    <AuthShell
+      title="Iniciar sesión"
+      subtitle="Entra con la cuenta de esta instalación."
+      footer={
+        <p className="text-center">
           <Link
             to="/olvide-contrasena"
-            className="text-ink-muted hover:text-ink text-sm transition-colors"
+            className="text-ink-muted hover:text-accent text-sm transition-colors"
           >
             ¿Olvidaste tu contraseña?
           </Link>
-        </div>
-      </div>
-    </div>
+        </p>
+      }
+    >
+      <form
+        onSubmit={(event) =>
+          void handleSubmit((values) => loginMutation.mutate(values))(event)
+        }
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        <TextField
+          label="Correo"
+          type="email"
+          registration={register('email')}
+          error={errors.email}
+        />
+        <TextField
+          label="Contraseña"
+          type="password"
+          registration={register('password')}
+          error={errors.password}
+        />
+
+        {loginMutation.isError && (
+          <p
+            role="alert"
+            className="border-danger-line bg-danger-surface text-danger animate-fade-in rounded-lg border px-3.5 py-2.5 text-sm"
+          >
+            {loginMutation.error instanceof ApiError &&
+            loginMutation.error.statusCode === 401
+              ? 'Correo o contraseña incorrectos.'
+              : 'No se pudo iniciar sesión. Intenta de nuevo.'}
+          </p>
+        )}
+
+        <Button
+          type="submit"
+          disabled={loginMutation.isPending}
+          className="mt-2 h-10"
+        >
+          <LogIn />
+          {loginMutation.isPending ? 'Ingresando…' : 'Ingresar'}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 

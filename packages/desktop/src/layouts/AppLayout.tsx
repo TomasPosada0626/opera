@@ -16,6 +16,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { RecoveryCodeBanner } from '../components/auth/RecoveryCodeBanner';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalSearch } from '../components/search/GlobalSearch';
 import { Logo } from '../components/ui/Logo';
@@ -288,6 +289,7 @@ function AppLayout() {
             className="animate-fade-in mx-auto max-w-6xl"
             key={location.pathname}
           >
+            <RecoveryCodeBanner />
             <ErrorBoundary variant="inline" key={location.pathname}>
               {/* Un solo límite de Suspense para todas las rutas hijas
                   (#21, auditoría) -- cada página está code-split con

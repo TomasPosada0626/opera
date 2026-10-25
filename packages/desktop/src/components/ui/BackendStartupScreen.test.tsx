@@ -39,6 +39,8 @@ describe('BackendStartupScreen', () => {
       onStatusChange: vi.fn(),
       retry,
       getBackupStatus: vi.fn(),
+      listBackups: vi.fn(),
+      restoreBackup: vi.fn(),
     };
 
     render(

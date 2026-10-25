@@ -70,9 +70,7 @@ describe('SetupPage', () => {
     const user = userEvent.setup();
     renderWithRouter(<SetupPage />);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Crear cuenta y entrar' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(await screen.findByText('Ingresa tu nombre')).toBeInTheDocument();
     expect(screen.getByText('Ingresa tu correo')).toBeInTheDocument();
@@ -87,9 +85,7 @@ describe('SetupPage', () => {
     await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
     await user.type(screen.getByLabelText('Contraseña'), 'password123');
     await user.type(screen.getByLabelText('Confirmar contraseña'), 'otra-cosa');
-    await user.click(
-      screen.getByRole('button', { name: 'Crear cuenta y entrar' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(
       await screen.findByText('Las contraseñas no coinciden'),
@@ -97,15 +93,24 @@ describe('SetupPage', () => {
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
-  it('creates the admin account, stores the token, and navigates to the dashboard', async () => {
-    mockedApiFetch.mockResolvedValue({ accessToken: 'fake.jwt.token' });
+  it('creates the admin account, shows the recovery code once, and only enters after confirming it was saved', async () => {
+    mockedApiFetch.mockResolvedValue({
+      accessToken: 'fake.jwt.token',
+      recoveryCode: '7K2M-QX9D-4HPA-T3VR',
+    });
     const user = userEvent.setup();
     renderWithRouter(<SetupPage />);
 
     await fillValidForm(user);
-    await user.click(
-      screen.getByRole('button', { name: 'Crear cuenta y entrar' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
+
+    expect(await screen.findByText('7K2M-QX9D-4HPA-T3VR')).toBeInTheDocument();
+    // Todavía no entra: primero hay que confirmar que se anotó.
+    expect(getAuthToken()).toBeNull();
+    const enter = screen.getByRole('button', { name: /Entrar a Opera/ });
+    expect(enter).toBeDisabled();
+    await user.click(screen.getByLabelText('Ya lo anoté en un lugar seguro'));
+    await user.click(enter);
 
     await waitFor(() => {
       expect(getAuthToken()).toBe('fake.jwt.token');
@@ -130,9 +135,7 @@ describe('SetupPage', () => {
     renderWithRouter(<SetupPage />);
 
     await fillValidForm(user);
-    await user.click(
-      screen.getByRole('button', { name: 'Crear cuenta y entrar' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(
       await screen.findByText(
@@ -149,9 +152,7 @@ describe('SetupPage', () => {
     renderWithRouter(<SetupPage />);
 
     await fillValidForm(user);
-    await user.click(
-      screen.getByRole('button', { name: 'Crear cuenta y entrar' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(
       await screen.findByText('No se pudo crear la cuenta. Intenta de nuevo.'),

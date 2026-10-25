@@ -116,11 +116,23 @@ describe('preload', () => {
       getStatus: () => Promise<unknown>;
       retry: () => Promise<void>;
       onStatusChange: (cb: (status: unknown) => void) => void;
+      getBackupStatus: () => Promise<unknown>;
+      listBackups: () => Promise<unknown>;
+      restoreBackup: (fileName: string) => Promise<unknown>;
     };
     void appBackend.getStatus();
     expect(invokeMock).toHaveBeenCalledWith('backend:get-status');
     void appBackend.retry();
     expect(invokeMock).toHaveBeenCalledWith('backend:retry');
+    void appBackend.getBackupStatus();
+    expect(invokeMock).toHaveBeenCalledWith('backend:get-backup-status');
+    void appBackend.listBackups();
+    expect(invokeMock).toHaveBeenCalledWith('backend:list-backups');
+    void appBackend.restoreBackup('opera-2026-10-25T08-00-00Z.sql.gz');
+    expect(invokeMock).toHaveBeenCalledWith(
+      'backend:restore-backup',
+      'opera-2026-10-25T08-00-00Z.sql.gz',
+    );
 
     const statusCallback = vi.fn();
     appBackend.onStatusChange(statusCallback);

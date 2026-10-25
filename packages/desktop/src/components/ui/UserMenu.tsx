@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, LogOut } from 'lucide-react';
+import { Database, Download, KeyRound, LogOut } from 'lucide-react';
 import type { CurrentUser } from '../../lib/current-user';
+import { toast } from '../../lib/toast';
+import { RecoveryCodeModal } from '../auth/RecoveryCodeModal';
+import { BackupsModal } from './BackupsModal';
 
 interface UserMenuProps {
   user: CurrentUser | null;
@@ -48,6 +51,9 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  // Los diálogos viven fuera del desplegable: cerrar el menú no debe
+  // desmontar un modal abierto desde él.
+  const [dialog, setDialog] = useState<'recovery' | 'backups' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   async function handleExportLogs() {
@@ -96,6 +102,14 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
     return null;
   }
 
+  function openDialog(next: 'recovery' | 'backups') {
+    setOpen(false);
+    setDialog(next);
+  }
+
+  const itemClassName =
+    'text-ink hover:bg-chrome-strong focus-visible:ring-accent flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13.5px] outline-none transition-colors focus-visible:ring-2';
+
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -103,7 +117,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="bg-accent text-on-accent focus-visible:ring-accent focus-visible:ring-offset-chrome flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        className="bg-accent text-on-accent focus-visible:ring-accent focus-visible:ring-offset-chrome ease-snappy flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold shadow-sm transition-all duration-200 outline-none hover:shadow-md focus-visible:ring-2 focus-visible:ring-offset-2 active:scale-95"
       >
         {initials(user.email)}
       </button>
@@ -111,9 +125,9 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
       {open && (
         <div
           role="menu"
-          className="border-line bg-surface-raised absolute right-0 z-20 mt-2 w-56 rounded-lg border p-1 shadow-xl shadow-black/10 dark:shadow-black/60"
+          className="border-line bg-surface-raised animate-pop-in absolute right-0 z-30 mt-2 w-72 rounded-xl border p-1.5 shadow-2xl shadow-black/15 dark:shadow-black/60"
         >
-          <div className="border-line border-b px-3 py-2">
+          <div className="border-line mb-1 border-b px-3 pt-2 pb-3">
             <p className="text-ink truncate text-sm font-medium">
               {user.email}
             </p>
@@ -123,14 +137,34 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
                 : 'Sin rol asignado'}
             </p>
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => openDialog('recovery')}
+            className={itemClassName}
+          >
+            <KeyRound className="text-ink-muted h-4 w-4" />
+            Código de recuperación
+          </button>
+          {window.appBackend && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => openDialog('backups')}
+              className={itemClassName}
+            >
+              <Database className="text-ink-muted h-4 w-4" />
+              Respaldos
+            </button>
+          )}
           {window.appLogs && (
             <button
               type="button"
               role="menuitem"
               onClick={() => void handleExportLogs()}
-              className="text-ink hover:bg-surface focus-visible:ring-accent mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2"
+              className={itemClassName}
             >
-              <Download className="h-4 w-4" />
+              <Download className="text-ink-muted h-4 w-4" />
               Exportar registro de errores
             </button>
           )}
@@ -152,12 +186,28 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
             type="button"
             role="menuitem"
             onClick={onLogout}
-            className="text-ink hover:bg-surface focus-visible:ring-accent mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm outline-none transition-colors focus-visible:ring-2"
+            className={itemClassName}
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="text-ink-muted h-4 w-4" />
             Cerrar sesión
           </button>
         </div>
+      )}
+
+      {dialog === 'recovery' && (
+        <RecoveryCodeModal onClose={() => setDialog(null)} />
+      )}
+      {dialog === 'backups' && (
+        <BackupsModal
+          onClose={() => setDialog(null)}
+          onRestored={() => {
+            setDialog(null);
+            toast.success(
+              'Respaldo restaurado. Inicia sesión de nuevo para seguir.',
+            );
+            onLogout();
+          }}
+        />
       )}
     </div>
   );

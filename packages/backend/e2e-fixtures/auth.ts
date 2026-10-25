@@ -1,41 +1,34 @@
 // Fixtures del test Playwright de auth (packages/desktop/e2e/auth.spec.ts).
 //
-// El flujo de recuperación por correo no se puede probar de punta a punta
-// leyendo un email real: SMTP_* no está configurado en CI (MailService es
-// best-effort a propósito). El código en sí nunca se guarda en claro en
-// ningún lado leíble después del hecho -- solo su hash argon2 (ver
-// AuthService.forgotPassword). Sortear eso sembrando el hash ANTES de que
-// el spec llame al paso 1 real (POST /auth/forgot-password) no sirve: ese
-// mismo endpoint genera su propio código aleatorio y SOBREESCRIBE
-// PasswordRecovery.resetCodeHash con el suyo (encontrado corriendo esto por primera
-// vez contra el backend real -- el fixture pre-sembrado quedaba invalidado
-// apenas el spec pedía el código de verdad). En su lugar, `reseed-code` se
-// llama DESPUÉS del paso 1 real del spec, jugando el rol de "leer el
-// correo que se habría recibido" -- reescribe el hash a un código ya
-// conocido por el test, con el mismo HASH_OPTIONS que usa
-// AuthService.resetPasswordWithCode para verificarlo.
+// CI no tiene SMTP, igual que la app de escritorio, así que el spec recorre
+// la recuperación con código de recuperación offline. El código nunca se
+// guarda en claro (solo su hash argon2, ver AuthService.issueRecoveryCode):
+// el fixture siembra el hash de uno conocido por el spec, con el mismo
+// HASH_OPTIONS y la misma normalización que usa
+// AuthService.resetPasswordWithRecoveryCode para verificarlo. El flujo por
+// correo queda cubierto por test/auth.e2e-spec.ts.
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HASH_OPTIONS } from '../src/auth/argon2-options';
+import { normalizeRecoveryCode } from '../src/auth/recovery-code.util';
 
 const prisma = new PrismaClient();
 const STATE_FILE = path.join(__dirname, '.state-auth.json');
 const EMAIL_PREFIX = 'e2e-playwright-auth-';
-const RESET_CODE = '654321';
 const NEW_PASSWORD = 'Test-password-999!';
+// Código de recuperación conocido por el spec: la app de escritorio no
+// tiene SMTP (tampoco CI), así que la recuperación real que se prueba de
+// punta a punta es con este código, no por correo.
+const RECOVERY_CODE = '7K2M-QX9D-4HPA-T3VR';
 
 interface FixtureState {
   loginEmail: string;
   loginPassword: string;
   resetEmail: string;
-  resetCode: string;
+  recoveryCode: string;
   newPassword: string;
-}
-
-function loadState(): FixtureState {
-  return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) as FixtureState;
 }
 
 async function setup() {
@@ -60,11 +53,21 @@ async function setup() {
   });
 
   const resetEmail = `${EMAIL_PREFIX}reset-${unique}@opera.local`;
-  await prisma.user.create({
+  const resetUser = await prisma.user.create({
     data: {
       email: resetEmail,
       password: await argon2.hash('Test-password-original!', HASH_OPTIONS),
       name: 'Playwright usuario reset',
+    },
+  });
+  await prisma.passwordRecovery.create({
+    data: {
+      userId: resetUser.id,
+      recoveryCodeHash: await argon2.hash(
+        normalizeRecoveryCode(RECOVERY_CODE),
+        HASH_OPTIONS,
+      ),
+      recoveryCodeCreatedAt: new Date(),
     },
   });
 
@@ -72,31 +75,11 @@ async function setup() {
     loginEmail,
     loginPassword,
     resetEmail,
-    resetCode: RESET_CODE,
+    recoveryCode: RECOVERY_CODE,
     newPassword: NEW_PASSWORD,
   };
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   console.log(JSON.stringify(state));
-}
-
-// Llamado por el spec después de POST /auth/forgot-password real (paso 1) --
-// ver el comentario de arriba sobre por qué no puede sembrarse antes.
-async function reseedCode() {
-  const state = loadState();
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { email: state.resetEmail },
-  });
-  const reset = {
-    resetCodeHash: await argon2.hash(state.resetCode, HASH_OPTIONS),
-    resetExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
-    resetAttempts: 0,
-  };
-  await prisma.passwordRecovery.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, ...reset },
-    update: reset,
-  });
-  console.log('reseed complete');
 }
 
 async function teardown() {
@@ -123,7 +106,6 @@ async function teardown() {
 const mode = process.argv[2];
 const modes: Record<string, () => Promise<void>> = {
   setup,
-  'reseed-code': reseedCode,
   teardown,
 };
 (modes[mode] ?? teardown)()
