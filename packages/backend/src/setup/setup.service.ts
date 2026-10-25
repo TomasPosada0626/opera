@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { HASH_OPTIONS } from '../auth/argon2-options';
+import { AuthService } from '../auth/auth.service';
 import { toRolesAndPermissions } from '../auth/roles-permissions.util';
 import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { CreateAdminDto } from './dto/create-admin.dto';
@@ -18,6 +19,7 @@ export class SetupService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly audit: AuditService,
+    private readonly auth: AuthService,
   ) {}
 
   async needsSetup(): Promise<boolean> {
@@ -140,6 +142,13 @@ export class SetupService {
       permissions,
     };
 
-    return { accessToken: await this.jwtService.signAsync(payload) };
+    // El primer código de recuperación nace con la cuenta: en la app de
+    // escritorio no hay correo, así que sin él olvidar la contraseña del
+    // único administrador dejaba el sistema sin entrada posible. La
+    // pantalla de configuración lo muestra una sola vez para anotarlo.
+    return {
+      accessToken: await this.jwtService.signAsync(payload),
+      recoveryCode: await this.auth.issueRecoveryCode(user.id),
+    };
   }
 }

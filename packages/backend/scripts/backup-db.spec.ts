@@ -124,7 +124,16 @@ describe('backup-db', () => {
 
       expect(execFileSync).toHaveBeenCalledWith(
         'docker',
-        ['exec', 'opera-postgres-app', 'pg_dump', '-U', 'opera', 'opera'],
+        [
+          'exec',
+          'opera-postgres-app',
+          'pg_dump',
+          '--clean',
+          '--if-exists',
+          '-U',
+          'opera',
+          'opera',
+        ],
         expect.anything(),
       );
     });
@@ -146,6 +155,8 @@ describe('backup-db', () => {
           'exec',
           'opera-postgres',
           'pg_dump',
+          '--clean',
+          '--if-exists',
           '-U',
           'otro-usuario',
           'otra-base',

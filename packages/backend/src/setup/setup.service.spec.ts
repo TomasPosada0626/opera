@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { SetupService } from './setup.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { AuthService } from '../auth/auth.service';
 
 describe('SetupService', () => {
   const createdUser = {
@@ -22,6 +23,7 @@ describe('SetupService', () => {
   };
   let jwt: { signAsync: jest.Mock };
   let audit: { log: jest.Mock };
+  let auth: { issueRecoveryCode: jest.Mock };
   let service: SetupService;
 
   beforeEach(() => {
@@ -39,10 +41,14 @@ describe('SetupService', () => {
     };
     jwt = { signAsync: jest.fn().mockResolvedValue('signed-jwt') };
     audit = { log: jest.fn() };
+    auth = {
+      issueRecoveryCode: jest.fn().mockResolvedValue('7K2M-QX9D-4HPA-T3VR'),
+    };
     service = new SetupService(
       prisma as unknown as PrismaService,
       jwt as unknown as JwtService,
       audit as unknown as AuditService,
+      auth as unknown as AuthService,
     );
   });
 
@@ -133,7 +139,11 @@ describe('SetupService', () => {
           permissions: [],
         }),
       );
-      expect(result).toEqual({ accessToken: 'signed-jwt' });
+      expect(result).toEqual({
+        accessToken: 'signed-jwt',
+        recoveryCode: '7K2M-QX9D-4HPA-T3VR',
+      });
+      expect(auth.issueRecoveryCode).toHaveBeenCalledWith('admin-1');
     });
 
     // Regresión de la auditoría 2026-09-01 (ronda 2): dos POST /setup/admin

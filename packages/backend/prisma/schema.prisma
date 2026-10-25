@@ -24,28 +24,44 @@ datasource db {
 }
 
 model User {
-  id                     String             @id @default(uuid())
-  email                  String             @unique
-  password               String
-  name                   String
-  isActive               Boolean            @default(true)
-  // Recuperación de contraseña por correo (código de 6 dígitos) — nunca se
-  // guarda el código en claro, solo su hash argon2 (mismo tratamiento que
-  // `password`). `passwordResetExpiresAt` null = sin solicitud pendiente;
-  // ambos se limpian al usarse el código o al pedir uno nuevo que lo
-  // reemplace.
-  passwordResetCodeHash  String?
-  passwordResetExpiresAt DateTime?
-  roles                  UserRole[]
-  auditLogs              AuditLog[]
-  stockMovements         StockMovement[]
-  productionOrders       ProductionOrder[]
-  orders                 Order[]
-  remissions             Remission[]
-  remissionPayments      RemissionPayment[]
-  supplierPurchases      SupplierPurchase[]
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
+  id                String             @id @default(uuid())
+  email             String             @unique
+  password          String
+  name              String
+  isActive          Boolean            @default(true)
+  passwordRecovery  PasswordRecovery?
+  roles             UserRole[]
+  auditLogs         AuditLog[]
+  stockMovements    StockMovement[]
+  productionOrders  ProductionOrder[]
+  orders            Order[]
+  remissions        Remission[]
+  remissionPayments RemissionPayment[]
+  supplierPurchases SupplierPurchase[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+// Estado de recuperación de contraseña, fuera de User a propósito:
+// JwtStrategy invalida las sesiones cuando User.updatedAt es posterior al
+// token, así que guardar acá el código de "olvidé mi contraseña" (o un
+// intento fallido) en la fila de User cerraba la sesión del usuario —
+// bastaba con pedir un código con su correo (auditoría ronda 6).
+// Nunca se guarda un código en claro, solo su hash argon2.
+model PasswordRecovery {
+  userId                String    @id
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Código de 6 dígitos por correo: vence a los 15 minutos, un solo uso,
+  // y se invalida tras 5 intentos fallidos aunque no haya vencido.
+  resetCodeHash         String?
+  resetExpiresAt        DateTime?
+  resetAttempts         Int       @default(0)
+  // Código de recuperación offline (sin correo): se muestra una sola vez
+  // al crearlo; usarlo restablece la contraseña y genera uno nuevo. Es la
+  // salida para la instalación de escritorio, que no tiene SMTP.
+  recoveryCodeHash      String?
+  recoveryCodeCreatedAt DateTime?
+  updatedAt             DateTime  @updatedAt
 }
 
 model Role {

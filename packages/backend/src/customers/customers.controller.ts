@@ -81,6 +81,11 @@ export class CustomersController {
   // @Res() de Express directo, mismo patrón que ReportsController — el
   // .xlsx es contenido binario con sus propios headers.
   @Get(':id/export')
+  // Exporta TODOS los datos personales de un tercero: solo ADMIN, explícito.
+  // Sin decorador, RbacGuard lo dejaba pasar a cualquier rol autenticado —
+  // inofensivo hoy (solo existe ADMIN), una fuga el día que exista otro rol
+  // (auditoría ronda 6).
+  @Roles('ADMIN')
   @ApiOperation({
     summary: 'Exportar todos los datos del cliente, como .xlsx',
     description:

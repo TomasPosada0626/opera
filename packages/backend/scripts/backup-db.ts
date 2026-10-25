@@ -103,9 +103,14 @@ export function main(): void {
   // solución real si esto llega a ser un problema -- no se hizo acá para no
   // reescribir un script que hoy funciona, sin evidencia todavía de que
   // Herrajes Toro se acerque a ese techo.
+  // --clean --if-exists: el volcado empieza borrando cada objeto antes de
+  // recrearlo, así que restaurarlo sobre una base con datos la reemplaza en
+  // vez de fallar a mitad de camino por tablas y claves que ya existen
+  // (el README prometía "sobrescribe la base actual" sin que fuera cierto,
+  // auditoría ronda 6).
   const dump = execFileSync(
     'docker',
-    ['exec', container, 'pg_dump', '-U', user, db],
+    ['exec', container, 'pg_dump', '--clean', '--if-exists', '-U', user, db],
     { maxBuffer: 1024 * 1024 * 1024 },
   );
   fs.writeFileSync(outputFile, zlib.gzipSync(dump));
