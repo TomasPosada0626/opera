@@ -50,7 +50,7 @@ describe('HealthController', () => {
     health.check.mockReturnValue({ status: 'ok' });
     mail.isConfigured.mockReturnValue(true);
 
-    controller.check();
+    void controller.check();
 
     const calls = health.check.mock.calls as [Array<() => unknown>][];
     const smtpIndicatorFn = calls[0][0][1];
@@ -63,7 +63,7 @@ describe('HealthController', () => {
     health.check.mockReturnValue({ status: 'ok' });
     mail.isConfigured.mockReturnValue(false);
 
-    controller.check();
+    void controller.check();
 
     const calls = health.check.mock.calls as [Array<() => unknown>][];
     const smtpIndicatorFn = calls[0][0][1];

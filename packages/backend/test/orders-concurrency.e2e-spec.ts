@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import type { App } from 'supertest/types';
 import { ProductType } from '@prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { InventoryService } from '../src/inventory/inventory.service';
@@ -27,7 +28,7 @@ import {
 describe('Order mark-warehoused concurrency (e2e)', () => {
   jest.setTimeout(30_000);
 
-  let app: INestApplication;
+  let app: INestApplication<App>;
   let prisma: PrismaService;
   let inventoryService: InventoryService;
   let ordersService: OrdersService;

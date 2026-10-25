@@ -1,11 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { App } from 'supertest/types';
 import { createTestApp } from './support/test-app';
 
 // Sin login: el health check lo consulta software de monitoreo, no un
 // usuario logueado (ver comentario en HealthController).
 describe('Health (e2e)', () => {
-  let app: INestApplication;
+  let app: INestApplication<App>;
 
   beforeAll(async () => {
     app = await createTestApp();

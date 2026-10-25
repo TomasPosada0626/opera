@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Save } from 'lucide-react';
 import { z } from 'zod';
@@ -59,14 +59,14 @@ export function MovementForm({ onSuccess }: MovementFormProps) {
   const {
     register,
     handleSubmit,
-    watch,
+    control,
     setValue,
     formState: { errors },
   } = useForm<MovementFormValues>({
     resolver: zodResolver(movementSchema),
     defaultValues: { type: 'ENTRADA' },
   });
-  const type = watch('type');
+  const type = useWatch({ control, name: 'type' });
 
   const createMovement = useCreateMovement();
 

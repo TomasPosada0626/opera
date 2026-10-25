@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { App } from 'supertest/types';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
@@ -11,7 +12,7 @@ import { createUserAndLogin, deleteUsers } from './support/fixtures';
 describe('Auth + RBAC guard (e2e)', () => {
   jest.setTimeout(30_000);
 
-  let app: INestApplication;
+  let app: INestApplication<App>;
   let prisma: PrismaService;
 
   const email = `auth-e2e-${Date.now()}@opera.local`;

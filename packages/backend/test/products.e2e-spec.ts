@@ -1,5 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { App } from 'supertest/types';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createTestApp } from './support/test-app';
 import { createUserAndLogin, deleteUsers } from './support/fixtures';
@@ -7,7 +8,7 @@ import { createUserAndLogin, deleteUsers } from './support/fixtures';
 describe('Products (e2e)', () => {
   jest.setTimeout(30_000);
 
-  let app: INestApplication;
+  let app: INestApplication<App>;
   let prisma: PrismaService;
   let adminToken: string;
   let staffToken: string;
