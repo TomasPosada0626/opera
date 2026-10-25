@@ -70,25 +70,33 @@ function CollectionCard({ order }: { order: Order }) {
           <p className="text-ink-muted text-[11px] font-semibold tracking-[0.08em] uppercase">
             Saldo pendiente
           </p>
-          <p
-            className={`figures mt-1 text-[28px] leading-none font-semibold ${
-              pending > 0 ? 'text-danger' : 'text-success'
-            }`}
-          >
-            {formatMoney(pending)}
-          </p>
+          {dispatched > 0 ? (
+            <p
+              className={`figures mt-1 text-[28px] leading-none font-semibold ${
+                pending > 0 ? 'text-danger' : 'text-success'
+              }`}
+            >
+              {formatMoney(pending)}
+            </p>
+          ) : (
+            <p className="text-ink-muted mt-1.5 text-sm">
+              Todavía no se ha despachado nada.
+            </p>
+          )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <div className="bg-chrome-strong h-2 overflow-hidden rounded-full">
-            <div
-              className="bg-success h-full rounded-full transition-all duration-700"
-              style={{ width: `${Math.round(paidRatio * 100)}%` }}
-            />
+        {dispatched > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <div className="bg-chrome-strong h-2 overflow-hidden rounded-full">
+              <div
+                className="bg-success h-full rounded-full transition-all duration-700"
+                style={{ width: `${Math.round(paidRatio * 100)}%` }}
+              />
+            </div>
+            <p className="text-ink-faint text-xs">
+              {Math.round(paidRatio * 100)}% cobrado de lo despachado
+            </p>
           </div>
-          <p className="text-ink-faint text-xs">
-            {Math.round(paidRatio * 100)}% cobrado de lo despachado
-          </p>
-        </div>
+        )}
         <dl className="border-line flex flex-col gap-2 border-t pt-4 text-[13px]">
           {[
             ['Valor del pedido', total],
@@ -395,7 +403,7 @@ function OrderDetailPage() {
                         <p className="text-ink font-medium">
                           {item.product.name}
                         </p>
-                        <p className="figures text-ink-faint text-xs">
+                        <p className="code text-ink-faint text-xs">
                           {item.product.sku}
                         </p>
                       </td>

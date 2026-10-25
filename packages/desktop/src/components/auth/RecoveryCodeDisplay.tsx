@@ -28,7 +28,7 @@ export function RecoveryCodeDisplay({ code }: RecoveryCodeDisplayProps) {
           <KeyRound className="text-accent h-5 w-5 shrink-0" />
           <span
             data-testid="recovery-code"
-            className="figures text-ink text-xl font-semibold tracking-[0.12em] select-all"
+            className="code text-ink text-xl font-semibold tracking-[0.12em] select-all"
           >
             {code}
           </span>

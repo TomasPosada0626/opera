@@ -188,6 +188,7 @@ function CustomerDetailPage() {
               icon={ShoppingBag}
               label="Último pedido"
               value={lastOrder ? formatDate(lastOrder.createdAt) : '—'}
+              valueKind="text"
               hint={
                 ordersQuery.data
                   ? `${ordersQuery.data.meta.total} pedidos en total`

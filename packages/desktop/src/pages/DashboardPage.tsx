@@ -210,7 +210,9 @@ function DashboardPage() {
           label="Pedidos en curso"
           value={data ? inProgress : '—'}
           hint={
-            data ? `${data.orders.EN_ALMACEN} listos para despachar` : undefined
+            data
+              ? `${data.orders.EN_ALMACEN} ${data.orders.EN_ALMACEN === 1 ? 'listo' : 'listos'} para despachar`
+              : undefined
           }
           variant="accent"
           to="/pedidos"

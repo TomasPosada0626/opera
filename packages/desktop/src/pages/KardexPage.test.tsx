@@ -118,7 +118,7 @@ describe('KardexPage', () => {
     mockRoutes([buildMovement()]);
     renderWithClient(<KardexPage />);
 
-    expect(await screen.findByText('10.000 un')).toBeInTheDocument();
+    expect(await screen.findByText('+10 un')).toBeInTheDocument();
     expect(screen.getByText('Entrada')).toBeInTheDocument();
     expect(screen.getAllByText('Bodega principal').length).toBeGreaterThan(0);
     expect(screen.getByText('Admin')).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe('KardexPage', () => {
     const user = userEvent.setup();
     renderWithClient(<KardexPage />);
 
-    await screen.findByText('10.000 un');
+    await screen.findByText('+10 un');
     const select = await screen.findByLabelText('Filtrar por bodega');
     await waitFor(() =>
       expect(

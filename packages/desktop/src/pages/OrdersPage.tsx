@@ -86,7 +86,7 @@ function OrdersPage() {
           <span className="figures text-ink font-semibold">
             #{order.number}
           </span>
-          <span className="text-ink-faint text-xs">
+          <span className="text-ink-faint text-xs whitespace-nowrap">
             {formatDate(order.createdAt)}
           </span>
         </div>
@@ -243,7 +243,7 @@ function OrdersPage() {
             type="search"
             inputMode="numeric"
             aria-label="Buscar pedido por número"
-            placeholder="Número de pedido"
+            placeholder="N.º de pedido"
             value={numberSearch}
             onChange={(event) => {
               setNumberSearch(event.target.value);

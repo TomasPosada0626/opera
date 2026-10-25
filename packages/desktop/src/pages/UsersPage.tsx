@@ -12,13 +12,10 @@ import { UserRowActions } from '../components/users/UserRowActions';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useUsers } from '../hooks/useUsers';
 import { getCurrentUser } from '../lib/current-user';
+import { formatDate } from '../lib/format';
 import type { User } from '../types/user';
 
 const PAGE_SIZE = 20;
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'short' });
-}
 
 function UsersPage() {
   const [page, setPage] = useState(1);

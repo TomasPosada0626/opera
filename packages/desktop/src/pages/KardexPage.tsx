@@ -7,6 +7,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { useKardex } from '../hooks/useKardex';
 import { useProduct } from '../hooks/useProduct';
 import { useWarehouses } from '../hooks/useWarehouses';
+import { formatMoney, formatQuantity } from '../lib/format';
 import type { MovementType, StockMovementEntry } from '../types/inventory';
 
 const PAGE_SIZE = 20;
@@ -26,9 +27,11 @@ const movementLabel: Record<MovementType, string> = {
   AJUSTE: 'Ajuste',
 };
 
+// Con año: el Kardex es un historial largo y "25 oct" sin año se presta
+// a confusión.
 function formatDateTime(value: string): string {
   return new Date(value).toLocaleString('es-CO', {
-    dateStyle: 'short',
+    dateStyle: 'medium',
     timeStyle: 'short',
   });
 }
@@ -59,6 +62,7 @@ function KardexPage() {
     {
       key: 'createdAt',
       header: 'Fecha',
+      className: 'whitespace-nowrap',
       render: (entry) => formatDateTime(entry.createdAt),
     },
     {
@@ -73,14 +77,29 @@ function KardexPage() {
     {
       key: 'quantity',
       header: 'Cantidad',
-      className: 'text-right tabular-nums',
-      render: (entry) => `${entry.quantity} ${unitAbbreviation}`.trim(),
+      className: 'text-right figures whitespace-nowrap',
+      render: (entry) => {
+        const quantity = Number(entry.quantity);
+        return (
+          <span
+            className={`font-medium ${quantity < 0 ? 'text-danger' : 'text-success'}`}
+          >
+            {quantity > 0 ? '+' : ''}
+            {formatQuantity(quantity)} {unitAbbreviation}
+          </span>
+        );
+      },
     },
     {
       key: 'unitCost',
       header: 'Costo unitario',
-      className: 'text-right tabular-nums',
-      render: (entry) => entry.unitCost ?? '—',
+      className: 'text-right figures whitespace-nowrap',
+      render: (entry) =>
+        entry.unitCost === null ? (
+          <span className="text-ink-faint">—</span>
+        ) : (
+          formatMoney(entry.unitCost)
+        ),
     },
     {
       key: 'warehouse',

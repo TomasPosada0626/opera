@@ -57,7 +57,7 @@ function ProductsPage() {
       render: (product) => (
         <div className="flex flex-col">
           <span className="text-ink font-medium">{product.name}</span>
-          <span className="figures text-ink-faint text-xs">{product.sku}</span>
+          <span className="code text-ink-faint text-xs">{product.sku}</span>
         </div>
       ),
     },

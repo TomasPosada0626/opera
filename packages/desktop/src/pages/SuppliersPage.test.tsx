@@ -108,7 +108,7 @@ describe('SuppliersPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a dash for optional fields left empty, and an Inactivo badge', async () => {
+  it('says when the NIT is missing, and shows an Inactivo badge', async () => {
     mockedApiFetch.mockResolvedValue(
       suppliersResponse([
         buildSupplier({ taxId: null, email: null, isActive: false }),
@@ -118,7 +118,7 @@ describe('SuppliersPage', () => {
     renderWithClient(<SuppliersPage />);
 
     await screen.findByText('Maderas del Norte S.A.S.');
-    expect(screen.getAllByText('—')).toHaveLength(2);
+    expect(screen.getByText('Sin NIT')).toBeInTheDocument();
     expect(screen.getByText('Inactivo')).toBeInTheDocument();
   });
 

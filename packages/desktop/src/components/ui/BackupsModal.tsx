@@ -79,7 +79,7 @@ export function BackupsModal({ onClose, onRestored }: BackupsModalProps) {
               value={confirmText}
               autoComplete="off"
               onChange={(event) => setConfirmText(event.target.value)}
-              className="field figures h-9 px-3 tracking-[0.1em]"
+              className="field code h-9 px-3 tracking-[0.1em]"
             />
           </div>
           {error && (

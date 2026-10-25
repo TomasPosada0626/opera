@@ -77,7 +77,7 @@ function ChangesDetail({ entry }: { entry: AuditEntry }) {
               key={change.key}
               className="border-line grid grid-cols-[110px_1fr] gap-2 border-b py-1.5 last:border-b-0"
             >
-              <dt className="text-ink-muted figures">{change.key}</dt>
+              <dt className="text-ink-muted code text-xs">{change.key}</dt>
               <dd className="flex flex-col gap-0.5">
                 {entry.before && (
                   <span className="text-danger line-through decoration-1">
@@ -137,7 +137,7 @@ function AuditPage() {
       key: 'entity',
       header: 'Registro',
       render: (entry) => (
-        <span className="figures text-ink-faint text-xs">
+        <span className="code text-ink-faint text-xs">
           {entry.entityId.slice(0, 8)}
         </span>
       ),
