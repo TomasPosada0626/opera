@@ -223,7 +223,10 @@ pnpm dev:desktop
 
 Con el backend y el desktop corriendo, entra a la app y usa las credenciales que definiste en `ADMIN_EMAIL`/`ADMIN_PASSWORD` (las que `pnpm db:seed` usó para crear el Administrador inicial) en la pantalla de login. Es la única cuenta que existe hasta que crees más desde **Usuarios** dentro de la propia app.
 
-> **"¿Olvidaste tu contraseña?"** en la pantalla de login manda un código de verificación de 6 dígitos por correo (vence en 15 minutos, un solo uso). Necesita las variables `SMTP_*` configuradas en `.env` (ver `.env.example`) — sin ellas, el endpoint sigue respondiendo con éxito (nunca revela si un correo existe) pero no manda nada, y queda un warning en el log del backend.
+> **"¿Olvidaste tu contraseña?"** tiene dos vías:
+>
+> - **Código de recuperación** (siempre disponible, no necesita internet): 16 caracteres que Opera muestra una sola vez al crear la cuenta en la configuración inicial, para anotar en papel. Se puede generar uno nuevo desde el menú de usuario → **Código de recuperación** (el anterior deja de servir). Al usarlo para cambiar la contraseña se consume y la pantalla muestra el siguiente. Se acepta escrito en minúsculas, con espacios o con guiones. Una cuenta sin código (por ejemplo la que crea `pnpm db:seed` en dev) ve un aviso arriba de cada pantalla hasta que genere uno.
+> - **Código por correo**: 6 dígitos, vence en 15 minutos, un solo uso, se invalida tras 5 intentos fallidos. Solo aparece si las variables `SMTP_*` están configuradas en `.env` (ver `.env.example`); sin ellas la pantalla ofrece directamente el código de recuperación en vez de prometer un correo que nunca llega.
 
 ## Respaldo y restauración
 
@@ -258,9 +261,12 @@ mientras Opera está abierta:
 - Corre cada 6 horas mientras la app sigue abierta (sin repetir antes de 24
   horas desde el último éxito) — no hace falta ni Task Scheduler ni ninguna
   acción manual.
-- Guarda en `%ProgramData%\Opera\backups\opera-<fecha>.sql.gz`, restringido
-  por permisos a SYSTEM/Administradores — ninguna otra cuenta de esa PC
-  puede leerlos, mismo criterio que la contraseña de Postgres.
+- Guarda en `%APPDATA%\Opera\backups\opera-<fecha>.sql.gz`, dentro del
+  perfil de la cuenta de Windows que usa Opera: otras cuentas sin permisos
+  de administrador no pueden leerlos. (Hasta la ronda 6 iban a
+  `%ProgramData%` con permisos solo para SYSTEM/Administradores, y la app,
+  que corre como usuario normal, no podía escribir ahí: los respaldos
+  fallaban siempre.)
 - Retención de 30 días, igual que el comando manual de arriba.
 - Si un respaldo falla, no tumba la app — queda registrado en el log de
   errores exportable de Opera ("Exportar registro de errores" en el menú de
@@ -269,15 +275,20 @@ mientras Opera está abierta:
   fallaron), calculado del lado del cliente sin salir a internet — no hace
   falta revisar el log a menos que ese indicador marque una falla.
 
-Restaurar un respaldo de la app empaquetada (sobrescribe la base actual,
-requiere tener Docker Desktop y una terminal a mano):
+Restaurar un respaldo de la app empaquetada se hace desde la propia app,
+sin terminal: menú de usuario → **Respaldos** → elegir la fecha → escribir
+`RESTAURAR` para confirmar. Reemplaza **todos** los datos actuales por los
+del respaldo, así que Opera:
 
-```bash
-gunzip -c "C:\ProgramData\Opera\backups\opera-<fecha>.sql.gz" | docker exec -i opera-postgres-app psql -U opera -d opera
-```
+1. Primero respalda el estado actual (si eso falla, no restaura nada).
+2. Detiene el backend y aplica el respaldo en una sola transacción: si algo
+   falla a mitad de camino, la base queda exactamente como estaba.
+3. Vuelve a arrancar el backend y pide iniciar sesión de nuevo (las cuentas
+   y contraseñas pasan a ser las del respaldo).
 
 Restaurar un respaldo hecho a mano en dev (contenedor `opera-postgres`, no
-`opera-postgres-app`):
+`opera-postgres-app`). Los respaldos se generan con `--clean --if-exists`,
+así que reemplazan las tablas existentes en vez de chocar con ellas:
 
 ```bash
 gunzip -c backups/opera-<fecha>.sql.gz | docker exec -i opera-postgres psql -U opera -d opera
@@ -369,7 +380,9 @@ El repo es público, así que el chequeo y la descarga de actualizaciones no nec
 
 - **Docker Desktop no arranca después de instalar Opera**: si la PC no tenía WSL/Virtual Machine Platform activado, Windows se reinició solo durante la instalación y Docker Desktop puede tardar un minuto en terminar de arrancar tras ese reinicio — esperá y volvé a abrir Opera. Si sigue sin arrancar, la causa más común es que la virtualización (Intel VT-x/AMD-V) esté desactivada en el BIOS/UEFI.
 - **No encuentro el Postgres de Opera en el puerto de siempre**: el Postgres que administra el instalador empaquetado corre en el puerto `5433` (contenedor `opera-postgres-app`), no en el `5432` de `docker-compose.yml` (dev) — a propósito, para que nunca colisionen en la misma PC.
-- **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` y `opera-secrets.json` respectivamente. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano.
+- **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` (errores de la app), `logs/opera-backend.log` (log rotado del backend) y `opera-secrets.json` respectivamente. Los respaldos automáticos están en `backups/` de esa misma carpeta. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano.
+- **Otra PC de la red no se conecta al backend de la app empaquetada**: es a propósito. La app de escritorio arranca su backend escuchando solo en `127.0.0.1` (`HOST`), así que la API no queda expuesta al resto de la LAN; el renderer de la propia app es su único cliente.
+- **Se olvidó la contraseña y no hay correo configurado**: en la pantalla de login, "¿Olvidaste tu contraseña?" pide el correo de la cuenta y el código de recuperación que se anotó al crearla (o el último que se generó desde el menú de usuario).
 
 ## Modelo de dominio
 

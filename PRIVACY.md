@@ -65,10 +65,14 @@ salen de la red de la empresa hacia ningún tercero ni proveedor en la nube.
   esa LAN siga siendo de confianza.
 - Acceso a la base de datos protegido con contraseña — generada una sola
   vez por instalación, nunca fija ni repetida entre instalaciones distintas.
-- Los respaldos automáticos de la base de datos (ver abajo) están
-  restringidos por permisos del sistema operativo a
-  SYSTEM/Administradores — ninguna otra cuenta de la PC donde corre Opera
-  puede leerlos.
+- Los respaldos automáticos de la base de datos (ver abajo) se guardan en
+  el perfil de la cuenta de Windows que usa Opera (`%APPDATA%\Opera\backups`):
+  las demás cuentas de esa PC sin permisos de administrador no pueden
+  leerlos.
+- El backend de la app de escritorio solo acepta conexiones desde la misma
+  PC (`127.0.0.1`); ningún otro equipo de la red puede consultar la API.
+- Las contraseñas y los códigos de recuperación se guardan solo como hash
+  (argon2), nunca en claro.
 
 ## Cuánto tiempo se conservan los datos
 
