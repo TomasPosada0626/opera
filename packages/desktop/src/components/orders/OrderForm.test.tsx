@@ -161,7 +161,7 @@ describe('OrderForm', () => {
     renderWithClient(<OrderForm onSuccess={vi.fn()} />);
 
     await screen.findByPlaceholderText('Buscar cliente por nombre…');
-    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
 
     // react-hook-form bloquea el submit hasta que warehouseId (el único
     // campo validado por zod) sea válido — el chequeo de cliente ni corre.
@@ -183,7 +183,7 @@ describe('OrderForm', () => {
     );
     await user.selectOptions(warehouseSelect, 'warehouse-1');
 
-    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
 
     expect(
       await screen.findByText('Selecciona o crea un cliente'),
@@ -196,7 +196,7 @@ describe('OrderForm', () => {
     renderWithClient(<OrderForm onSuccess={vi.fn()} />);
 
     await selectCustomerAndWarehouse(user);
-    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
 
     expect(
       await screen.findByText(
@@ -253,7 +253,7 @@ describe('OrderForm', () => {
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 
-    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     const postCall = findPostCall();
@@ -262,6 +262,10 @@ describe('OrderForm', () => {
       customerId: 'customer-1',
       warehouseId: 'warehouse-1',
       items: [{ productId: 'product-1', quantity: 3, unitPrice: 25 }],
+      // Una semana adelante por defecto; las notas vacías no se mandan.
+      estimatedDeliveryDate: expect.stringMatching(
+        /^\d{4}-\d{2}-\d{2}$/,
+      ) as string,
     });
   });
 
@@ -290,7 +294,7 @@ describe('OrderForm', () => {
       return Promise.reject(new Error(`Unexpected: ${path}`));
     });
 
-    await user.click(screen.getByRole('button', { name: 'Crear pedido' }));
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
 
     expect(
       await screen.findByText('Stock insuficiente para completar este pedido'),

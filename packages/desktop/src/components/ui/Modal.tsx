@@ -1,11 +1,22 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
+type ModalSize = 'md' | 'lg' | 'xl';
+
 interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  // Línea de contexto bajo el título ("Pedido No. 45 — Ferretería Sur").
+  description?: string;
+  size?: ModalSize;
 }
+
+const sizeClasses: Record<ModalSize, string> = {
+  md: 'max-w-md',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+};
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -15,8 +26,16 @@ const FOCUSABLE_SELECTOR =
 // un solo caso de uso. Foco atrapado dentro del panel mientras está abierto
 // (Tab/Shift+Tab no se escapan al fondo) y devuelto a quien abrió el modal
 // al cerrarlo — sin esto, un usuario de teclado podía tabular "a través"
-// del modal hacia botones tapados detrás de él.
-export function Modal({ title, onClose, children }: ModalProps) {
+// del modal hacia botones tapados detrás de él. El cuerpo hace scroll
+// propio (max-h) con el encabezado fijo: un pedido con muchas líneas o una
+// lista de materiales larga ya no se sale de la ventana.
+export function Modal({
+  title,
+  onClose,
+  children,
+  description,
+  size = 'md',
+}: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,8 +47,6 @@ export function Modal({ title, onClose, children }: ModalProps) {
       if (event.key !== 'Tab' || !panelRef.current) {
         return;
       }
-      // Siempre hay al menos el botón "Cerrar" del header, así que
-      // `focusable` nunca queda vacío.
       const focusable =
         panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
       const first = focusable[0];
@@ -53,12 +70,9 @@ export function Modal({ title, onClose, children }: ModalProps) {
   }, []);
 
   return (
-    // role="presentation": el backdrop es puramente decorativo, no un
-    // control — el cierre por teclado ya existe vía Escape (handleKeyDown
-    // arriba), este onClick es solo la conveniencia de mouse equivalente.
     <div
       role="presentation"
-      className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4"
+      className="animate-fade-in fixed inset-0 z-30 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[3px]"
       onClick={onClose}
     >
       {/* onClick acá solo corta la propagación hacia el backdrop — no agrega
@@ -72,20 +86,29 @@ export function Modal({ title, onClose, children }: ModalProps) {
         aria-label={title}
         tabIndex={-1}
         onClick={(event) => event.stopPropagation()}
-        className="border-line bg-surface-raised w-full max-w-md rounded-xl border p-6 shadow-2xl shadow-black/20 outline-none dark:shadow-black/70"
+        className={`animate-pop-in border-line bg-surface-raised flex max-h-[88vh] w-full flex-col rounded-2xl border shadow-2xl shadow-black/25 outline-none dark:shadow-black/70 ${sizeClasses[size]}`}
       >
-        <div className="border-line mb-4 flex items-center justify-between border-b pb-4">
-          <h2 className="text-ink text-lg font-medium">{title}</h2>
+        <div className="border-line flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="text-ink text-base font-semibold tracking-tight">
+              {title}
+            </h2>
+            {description && (
+              <p className="text-ink-muted mt-0.5 truncate text-[13px]">
+                {description}
+              </p>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="text-ink-muted hover:text-ink hover:bg-chrome-strong focus-visible:ring-accent rounded-md p-1 outline-none transition-colors focus-visible:ring-2"
+            className="text-ink-muted hover:text-ink hover:bg-chrome-strong focus-visible:ring-accent -mr-1.5 rounded-lg p-1.5 transition-colors outline-none focus-visible:ring-2"
           >
             <X className="h-4.5 w-4.5" />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto px-6 py-5">{children}</div>
       </div>
     </div>
   );

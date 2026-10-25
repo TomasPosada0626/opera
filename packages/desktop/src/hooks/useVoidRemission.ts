@@ -10,8 +10,9 @@ export interface VoidRemissionInput {
   reason: string;
 }
 
-// Anular mueve stock real (ENTRADA de reverso, ver backend) — a diferencia
-// de useUpdateRemissionPayment, también invalida stock-summary.
+// Anular mueve stock real (ENTRADA de reverso, ver backend), así que
+// también invalida stock-summary; y un pedido DESPACHADO vuelve a
+// EN_ALMACEN, así que también la lista de pedidos y el dashboard.
 export function useVoidRemission() {
   const queryClient = useQueryClient();
 
@@ -26,6 +27,9 @@ export function useVoidRemission() {
         queryKey: ['order', variables.orderId],
       });
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['customer-balance'] });
     },
     meta: { successMessage: 'Remisión anulada.' },
   });

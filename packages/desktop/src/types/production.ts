@@ -22,3 +22,25 @@ export interface ProductionOrder {
   unitCost: string | null;
   createdAt: string;
 }
+
+export interface BillOfMaterialsItem {
+  id: string;
+  componentId: string;
+  // Decimal como string — cuánto de este material lleva UNA unidad.
+  quantity: string;
+  component: {
+    id: string;
+    sku: string;
+    name: string;
+    type: 'RAW_MATERIAL' | 'SUPPLY' | 'FINISHED_GOOD';
+    unit: { id: string; name: string; abbreviation: string };
+  };
+}
+
+// id null = el producto todavía no tiene lista (items vacío).
+export interface BillOfMaterials {
+  id: string | null;
+  productId: string;
+  isActive: boolean;
+  items: BillOfMaterialsItem[];
+}

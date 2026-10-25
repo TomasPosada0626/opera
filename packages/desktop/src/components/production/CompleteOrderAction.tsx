@@ -28,7 +28,7 @@ export function CompleteOrderAction({ order }: CompleteOrderActionProps) {
           variant="secondary"
           onClick={() => completeOrder.mutate(order.id)}
           disabled={completeOrder.isPending || cancelOrder.isPending}
-          className="px-3 py-1.5"
+          size="sm"
         >
           <Check className="h-4 w-4" />
           {completeOrder.isPending ? 'Completando…' : 'Completar'}
@@ -37,7 +37,7 @@ export function CompleteOrderAction({ order }: CompleteOrderActionProps) {
           variant="ghost"
           onClick={() => cancelOrder.mutate(order.id)}
           disabled={completeOrder.isPending || cancelOrder.isPending}
-          className="px-3 py-1.5"
+          size="sm"
         >
           <Ban className="h-4 w-4" />
           {cancelOrder.isPending ? 'Cancelando…' : 'Cancelar'}

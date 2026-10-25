@@ -46,6 +46,60 @@
    — con el acento ahora azul, ámbar deja de competir con "interactivo" y
    lee sin ambigüedad como "atención" (alertas de bajo stock, etc.). */
 @theme {
+  /* Geist (sans) para todo el texto y Geist Mono para cifras que se
+     comparan en columna (montos, cantidades, consecutivos): la fuente del
+     sistema hacía que Opera se viera como cualquier formulario de Windows. */
+  --font-sans:
+    'Geist Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono:
+    'Geist Mono Variable', ui-monospace, 'Cascadia Mono', 'Consolas', monospace;
+
+  /* Una sola curva para todas las microinteracciones (hover, foco,
+     aparición de modales/toasts): salida rápida, frenado suave. */
+  --ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-pop-in: pop-in 220ms var(--ease-snappy) both;
+  --animate-fade-in: fade-in 160ms ease-out both;
+  --animate-slide-in: slide-in 260ms var(--ease-snappy) both;
+  --animate-soft-pulse: soft-pulse 2.4s ease-in-out infinite;
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes soft-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--color-accent-line);
+    }
+    50% {
+      box-shadow: 0 0 0 6px transparent;
+    }
+  }
+
   --color-surface: #f8fafc;
   --color-chrome: #f1f5f9;
   --color-chrome-strong: #eef2f6;
@@ -97,6 +151,80 @@
   --color-danger: #e0a3a3;
   --color-danger-surface: rgb(224 138 138 / 12%);
   --color-danger-line: rgb(224 138 138 / 22%);
+}
+
+@layer base {
+  html {
+    font-feature-settings:
+      'ss01' 1,
+      'cv11' 1;
+  }
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* Cifras que se leen en columna: mismo ancho por dígito y la variante
+   mono, para que $ 1.250.000 y $ 980.000 queden alineados. */
+@utility figures {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Estilo único de inputs/selects/textarea — antes cada formulario copiaba
+   la misma cadena de 10 clases. Solo define la apariencia; el padding y el
+   ancho los pone cada campo (los buscadores dejan lugar al ícono). */
+@utility field {
+  border: 1px solid var(--color-line-strong);
+  background-color: var(--color-surface-raised);
+  color: var(--color-ink);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  outline: none;
+  box-shadow: 0 1px 0 rgb(15 23 42 / 0.03);
+  transition:
+    border-color 150ms ease,
+    box-shadow 200ms var(--ease-snappy),
+    background-color 150ms ease;
+  &::placeholder {
+    color: var(--color-ink-faint);
+  }
+  &:hover:not(:disabled):not(:focus) {
+    border-color: color-mix(in oklab, var(--color-ink-faint) 70%, transparent);
+  }
+  &:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-line);
+  }
+  &[aria-invalid='true'] {
+    border-color: var(--color-danger);
+  }
+  &[aria-invalid='true']:focus {
+    box-shadow: 0 0 0 3px var(--color-danger-line);
+  }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+}
+
+/* Quien pidió menos movimiento al sistema operativo no ve animaciones de
+   entrada ni pulsos — solo el cambio de estado final. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Superficies del navegador que Tailwind no toca por defecto — quedan con

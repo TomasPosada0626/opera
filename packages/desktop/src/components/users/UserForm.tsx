@@ -118,7 +118,9 @@ export function UserForm({ user, onSuccess }: UserFormProps) {
       )}
 
       <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">Roles</span>
+        <span className="text-ink-secondary text-[13px] font-medium">
+          Roles
+        </span>
         {rolesQuery.isLoading && (
           <p className="text-ink-muted text-sm">Cargando roles…</p>
         )}

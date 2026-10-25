@@ -1,10 +1,13 @@
 import { AlertTriangle, CheckCircle2, X, XCircle } from 'lucide-react';
 import { toast, useToasts, type ToastVariant } from '../../lib/toast';
 
+// Fondo sólido (no el tono translúcido de los Badge): un toast flota sobre
+// contenido arbitrario y con fondo al 10% el texto de abajo se leía a
+// través. El color va en el ícono y en la barra lateral.
 const VARIANT_CLASSES: Record<ToastVariant, string> = {
-  success: 'bg-success-surface border-success-line text-success',
-  danger: 'bg-danger-surface border-danger-line text-danger',
-  warning: 'bg-warning-surface border-warning-line text-warning',
+  success: 'text-success shadow-[inset_3px_0_0_var(--color-success)]',
+  danger: 'text-danger shadow-[inset_3px_0_0_var(--color-danger)]',
+  warning: 'text-warning shadow-[inset_3px_0_0_var(--color-warning)]',
 };
 
 const VARIANT_ICONS: Record<ToastVariant, typeof CheckCircle2> = {
@@ -34,10 +37,10 @@ export function ToastContainer() {
         return (
           <div
             key={item.id}
-            className={`flex items-start gap-3 rounded-lg border p-3 shadow-lg shadow-black/10 dark:shadow-black/40 ${VARIANT_CLASSES[item.variant]}`}
+            className={`animate-slide-in bg-surface-raised border-line-strong flex items-start gap-3 overflow-hidden rounded-xl border py-3 pr-3 pl-4 shadow-xl shadow-black/15 dark:shadow-black/60 ${VARIANT_CLASSES[item.variant]}`}
           >
             <Icon className="h-5 w-5 shrink-0" />
-            <p className="text-ink flex-1 text-sm">{item.message}</p>
+            <p className="text-ink flex-1 text-sm leading-5">{item.message}</p>
             <button
               type="button"
               onClick={() => toast.dismiss(item.id)}

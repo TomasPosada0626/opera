@@ -17,6 +17,7 @@ export function useMarkOrderWarehoused() {
       void queryClient.invalidateQueries({ queryKey: ['orders'] });
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
       void queryClient.invalidateQueries({ queryKey: ['stock-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
     meta: { successMessage: 'Pedido marcado como recibido en bodega.' },
   });

@@ -58,13 +58,21 @@ test('rechaza credenciales inválidas y luego inicia sesión con las reales', as
     'Correo o contraseña incorrectos.',
   );
   await expect(
-    page.getByRole('heading', { name: 'Dashboard' }),
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
   ).not.toBeVisible();
 
   // Credenciales reales -- login de verdad, no un token inyectado.
   await page.getByLabel('Contraseña').fill(fixtures.loginPassword);
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
+  ).toBeVisible();
 });
 
 test('recupera la contraseña con el flujo completo de dos pasos', async ({
@@ -111,5 +119,10 @@ test('recupera la contraseña con el flujo completo de dos pasos', async ({
   await page.getByLabel('Correo').fill(fixtures.resetEmail);
   await page.getByLabel('Contraseña').fill(fixtures.newPassword);
   await page.getByRole('button', { name: 'Ingresar' }).click();
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: /^Buen[oa]s (días|tardes|noches)$/,
+    }),
+  ).toBeVisible();
 });

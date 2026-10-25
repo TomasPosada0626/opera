@@ -11,6 +11,10 @@ function formatDate(value: string): string {
   return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'long' });
 }
 
+function formatQuantity(value: string): string {
+  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 3 });
+}
+
 // Standalone (fuera de AppLayout, sin sidebar/topbar) para que no haya nada
 // que ocultar con @media print — la página entera es la superficie
 // imprimible salvo la barra de búsqueda, que ya lleva su propia
@@ -73,7 +77,7 @@ function PrintRemissionPage() {
             <div className="flex flex-col gap-1">
               <label
                 htmlFor="remission-search"
-                className="text-ink-muted text-sm font-medium"
+                className="text-ink-secondary text-[13px] font-medium"
               >
                 Buscar remisión por número
               </label>
@@ -83,7 +87,7 @@ function PrintRemissionPage() {
                 inputMode="numeric"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 outline-none focus:ring-2"
+                className="field h-9 px-3"
               />
             </div>
             <Button type="submit" disabled={isSearching}>
@@ -150,52 +154,88 @@ function RemissionPrintView({ remission }: { remission: RemissionDetail }) {
         </p>
       )}
 
-      <div className="border-line rounded-xl border p-8 print:border-none print:p-0">
-        <h1 className="text-center text-xl font-medium">Remisión</h1>
-        <div className="mt-6 space-y-1 text-sm">
-          <p>
-            <span className="text-ink-muted">No.</span> {remission.number}
-          </p>
-          <p>
-            <span className="text-ink-muted">Fecha:</span>{' '}
-            {formatDate(remission.createdAt)}
-          </p>
-          <p>
-            <span className="text-ink-muted">Cliente:</span>{' '}
-            {remission.order.customer.name}
-          </p>
-          <p>
-            <span className="text-ink-muted">Bodega:</span>{' '}
-            {remission.order.warehouse.name}
-          </p>
-          <p>
-            <span className="text-ink-muted">Entregado por:</span>{' '}
-            {remission.user.name}
-          </p>
-        </div>
+      <article className="border-line bg-surface-raised rounded-2xl border p-10 shadow-sm print:rounded-none print:border-none print:p-0 print:shadow-none">
+        <header className="border-ink flex items-start justify-between gap-6 border-b-2 pb-6">
+          <div>
+            <h1 className="text-[28px] leading-none font-semibold tracking-[-0.02em]">
+              Remisión
+            </h1>
+            <p className="text-ink-muted mt-2 text-sm">
+              Documento de entrega de mercancía
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-ink-muted text-[11px] font-semibold tracking-[0.14em] uppercase">
+              No.
+            </p>
+            <p className="figures text-[32px] leading-none font-semibold">
+              {remission.number}
+            </p>
+          </div>
+        </header>
+
+        <dl className="mt-6 grid grid-cols-2 gap-x-10 gap-y-4 text-sm">
+          {[
+            ['Cliente', remission.order.customer.name],
+            ['Fecha', formatDate(remission.createdAt)],
+            ['Pedido', `No. ${remission.order.number}`],
+            ['Bodega', remission.order.warehouse.name],
+            ['Entregado por', remission.user.name],
+          ].map(([label, value]) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <dt className="text-ink-muted text-[11px] font-semibold tracking-[0.1em] uppercase">
+                {label}
+              </dt>
+              <dd className="text-ink font-medium">{value}</dd>
+            </div>
+          ))}
+        </dl>
 
         {/* Sin estado de pago a propósito, igual que el PDF (#54) — es dato
             interno del negocio, nunca algo que vea el cliente en el
             documento que se lleva. */}
-        <table className="mt-6 w-full text-sm">
+        <table className="mt-8 w-full text-sm">
           <thead>
-            <tr className="border-line border-b text-left">
-              <th className="py-2 font-medium">Producto</th>
-              <th className="py-2 text-right font-medium">Cantidad</th>
+            <tr className="border-ink border-b text-left">
+              <th className="text-ink-muted w-10 py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
+                #
+              </th>
+              <th className="text-ink-muted py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
+                Producto
+              </th>
+              <th className="text-ink-muted py-2 text-right text-[11px] font-semibold tracking-[0.1em] uppercase">
+                Cantidad
+              </th>
             </tr>
           </thead>
           <tbody>
-            {remission.items.map((item) => (
+            {remission.items.map((item, index) => (
               <tr key={item.id} className="border-line border-b">
-                <td className="py-2">
+                <td className="figures text-ink-faint py-3">{index + 1}</td>
+                <td className="py-3">
                   {item.orderItem.product.sku} — {item.orderItem.product.name}
                 </td>
-                <td className="py-2 text-right">{item.quantity}</td>
+                <td className="figures py-3 text-right font-medium">
+                  {formatQuantity(item.quantity)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+
+        {/* Constancia de recibido: la práctica comercial de una remisión
+            es que quien recibe firme la copia que se queda en el taller. */}
+        <div className="mt-20 grid grid-cols-2 gap-12 text-sm">
+          {['Entregado por', 'Recibido por (nombre, cédula y firma)'].map(
+            (label) => (
+              <div key={label} className="flex flex-col gap-2">
+                <div className="border-ink h-12 border-b" />
+                <span className="text-ink-muted text-xs">{label}</span>
+              </div>
+            ),
+          )}
+        </div>
+      </article>
     </div>
   );
 }

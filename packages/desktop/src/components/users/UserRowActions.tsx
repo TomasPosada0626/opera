@@ -34,19 +34,11 @@ export function UserRowActions({
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex justify-end gap-2">
-        <Button
-          variant="ghost"
-          onClick={() => onEdit(user)}
-          className="px-3 py-1.5"
-        >
+        <Button variant="ghost" onClick={() => onEdit(user)} size="sm">
           <Pencil className="h-4 w-4" />
           Editar
         </Button>
-        <Button
-          variant="ghost"
-          onClick={() => onResetPassword(user)}
-          className="px-3 py-1.5"
-        >
+        <Button variant="ghost" onClick={() => onResetPassword(user)} size="sm">
           <KeyRound className="h-4 w-4" />
           Resetear contraseña
         </Button>
@@ -58,7 +50,7 @@ export function UserRowActions({
               `usuario-${user.id}.xlsx`,
             )
           }
-          className="px-3 py-1.5"
+          size="sm"
         >
           <FileSpreadsheet className="h-4 w-4" />
           Exportar datos
@@ -69,7 +61,7 @@ export function UserRowActions({
               variant="ghost"
               onClick={() => deactivateUser.mutate(user.id)}
               disabled={deactivateUser.isPending}
-              className="px-3 py-1.5"
+              size="sm"
             >
               <UserX className="h-4 w-4" />
               {deactivateUser.isPending ? 'Desactivando…' : 'Desactivar'}
@@ -81,7 +73,7 @@ export function UserRowActions({
             <Button
               variant="ghost"
               onClick={() => setConfirmingAnonymize(true)}
-              className="px-3 py-1.5"
+              size="sm"
             >
               <Eraser className="h-4 w-4" />
               Borrar datos

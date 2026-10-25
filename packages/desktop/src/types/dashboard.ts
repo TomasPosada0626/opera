@@ -1,3 +1,5 @@
+import type { OrderStatus } from './order';
+
 export interface DashboardSummary {
   inventory: {
     totalStockValue: string;
@@ -12,14 +14,25 @@ export interface DashboardSummary {
   };
   production: {
     PENDIENTE: number;
-    EN_PROCESO: number;
     COMPLETADA: number;
+    CANCELADA: number;
   };
-  orders: {
-    PENDIENTE: number;
-    EN_PRODUCCION: number;
-    EN_ALMACEN: number;
-    CANCELADO: number;
+  orders: Record<OrderStatus, number>;
+  // Fecha de envío vencida y sin despachar (misma regla que ?overdue=true).
+  overdueOrders: {
+    count: number;
+    orders: {
+      id: string;
+      number: number;
+      customerName: string;
+      status: OrderStatus;
+      estimatedDeliveryDate: string;
+    }[];
+  };
+  // Total - abonado de las remisiones vigentes que no están pagadas.
+  receivables: {
+    total: string;
+    remissionCount: number;
   };
   recentPurchases: {
     id: string;
@@ -31,8 +44,9 @@ export interface DashboardSummary {
   }[];
   recentSales: {
     id: string;
+    number: number;
     customerName: string;
-    status: 'PENDIENTE' | 'EN_PRODUCCION' | 'EN_ALMACEN' | 'CANCELADO';
+    status: OrderStatus;
     total: string;
     createdAt: string;
   }[];

@@ -15,78 +15,43 @@ import {
 import OrdersPage from './OrdersPage';
 import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
-import type { PaginatedResult } from '../types/product';
+import {
+  buildDashboardSummary,
+  buildOrder,
+  buildRemission,
+  fakeJwt,
+  paginated,
+} from '../test/factories';
 import type { Order } from '../types/order';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
-  ApiError: class ApiError extends Error {},
+  ApiError: class ApiError extends Error {
+    shortages = [];
+  },
 }));
 
 const mockedApiFetch = apiFetch as unknown as Mock;
 
-function renderWithClient(ui: ReactElement) {
+function renderWithClient(ui: ReactElement, initialEntry = '/pedidos') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-function fakeJwt(roles: string[]): string {
-  const payload = {
-    sub: 'user-1',
-    email: 'admin@opera.local',
-    roles,
-    permissions: [],
-  };
-  return `header.${btoa(JSON.stringify(payload))}.signature`;
-}
-
-function buildOrder(overrides: Partial<Order> = {}): Order {
-  return {
-    id: 'order-1',
-    status: 'PENDIENTE',
-    customer: {
-      id: 'customer-1',
-      name: 'Muebles del Valle S.A.S.',
-      taxId: null,
-      email: null,
-      phone: null,
-      address: null,
-      isActive: true,
-    },
-    warehouse: {
-      id: 'warehouse-1',
-      name: 'Bodega principal',
-      location: null,
-      isActive: true,
-    },
-    items: [
-      {
-        id: 'item-1',
-        productId: 'product-1',
-        product: { id: 'product-1', sku: 'PT-1', name: 'Silla de madera' },
-        quantity: '3',
-        unitPrice: '25',
-      },
-    ],
-    remissions: [],
-    createdAt: '2026-01-15T10:00:00.000Z',
-    productionStartedAt: null,
-    warehousedAt: null,
-    ...overrides,
-  };
-}
-
-function ordersResponse(data: Order[]): PaginatedResult<Order> {
-  return {
-    data,
-    meta: { page: 1, pageSize: 20, total: data.length, totalPages: 1 },
-  };
+// El listado pide pedidos y, para los conteos de los filtros, el resumen
+// del dashboard — cada uno con su forma.
+function mockApi(orders: Order[], summary = buildDashboardSummary()) {
+  mockedApiFetch.mockImplementation((path: string) =>
+    Promise.resolve(
+      path.startsWith('/dashboard') ? summary : paginated(orders),
+    ),
+  );
 }
 
 describe('OrdersPage', () => {
@@ -96,28 +61,61 @@ describe('OrdersPage', () => {
 
   afterEach(() => {
     clearAuthToken();
+    vi.useRealTimers();
   });
 
-  it('renders a row per order with its computed total', async () => {
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+  it('renders a row per order with its number, customer and computed total', async () => {
+    mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
     expect(
       await screen.findByText('Muebles del Valle S.A.S.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Bodega principal')).toBeInTheDocument();
-    // "Pendiente" también es el texto del filtro por estado — se busca solo
-    // dentro de la tabla para no ser ambiguo con el pill del filtro.
-    expect(
-      within(screen.getByRole('table')).getByText('Pendiente'),
-    ).toBeInTheDocument();
-    // 3 * 25 = 75.00
-    expect(screen.getByText('75,00')).toBeInTheDocument();
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('#12')).toBeInTheDocument();
+    expect(within(table).getByText('Pendiente')).toBeInTheDocument();
+    expect(within(table).getByText('Silla de madera')).toBeInTheDocument();
+    // 3 * 25 = 75
+    expect(within(table).getByText(/\$\s?75/)).toBeInTheDocument();
+  });
+
+  it('summarizes several products and shows the dispatched share', async () => {
+    mockApi([
+      buildOrder({
+        status: 'EN_ALMACEN',
+        items: [
+          {
+            id: 'item-1',
+            productId: 'p1',
+            product: { id: 'p1', sku: 'A', name: 'Silla' },
+            quantity: '2',
+            unitPrice: '10',
+          },
+          {
+            id: 'item-2',
+            productId: 'p2',
+            product: { id: 'p2', sku: 'B', name: 'Mesa' },
+            quantity: '2',
+            unitPrice: '10',
+          },
+        ],
+        remissions: [
+          buildRemission({
+            items: [{ id: 'ri-1', orderItemId: 'item-1', quantity: '2' }],
+          }),
+        ],
+      }),
+    ]);
+
+    renderWithClient(<OrdersPage />);
+
+    expect(await screen.findByText('2 productos')).toBeInTheDocument();
+    expect(screen.getByText('50%')).toBeInTheDocument();
   });
 
   it('shows the empty message when there are no orders', async () => {
-    mockedApiFetch.mockResolvedValue(ordersResponse([]));
+    mockApi([]);
 
     renderWithClient(<OrdersPage />);
 
@@ -126,46 +124,90 @@ describe('OrdersPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('flags an order whose promised date already passed', async () => {
+    mockApi([
+      buildOrder({
+        status: 'EN_PRODUCCION',
+        estimatedDeliveryDate: '2020-01-01T00:00:00.000Z',
+      }),
+    ]);
+
+    renderWithClient(<OrdersPage />);
+
+    expect(await screen.findByText(/días tarde/)).toBeInTheDocument();
+  });
+
+  it('starts on the overdue filter when the dashboard links with ?filtro=atrasados', async () => {
+    mockApi(
+      [],
+      buildDashboardSummary({ overdueOrders: { count: 3, orders: [] } }),
+    );
+
+    renderWithClient(<OrdersPage />, '/pedidos?filtro=atrasados');
+
+    expect(
+      await screen.findByText('Ningún pedido atrasado.'),
+    ).toBeInTheDocument();
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('overdue=true'),
+    );
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      expect.stringContaining('sortBy=estimatedDeliveryDate'),
+    );
+    expect(screen.getByRole('button', { name: /Atrasados/ })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // El conteo del resumen aparece en el filtro.
+    expect(
+      within(screen.getByRole('button', { name: /Atrasados/ })).getByText('3'),
+    ).toBeInTheDocument();
+  });
+
   it('hides "Nuevo pedido" for a non-ADMIN user', async () => {
     setAuthToken(fakeJwt(['STAFF']));
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
     await screen.findByText('Muebles del Valle S.A.S.');
     expect(
-      screen.queryByRole('button', { name: 'Nuevo pedido' }),
+      screen.queryByRole('button', { name: /Nuevo pedido/ }),
     ).not.toBeInTheDocument();
   });
 
   it('opens the creation modal when "Nuevo pedido" is clicked', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(ordersResponse([]));
+    mockApi([]);
+    const user = userEvent.setup();
 
     renderWithClient(<OrdersPage />);
 
-    const button = await screen.findByRole('button', { name: 'Nuevo pedido' });
-    button.click();
+    await user.click(
+      await screen.findByRole('button', { name: /Nuevo pedido/ }),
+    );
 
     expect(
       await screen.findByRole('dialog', { name: 'Nuevo pedido' }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Crear pedido' }),
+      screen.getByRole('button', { name: /Crear pedido/ }),
     ).toBeInTheDocument();
   });
 
   it('links each row to its detail page', async () => {
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
-    const link = await screen.findByRole('link', { name: /Ver detalle/ });
+    const link = await screen.findByRole('link', {
+      name: 'Ver detalle del pedido 12',
+    });
     expect(link).toHaveAttribute('href', '/pedidos/order-1');
   });
 
   it('refetches with the status query param when a filter pill is clicked', async () => {
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    mockApi([buildOrder()]);
     const user = userEvent.setup();
 
     renderWithClient(<OrdersPage />);
@@ -180,26 +222,42 @@ describe('OrdersPage', () => {
     );
   });
 
+  it('searches by order number', async () => {
+    mockApi([buildOrder()]);
+    const user = userEvent.setup();
+
+    renderWithClient(<OrdersPage />);
+
+    await screen.findByText('Muebles del Valle S.A.S.');
+    await user.type(screen.getByLabelText('Buscar pedido por número'), '12');
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('search=12'),
+      ),
+    );
+  });
+
   it('shows the "Marcar en producción" row action only for an ADMIN user', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
     expect(
-      await screen.findByRole('button', { name: 'Marcar en producción' }),
+      await screen.findByRole('button', { name: /Marcar en producción/ }),
     ).toBeInTheDocument();
   });
 
   it('hides the row status action for a non-ADMIN user', async () => {
     setAuthToken(fakeJwt(['STAFF']));
-    mockedApiFetch.mockResolvedValue(ordersResponse([buildOrder()]));
+    mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
     await screen.findByText('Muebles del Valle S.A.S.');
     expect(
-      screen.queryByRole('button', { name: 'Marcar en producción' }),
+      screen.queryByRole('button', { name: /Marcar en producción/ }),
     ).not.toBeInTheDocument();
   });
 });

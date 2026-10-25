@@ -12,24 +12,43 @@ interface ApiErrorBody {
   statusCode: number;
   message: string | string[];
   error?: string;
+  // Detalle estructurado que algunos 400 agregan (ver remissions/orders/
+  // production en el backend) — qué falta y cuánto, no solo el mensaje.
+  shortages?: ApiShortage[];
+}
+
+export interface ApiShortage {
+  productName?: string;
+  componentName?: string;
+  required: string;
+  available: string;
 }
 
 export class ApiError extends Error {
   readonly statusCode: number;
+  readonly shortages: ApiShortage[];
 
-  constructor(statusCode: number, message: string) {
+  constructor(
+    statusCode: number,
+    message: string,
+    shortages: ApiShortage[] = [],
+  ) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
+    this.shortages = shortages;
   }
 }
 
-async function parseErrorMessage(response: Response): Promise<string> {
+async function toApiError(response: Response): Promise<ApiError> {
   try {
     const body = (await response.json()) as ApiErrorBody;
-    return Array.isArray(body.message) ? body.message.join(', ') : body.message;
+    const message = Array.isArray(body.message)
+      ? body.message.join(', ')
+      : body.message;
+    return new ApiError(response.status, message, body.shortages ?? []);
   } catch {
-    return response.statusText;
+    return new ApiError(response.status, response.statusText);
   }
 }
 
@@ -49,7 +68,7 @@ async function authorizedFetch(
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status, await parseErrorMessage(response));
+    throw await toApiError(response);
   }
 
   return response;

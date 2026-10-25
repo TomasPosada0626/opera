@@ -27,6 +27,7 @@ import {
   SuppliersPage,
   UnitsPage,
   UsersPage,
+  AuditPage,
   WarehousesPage,
 } from './pages/lazy';
 
@@ -173,6 +174,19 @@ export const router = createHashRouter([
                 : redirect('/');
             },
             element: <UsersPage />,
+          },
+          {
+            path: '/auditoria',
+            // Mismo criterio que /usuarios: el backend ya exige ADMIN en
+            // GET /audit; esto solo evita llegar por URL a una pantalla
+            // vacía.
+            loader: async () => {
+              await initAuthToken();
+              return getCurrentUser()?.roles.includes('ADMIN')
+                ? null
+                : redirect('/');
+            },
+            element: <AuditPage />,
           },
         ],
       },

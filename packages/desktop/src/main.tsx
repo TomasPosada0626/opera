@@ -1,6 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+// Geist empaquetada localmente (woff2 dentro del bundle, sin pedir nada a
+// internet — Opera es LAN-only y la CSP solo permite font-src 'self').
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './index.css';
 import { initAuthToken } from './lib/auth-token';
 import { initErrorLogging } from './lib/error-logging';

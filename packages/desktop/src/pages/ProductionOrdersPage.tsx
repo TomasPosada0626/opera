@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Badge } from '../components/ui/Badge';
+import { PageHeader } from '../components/ui/PageHeader';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Modal } from '../components/ui/Modal';
@@ -95,24 +96,20 @@ function ProductionOrdersPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-ink text-xl font-medium">Producción</h1>
-          <p className="text-ink-muted mt-1 text-sm">
-            Órdenes de producción y su estado.
-          </p>
-        </div>
-        {isAdmin && (
-          <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            Nueva orden
-          </Button>
-        )}
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Operación"
+        title="Producción"
+        description="Fabricar para stock: al completar una orden se descuentan los materiales de su lista y el terminado entra con su costo real."
+        actions={
+          isAdmin && (
+            <Button onClick={() => setIsCreateModalOpen(true)}>
+              <Plus />
+              Nueva orden
+            </Button>
+          )
+        }
+      />
 
       <DataTable
         columns={columns}

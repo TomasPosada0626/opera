@@ -74,7 +74,9 @@ export function SupplierPurchaseForm({
       className="flex flex-col gap-4"
     >
       <div className="flex flex-col gap-1">
-        <span className="text-ink-muted text-sm font-medium">Producto</span>
+        <span className="text-ink-secondary text-[13px] font-medium">
+          Producto
+        </span>
         <ProductPicker
           value={product}
           onChange={(next) => {
@@ -97,7 +99,7 @@ export function SupplierPurchaseForm({
         <div className="flex flex-col gap-1">
           <label
             htmlFor="quantity"
-            className="text-ink-muted text-sm font-medium"
+            className="text-ink-secondary text-[13px] font-medium"
           >
             Cantidad
           </label>
@@ -108,7 +110,7 @@ export function SupplierPurchaseForm({
             min="0"
             placeholder="0"
             {...register('quantity', { valueAsNumber: true })}
-            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+            className="field h-9 px-3"
           />
           {errors.quantity && (
             <p className="text-danger text-xs">{errors.quantity.message}</p>
@@ -117,7 +119,7 @@ export function SupplierPurchaseForm({
         <div className="flex flex-col gap-1">
           <label
             htmlFor="unitCost"
-            className="text-ink-muted text-sm font-medium"
+            className="text-ink-secondary text-[13px] font-medium"
           >
             Costo unitario
           </label>
@@ -128,7 +130,7 @@ export function SupplierPurchaseForm({
             min="0"
             placeholder="0"
             {...register('unitCost', { valueAsNumber: true })}
-            className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+            className="field h-9 px-3"
           />
           {errors.unitCost && (
             <p className="text-danger text-xs">{errors.unitCost.message}</p>
@@ -139,7 +141,7 @@ export function SupplierPurchaseForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="purchasedAt"
-          className="text-ink-muted text-sm font-medium"
+          className="text-ink-secondary text-[13px] font-medium"
         >
           Fecha (opcional, hoy si se deja vacío)
         </label>
@@ -147,7 +149,7 @@ export function SupplierPurchaseForm({
           id="purchasedAt"
           type="date"
           {...register('purchasedAt')}
-          className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 rounded-md border px-3 py-2 text-sm outline-none focus:ring-2"
+          className="field h-9 px-3"
         />
       </div>
 

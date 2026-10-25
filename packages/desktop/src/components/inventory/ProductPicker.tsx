@@ -8,6 +8,12 @@ interface ProductPickerProps {
   value: Product | null;
   onChange: (product: Product | null) => void;
   error?: string;
+  // Restringe los resultados (p. ej. solo materias primas e insumos en la
+  // lista de materiales) — se filtra en el cliente sobre la página de
+  // resultados de la búsqueda.
+  filter?: (product: Product) => boolean;
+  ariaLabel?: string;
+  placeholder?: string;
 }
 
 // "(Roble, Natural, Grande)" — solo los atributos que el producto tiene,
@@ -22,7 +28,14 @@ function attributesLabel(product: Product): string {
 
 // Buscador simple en vez de un <select> con todo el catálogo: con más de
 // unas pocas decenas de productos un <select> plano deja de ser usable.
-export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
+export function ProductPicker({
+  value,
+  onChange,
+  error,
+  filter,
+  ariaLabel = 'Buscar producto',
+  placeholder = 'Buscar producto por nombre o SKU…',
+}: ProductPickerProps) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 300);
   const productsQuery = useProducts({
@@ -31,6 +44,9 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
     search: debouncedSearch,
   });
   const showResults = search.length > 0;
+  const results = (productsQuery.data?.data ?? []).filter(
+    (product) => !filter || filter(product),
+  );
 
   if (value) {
     return (
@@ -58,19 +74,19 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
         type="text"
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        placeholder="Buscar producto por nombre o SKU…"
-        aria-label="Buscar producto"
+        placeholder={placeholder}
+        aria-label={ariaLabel}
         aria-invalid={!!error}
-        className="border-line bg-surface text-ink focus:border-accent focus:ring-accent/35 aria-invalid:border-danger aria-invalid:focus:ring-danger/35 w-full rounded-md border py-2 pr-3 pl-9 text-sm outline-none focus:ring-2"
+        className="field w-full py-2 pr-3 pl-9"
       />
       {showResults && (
-        <ul className="border-line bg-surface-raised absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-md border shadow-lg">
-          {productsQuery.data && productsQuery.data.data.length === 0 ? (
+        <ul className="border-line bg-surface-raised animate-pop-in absolute z-10 mt-1.5 max-h-60 w-full overflow-y-auto rounded-xl border p-1 shadow-xl shadow-black/10 dark:shadow-black/50">
+          {productsQuery.data && results.length === 0 ? (
             <li className="text-ink-muted px-3 py-2 text-sm">
               Sin resultados.
             </li>
           ) : (
-            productsQuery.data?.data.map((product) => (
+            results.map((product) => (
               <li key={product.id}>
                 <button
                   type="button"
@@ -78,7 +94,7 @@ export function ProductPicker({ value, onChange, error }: ProductPickerProps) {
                     onChange(product);
                     setSearch('');
                   }}
-                  className="hover:bg-chrome text-ink w-full px-3 py-2 text-left text-sm"
+                  className="hover:bg-accent-surface hover:text-accent text-ink w-full rounded-lg px-3 py-2 text-left text-sm transition-colors"
                 >
                   {product.sku} — {product.name}
                   {attributesLabel(product)}

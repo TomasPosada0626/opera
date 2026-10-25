@@ -1,4 +1,3 @@
-import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -17,6 +16,7 @@ import { apiFetch } from '../lib/api-client';
 import { downloadFile } from '../lib/download-file';
 import type {
   InventoryReportRow,
+  ReceivablesRow,
   SalesReport,
   TopProductRow,
 } from '../types/report';
@@ -33,13 +33,15 @@ vi.mock('../lib/download-file', () => ({
 const mockedApiFetch = apiFetch as unknown as Mock;
 const mockedDownloadFile = downloadFile as unknown as Mock;
 
-function renderWithClient(ui: ReactElement) {
+function renderAt(path = '/reportes') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>{ui}</MemoryRouter>
+      <MemoryRouter initialEntries={[path]}>
+        <ReportsPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -52,10 +54,6 @@ const salesReport: SalesReport = {
   totalRevenue: '600',
 };
 
-// product-1 aparece en ambos reportes a propósito (mismo producto, dos
-// vistas distintas) — los tests que dependen de un texto único anclan en
-// "Mesa de centro" (solo en el ranking) en vez de "Silla de madera" (en
-// ambas tablas), para no depender de cuál tabla renderiza primero.
 const topProducts: TopProductRow[] = [
   {
     productId: 'product-1',
@@ -86,8 +84,34 @@ const inventoryRows: InventoryReportRow[] = [
   },
 ];
 
+const receivables: ReceivablesRow[] = [
+  {
+    customerId: 'customer-1',
+    customerName: 'Ferretería Sur',
+    remissionCount: 2,
+    totalBilled: '150',
+    totalPaid: '40',
+    balance: '110',
+    oldestPendingAt: '2026-08-01T00:00:00.000Z',
+    daysPending: 75,
+  },
+  {
+    customerId: 'customer-2',
+    customerName: 'Obras Norte',
+    remissionCount: 1,
+    totalBilled: '50',
+    totalPaid: '0',
+    balance: '50',
+    oldestPendingAt: '2026-10-10T00:00:00.000Z',
+    daysPending: 35,
+  },
+];
+
 function mockReportEndpoints() {
   mockedApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith('/reports/cartera')) {
+      return Promise.resolve(receivables);
+    }
     if (path.startsWith('/reports/inventario')) {
       return Promise.resolve(inventoryRows);
     }
@@ -101,174 +125,179 @@ function mockReportEndpoints() {
   });
 }
 
-// getAllByText, no getByText: "Ingresos" también es el encabezado de la
-// columna de la tabla de ranking más abajo — el tile siempre es la primera
-// coincidencia porque la sección de Ventas precede a esa tabla en el DOM.
-function statTileValue(label: string): string | null | undefined {
-  const [labelNode] = screen.getAllByText(label);
-  return labelNode.nextElementSibling?.textContent;
-}
-
 describe('ReportsPage', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
     mockedDownloadFile.mockReset();
+    mockReportEndpoints();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('renders the sales stat tiles from /reports/ventas', async () => {
-    mockReportEndpoints();
+  describe('Cartera (vista por defecto)', () => {
+    it('lists who owes what, biggest balance first, with the age of the oldest pending remission', async () => {
+      renderAt();
 
-    renderWithClient(<ReportsPage />);
-    await screen.findByText('600,00');
+      await screen.findByText('Ferretería Sur');
+      const rows = within(screen.getByRole('table')).getAllByRole('row');
+      expect(within(rows[1]).getByText('Ferretería Sur')).toHaveAttribute(
+        'href',
+        '/clientes/customer-1',
+      );
+      expect(within(rows[1]).getByText('75 días')).toBeInTheDocument();
+      expect(within(rows[2]).getByText('35 días')).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: /Cartera/ })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
 
-    expect(statTileValue('Pedidos')).toBe('4');
-    expect(statTileValue('Unidades vendidas')).toBe('12');
-    expect(statTileValue('Ingresos')).toBe('600,00');
-  });
+    it('summarizes the total receivable and the customers involved', async () => {
+      renderAt();
 
-  it('ranks products with the most sold first by default', async () => {
-    mockReportEndpoints();
+      expect(await screen.findByText('Clientes con saldo')).toBeInTheDocument();
+      // Una vez en el KPI de antigüedad y otra en la fila del cliente.
+      expect(await screen.findAllByText('75 días')).toHaveLength(2);
+    });
 
-    renderWithClient(<ReportsPage />);
-    await screen.findByText(/Mesa de centro/);
+    it('exports the receivables report', async () => {
+      const user = userEvent.setup();
+      renderAt();
 
-    const [topProductsTable] = screen.getAllByRole('table');
-    const rows = within(topProductsTable).getAllByRole('row');
-    expect(within(rows[1]).getByText(/Silla de madera/)).toBeInTheDocument();
-    expect(within(rows[2]).getByText(/Mesa de centro/)).toBeInTheDocument();
-  });
+      await screen.findByText('Ferretería Sur');
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
 
-  it('re-queries with sortOrder=asc when "Menos vendidos" is clicked', async () => {
-    mockReportEndpoints();
-
-    renderWithClient(<ReportsPage />);
-    await screen.findByText(/Mesa de centro/);
-
-    screen.getByRole('button', { name: 'Menos vendidos' }).click();
-
-    await waitFor(() => {
-      expect(mockedApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sortOrder=asc'),
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/cartera/excel',
+        'cartera.xlsx',
       );
     });
   });
 
-  it('renders the inventory table with its total value', async () => {
-    mockReportEndpoints();
+  it('opens the view named in ?vista=', async () => {
+    renderAt('/reportes?vista=inventario');
 
-    renderWithClient(<ReportsPage />);
-
-    expect(await screen.findByText('Valor total: 300,00')).toBeInTheDocument();
-    expect(screen.getByText('Muebles')).toBeInTheDocument();
-    expect(screen.getByText('20,00')).toBeInTheDocument();
-  });
-
-  it('downloads the sales report as .xlsx with the current date filters', async () => {
-    mockReportEndpoints();
-
-    renderWithClient(<ReportsPage />);
-    await screen.findByText('600,00');
-
-    const [salesExportButton] = screen.getAllByRole('button', {
-      name: 'Exportar a Excel',
-    });
-    salesExportButton.click();
-
-    expect(mockedDownloadFile).toHaveBeenCalledWith(
-      '/reports/ventas/excel',
-      'ventas.xlsx',
+    expect(await screen.findByText('Muebles')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Inventario/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
     );
   });
 
-  it('downloads the top-products report as .xlsx honoring the current sort order', async () => {
-    mockReportEndpoints();
+  describe('Ventas', () => {
+    it('renders the sales totals', async () => {
+      renderAt('/reportes?vista=ventas');
 
-    renderWithClient(<ReportsPage />);
-    await screen.findByText(/Mesa de centro/);
+      expect(await screen.findByText(/\$\s?600/)).toBeInTheDocument();
+      expect(screen.getByText('4')).toBeInTheDocument();
+      expect(screen.getByText('12')).toBeInTheDocument();
+    });
 
-    screen.getByRole('button', { name: 'Menos vendidos' }).click();
-    await waitFor(() => {
+    it('re-queries with the date range, treating "Hasta" as exclusive, and exports with it', async () => {
+      const user = userEvent.setup();
+      renderAt('/reportes?vista=ventas');
+      await screen.findByText(/\$\s?600/);
+
+      await user.type(screen.getByLabelText('Desde'), '2026-08-01');
+      await user.type(screen.getByLabelText('Hasta'), '2026-08-15');
+
+      await waitFor(() => {
+        expect(mockedApiFetch).toHaveBeenCalledWith(
+          expect.stringContaining('from=2026-08-01'),
+        );
+      });
       expect(mockedApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('sortOrder=asc'),
+        expect.stringContaining('to=2026-08-16'),
+      );
+
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/ventas/excel?from=2026-08-01&to=2026-08-16',
+        'ventas.xlsx',
       );
     });
 
-    const [, topProductsExportButton] = screen.getAllByRole('button', {
-      name: 'Exportar a Excel',
-    });
-    topProductsExportButton.click();
+    it('exports without filters when none are set', async () => {
+      const user = userEvent.setup();
+      renderAt('/reportes?vista=ventas');
+      await screen.findByText(/\$\s?600/);
 
-    expect(mockedDownloadFile).toHaveBeenCalledWith(
-      '/reports/productos-mas-vendidos/excel?sortOrder=asc',
-      'productos-mas-vendidos.xlsx',
-    );
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/ventas/excel',
+        'ventas.xlsx',
+      );
+    });
   });
 
-  it('re-queries with the date range once "Desde"/"Hasta" are filled, treating "Hasta" as exclusive', async () => {
-    mockReportEndpoints();
+  describe('Más vendidos', () => {
+    it('ranks products with the most sold first by default', async () => {
+      renderAt('/reportes?vista=productos');
+
+      const table = await screen.findByRole('table');
+      await within(table).findByText(/Mesa de centro/);
+      const rows = within(table).getAllByRole('row');
+      expect(within(rows[1]).getByText(/Silla de madera/)).toBeInTheDocument();
+      expect(within(rows[2]).getByText(/Mesa de centro/)).toBeInTheDocument();
+    });
+
+    it('re-queries and exports with sortOrder=asc after "Menos vendidos"', async () => {
+      const user = userEvent.setup();
+      renderAt('/reportes?vista=productos');
+      await screen.findByText(/Mesa de centro/);
+
+      await user.click(screen.getByRole('button', { name: 'Menos vendidos' }));
+      await waitFor(() => {
+        expect(mockedApiFetch).toHaveBeenCalledWith(
+          expect.stringContaining('sortOrder=asc'),
+        );
+      });
+
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/productos-mas-vendidos/excel?sortOrder=asc',
+        'productos-mas-vendidos.xlsx',
+      );
+
+      await user.click(screen.getByRole('button', { name: 'Más vendidos' }));
+    });
+  });
+
+  describe('Inventario', () => {
+    it('renders the inventory table with its total value and exports it', async () => {
+      const user = userEvent.setup();
+      renderAt('/reportes?vista=inventario');
+
+      expect(await screen.findByText('Muebles')).toBeInTheDocument();
+      expect(screen.getByText(/Valor total:/)).toHaveTextContent(/300/);
+
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/inventario/excel',
+        'inventario.xlsx',
+      );
+    });
+  });
+
+  it('switches views from the tabs', async () => {
     const user = userEvent.setup();
+    renderAt();
 
-    renderWithClient(<ReportsPage />);
-    await screen.findByText('600,00');
+    await screen.findByText('Ferretería Sur');
+    await user.click(screen.getByRole('tab', { name: /Ventas/ }));
 
-    await user.type(screen.getByLabelText('Desde'), '2026-08-01');
-    await user.type(screen.getByLabelText('Hasta'), '2026-08-15');
-
-    // El backend trata "to" como exclusivo — se manda el día siguiente.
-    await waitFor(() => {
-      expect(mockedApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('from=2026-08-01'),
-      );
-    });
-    expect(mockedApiFetch).toHaveBeenCalledWith(
-      expect.stringContaining('to=2026-08-16'),
-    );
-  });
-
-  it('includes the current date range in the sales export query', async () => {
-    mockReportEndpoints();
-    const user = userEvent.setup();
-
-    renderWithClient(<ReportsPage />);
-    await screen.findByText('600,00');
-
-    await user.type(screen.getByLabelText('Desde'), '2026-08-01');
-    await user.type(screen.getByLabelText('Hasta'), '2026-08-15');
-    await waitFor(() => {
-      expect(mockedApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining('from=2026-08-01'),
-      );
-    });
-
-    const [salesExportButton] = screen.getAllByRole('button', {
-      name: 'Exportar a Excel',
-    });
-    salesExportButton.click();
-
-    expect(mockedDownloadFile).toHaveBeenCalledWith(
-      '/reports/ventas/excel?from=2026-08-01&to=2026-08-16',
-      'ventas.xlsx',
-    );
-  });
-
-  it('downloads the inventory report as .xlsx', async () => {
-    mockReportEndpoints();
-
-    renderWithClient(<ReportsPage />);
-    await screen.findByText('Valor total: 300,00');
-
-    const [, , inventoryExportButton] = screen.getAllByRole('button', {
-      name: 'Exportar a Excel',
-    });
-    inventoryExportButton.click();
-
-    expect(mockedDownloadFile).toHaveBeenCalledWith(
-      '/reports/inventario/excel',
-      'inventario.xlsx',
-    );
+    expect(await screen.findByText('Unidades vendidas')).toBeInTheDocument();
   });
 });
