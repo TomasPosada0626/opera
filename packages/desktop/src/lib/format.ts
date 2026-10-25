@@ -2,10 +2,19 @@
 // tenía su propio formatDate()/toLocaleString() con pequeñas diferencias
 // (unas con dos decimales, otras sin símbolo, otras en formato corto).
 
+// Pesos enteros sin decimales ($ 1.250.000); con centavos, siempre dos
+// ($ 150,50, nunca $ 150,5).
 const moneyFormatter = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
   minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+const moneyWithCentsFormatter = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
@@ -29,7 +38,10 @@ function toNumber(value: NumericInput): number {
 }
 
 export function formatMoney(value: NumericInput): string {
-  return moneyFormatter.format(toNumber(value));
+  const amount = toNumber(value);
+  return Number.isInteger(amount)
+    ? moneyFormatter.format(amount)
+    : moneyWithCentsFormatter.format(amount);
 }
 
 // "$ 1,2 M" — para KPIs, donde el número completo no cabe ni se lee de un

@@ -15,7 +15,8 @@ import {
 describe('format', () => {
   it('formats Colombian pesos with the currency sign and no forced decimals', () => {
     expect(formatMoney('1250000')).toMatch(/\$\s?1\.250\.000/);
-    expect(formatMoney(19.5)).toMatch(/19,5/);
+    expect(formatMoney(19.5)).toMatch(/\$\s?19,50$/);
+    expect(formatMoney('4500.0000')).toMatch(/\$\s?4\.500$/);
   });
 
   it('treats null, undefined and garbage as zero', () => {
