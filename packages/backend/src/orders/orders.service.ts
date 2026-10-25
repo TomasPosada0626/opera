@@ -8,11 +8,37 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 
 type TransactionClient = Prisma.TransactionClient;
+
+interface MaterialShortage {
+  componentId: string;
+  componentName: string;
+  required: string;
+  available: string;
+}
+
+// Medianoche UTC del día de HOY en la hora local del servidor — así se
+// compara contra estimatedDeliveryDate (DATE, guardado como medianoche
+// UTC de ese día) sin que la zona horaria corra el día.
+export function todayAsDateOnly(now: Date = new Date()): Date {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+// Atrasado = la fecha de envío prometida ya pasó (estrictamente antes de
+// hoy) y el pedido sigue sin despachar ni cancelar. Compartido con el
+// dashboard para que "atrasado" signifique lo mismo en las dos pantallas.
+export function overdueWhere(now: Date = new Date()): Prisma.OrderWhereInput {
+  return {
+    estimatedDeliveryDate: { lt: todayAsDateOnly(now) },
+    status: { in: ['PENDIENTE', 'EN_PRODUCCION', 'EN_ALMACEN'] },
+  };
+}
 const orderInclude = {
   customer: true,
   warehouse: true,
@@ -29,10 +55,20 @@ const orderInclude = {
     include: {
       user: { select: { id: true, name: true } },
       items: true,
+      payments: {
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { paidAt: 'asc' as const },
+      },
     },
+    orderBy: { number: 'asc' as const },
   },
 };
-const sortableFields = ['createdAt', 'status'] as const;
+const sortableFields = [
+  'createdAt',
+  'status',
+  'number',
+  'estimatedDeliveryDate',
+] as const;
 
 @Injectable()
 export class OrdersService {
@@ -41,8 +77,12 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly inventory: InventoryService,
   ) {}
 
+  // `search` busca por número de pedido (entero exacto), mismo criterio que
+  // RemissionsService.findAll: un texto no numérico devuelve una página
+  // vacía en vez de ignorarse.
   findAll(query: ListOrdersDto) {
     const {
       page = 1,
@@ -51,6 +91,8 @@ export class OrdersService {
       sortOrder = 'desc',
       status,
       customerId,
+      overdue,
+      search,
     } = query;
     const orderBy = resolveOrderBy(
       sortBy,
@@ -58,9 +100,16 @@ export class OrdersService {
       sortableFields,
       'createdAt',
     );
+    const parsedNumber = search !== undefined ? Number(search) : undefined;
+    // overdue va dentro de AND porque también restringe `status` — así se
+    // combina con ?status= en vez de pisarlo.
     const where: Prisma.OrderWhereInput = {
       ...(status ? { status } : {}),
       ...(customerId ? { customerId } : {}),
+      ...(search !== undefined
+        ? { number: Number.isInteger(parsedNumber) ? parsedNumber : -1 }
+        : {}),
+      ...(overdue ? { AND: [overdueWhere()] } : {}),
     };
 
     return paginate(
@@ -146,6 +195,10 @@ export class OrdersService {
         customerId: dto.customerId,
         warehouseId: dto.warehouseId,
         userId: actingUserId,
+        estimatedDeliveryDate: dto.estimatedDeliveryDate
+          ? new Date(dto.estimatedDeliveryDate)
+          : undefined,
+        notes: dto.notes?.trim() || undefined,
         items: {
           create: dto.items.map((item) => ({
             productId: item.productId,
@@ -168,10 +221,54 @@ export class OrdersService {
     return order;
   }
 
-  // Bandera manual + timestamp, sin movimiento de stock — no se consume
-  // materia prima por receta (imposible de calcular de forma confiable por
-  // la variación entre pedidos y la pérdida de material, decisión del
-  // negocio). `updateMany` con `status: 'PENDIENTE'` en el where (no un
+  // Solo la fecha de envío estimada y las notas — los datos de seguimiento
+  // que la dueña ajusta mientras el pedido avanza (el cliente pidió
+  // adelantar, se atrasó un material). Un pedido cancelado ya no se edita.
+  async update(id: string, dto: UpdateOrderDto, actingUserId: string) {
+    const before = await this.findOne(id);
+    if (before.status === 'CANCELADO') {
+      throw new BadRequestException('No se puede editar un pedido cancelado');
+    }
+
+    const order = await this.prisma.order.update({
+      where: { id },
+      data: {
+        ...(dto.estimatedDeliveryDate !== undefined
+          ? {
+              estimatedDeliveryDate: dto.estimatedDeliveryDate
+                ? new Date(dto.estimatedDeliveryDate)
+                : null,
+            }
+          : {}),
+        ...(dto.notes !== undefined
+          ? { notes: dto.notes?.trim() || null }
+          : {}),
+      },
+      include: orderInclude,
+    });
+
+    await this.audit.log({
+      userId: actingUserId,
+      entity: 'Order',
+      entityId: order.id,
+      action: 'UPDATE',
+      before: {
+        estimatedDeliveryDate: before.estimatedDeliveryDate,
+        notes: before.notes,
+      },
+      after: {
+        estimatedDeliveryDate: order.estimatedDeliveryDate,
+        notes: order.notes,
+      },
+    });
+
+    return order;
+  }
+
+  // Bandera manual + timestamp, sin movimiento de stock — el consumo de
+  // materia prima (si el producto tiene lista de materiales) ocurre al
+  // pasar a almacén, cuando el terminado de verdad existe (ver
+  // markWarehoused). `updateMany` con `status: 'PENDIENTE'` en el where (no un
   // findUnique + update separado) hace la transición atómica: Postgres ya
   // garantiza que un UPDATE individual es atómico a nivel de fila en
   // cualquier nivel de aislamiento, así que dos llamadas concurrentes nunca
@@ -217,8 +314,14 @@ export class OrdersService {
   }
 
   // El terminado entra al stock de verdad acá (ENTRADA por línea, cantidad
-  // completa pedida) — antes de esto no existía físicamente. Escribe N
-  // StockMovement más el cambio de estado como una sola unidad dentro de
+  // completa pedida) — antes de esto no existía físicamente. Si el producto
+  // tiene lista de materiales, en la MISMA transacción se descuentan sus
+  // materias primas (SALIDA por componente, al costo promedio vigente) y el
+  // terminado entra con ese costo — mismo cálculo que
+  // ProductionOrdersService.complete() (ADR 0002/0009). Sin lista de
+  // materiales entra sin consumir nada y sin costo propio, como antes del
+  // ADR 0009: la lista es opcional por producto a propósito. Falta de
+  // material = 400 con el detalle, nunca stock negativo.
   // Serializable (ADR 0001) + el mismo manejo de P2034/P2028 que el resto
   // de transacciones del proyecto. El e2e de concurrencia real (#91) probó
   // que Serializable solo NO basta: un `update` incondicional deja pasar
@@ -246,6 +349,12 @@ export class OrdersService {
     try {
       const updated = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
+          const unitCostByProduct = await this.consumeBillsOfMaterials(
+            tx,
+            order,
+            actingUserId,
+          );
+
           // Un solo createMany para todas las líneas del pedido en vez de
           // un create por línea dentro del for — menos tiempo con locks
           // abiertos dentro de la transacción Serializable (señalado en la
@@ -256,7 +365,8 @@ export class OrdersService {
               warehouseId: order.warehouseId,
               type: 'ENTRADA' as const,
               quantity: item.quantity,
-              reason: `Producción terminada, pedido ${order.id}`,
+              unitCost: unitCostByProduct.get(item.productId),
+              reason: `Producción terminada, pedido No. ${order.number}`,
               userId: actingUserId,
             })),
           });
@@ -308,6 +418,122 @@ export class OrdersService {
     }
   }
 
+  // Descuenta, dentro de la transacción del llamador, las materias primas
+  // de las líneas cuyo producto tiene lista de materiales activa, y
+  // devuelve el costo unitario resultante de cada uno de esos productos
+  // (los que no tienen lista no aparecen en el Map). Lecturas agrupadas
+  // para todos los componentes del pedido a la vez, mismo batching que
+  // ProductionOrdersService.complete(): un mismo componente puede
+  // necesitarse en varias líneas, y el faltante se calcula sobre el total.
+  private async consumeBillsOfMaterials(
+    tx: TransactionClient,
+    order: {
+      id: string;
+      number: number;
+      warehouseId: string;
+      items: { productId: string; quantity: Prisma.Decimal }[];
+    },
+    actingUserId: string,
+  ): Promise<Map<string, Prisma.Decimal>> {
+    const productIds = [...new Set(order.items.map((item) => item.productId))];
+    const boms = await tx.billOfMaterials.findMany({
+      where: { productId: { in: productIds }, isActive: true },
+      include: { items: { include: { component: true } } },
+    });
+    const bomByProduct = new Map(
+      boms
+        .filter((bom) => bom.items.length > 0)
+        .map((bom) => [bom.productId, bom]),
+    );
+    if (bomByProduct.size === 0) {
+      return new Map();
+    }
+
+    const required = new Map<
+      string,
+      { name: string; quantity: Prisma.Decimal }
+    >();
+    for (const item of order.items) {
+      const bom = bomByProduct.get(item.productId);
+      for (const bomItem of bom?.items ?? []) {
+        const current = required.get(bomItem.componentId) ?? {
+          name: bomItem.component.name,
+          quantity: new Prisma.Decimal(0),
+        };
+        current.quantity = current.quantity.plus(
+          bomItem.quantity.times(item.quantity),
+        );
+        required.set(bomItem.componentId, current);
+      }
+    }
+
+    const componentIds = [...required.keys()];
+    const [stockByComponent, costByComponent] = await Promise.all([
+      this.inventory.getStockForProducts(componentIds, order.warehouseId, tx),
+      this.inventory.getAverageCostForProducts(
+        componentIds,
+        order.warehouseId,
+        tx,
+      ),
+    ]);
+    const stockById = new Map(
+      stockByComponent.map(({ productId, stock }) => [productId, stock]),
+    );
+
+    const shortages: MaterialShortage[] = [];
+    for (const [componentId, { name, quantity }] of required) {
+      const available = stockById.get(componentId) ?? new Prisma.Decimal(0);
+      if (available.lessThan(quantity)) {
+        shortages.push({
+          componentId,
+          componentName: name,
+          required: quantity.toString(),
+          available: available.toString(),
+        });
+      }
+    }
+    if (shortages.length > 0) {
+      this.logger.warn(
+        `Pedido ${order.id} no pasó a almacén: ${shortages.length} material(es) sin stock suficiente`,
+      );
+      throw new BadRequestException({
+        message:
+          'No hay suficiente materia prima en la bodega para pasar este pedido a almacén',
+        shortages,
+      });
+    }
+
+    await tx.stockMovement.createMany({
+      data: Array.from(required, ([componentId, { quantity }]) => ({
+        productId: componentId,
+        warehouseId: order.warehouseId,
+        type: 'SALIDA' as const,
+        quantity: quantity.negated(),
+        unitCost: costByComponent.get(componentId) ?? new Prisma.Decimal(0),
+        reason: `Consumo de materiales, pedido No. ${order.number}`,
+        userId: actingUserId,
+      })),
+    });
+
+    const unitCostByProduct = new Map<string, Prisma.Decimal>();
+    for (const [productId, bom] of bomByProduct) {
+      unitCostByProduct.set(
+        productId,
+        bom.items.reduce(
+          (sum, bomItem) =>
+            sum.plus(
+              bomItem.quantity.times(
+                costByComponent.get(bomItem.componentId) ??
+                  new Prisma.Decimal(0),
+              ),
+            ),
+          new Prisma.Decimal(0),
+        ),
+      );
+    }
+    return unitCostByProduct;
+  }
+
   // #97 se filtró antes del pivote de fabricación sobre pedido (#68-73) y
   // asumía que crear un pedido descontaba stock de inmediato (diseño
   // original #50/#51) — ya no es así (ver comentario de Order en
@@ -340,10 +566,10 @@ export class OrdersService {
     const result = await this.prisma.order.updateMany({
       where: {
         id,
-        status: { not: 'CANCELADO' },
+        status: { notIn: ['CANCELADO', 'DESPACHADO'] },
         remissions: { none: { voidedAt: null } },
       },
-      data: { status: 'CANCELADO' },
+      data: { status: 'CANCELADO', cancelledAt: new Date() },
     });
     if (result.count === 0) {
       this.logger.warn(

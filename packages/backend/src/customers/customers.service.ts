@@ -40,36 +40,20 @@ export class CustomersService extends CatalogService<
 
   // Saldo pendiente = lo remisionado (lo que de verdad se despachó, no lo
   // pedido — un pedido sin despachar todavía no es un cobro pendiente)
-  // menos lo pagado. "Lo pagado" por remisión sale de paymentStatus:
-  // PAGADO = el valor completo de esa remisión, ABONADO = amountPaid,
-  // CARTERA = nada — nunca un campo propio, se deriva en cada consulta
-  // (mismo espíritu que el stock del Kardex).
+  // menos lo abonado, ambos solo de remisiones NO anuladas: una remisión
+  // anulada ya devolvió su mercancía al stock y no se le cobra a nadie
+  // (antes se sumaban igual, inflando el saldo — auditoría ronda 6).
+  // total/amountPaid de cada remisión los mantiene RemissionsService a
+  // partir de los abonos, así que acá alcanza con un aggregate.
   async getBalance(customerId: string) {
     await this.findOne(customerId);
 
-    const remissions = await this.prisma.remission.findMany({
-      where: { order: { customerId } },
-      include: { items: { include: { orderItem: true } } },
+    const { _sum } = await this.prisma.remission.aggregate({
+      where: { order: { customerId }, voidedAt: null },
+      _sum: { total: true, amountPaid: true },
     });
-
-    let totalBilled = new Prisma.Decimal(0);
-    let totalPaid = new Prisma.Decimal(0);
-
-    for (const remission of remissions) {
-      const value = remission.items.reduce(
-        (sum, item) => sum.plus(item.quantity.times(item.orderItem.unitPrice)),
-        new Prisma.Decimal(0),
-      );
-      totalBilled = totalBilled.plus(value);
-
-      if (remission.paymentStatus === 'PAGADO') {
-        totalPaid = totalPaid.plus(value);
-      } else if (remission.paymentStatus === 'ABONADO') {
-        totalPaid = totalPaid.plus(
-          remission.amountPaid ?? new Prisma.Decimal(0),
-        );
-      }
-    }
+    const totalBilled = _sum.total ?? new Prisma.Decimal(0);
+    const totalPaid = _sum.amountPaid ?? new Prisma.Decimal(0);
 
     return {
       totalBilled: totalBilled.toString(),
@@ -78,11 +62,22 @@ export class CustomersService extends CatalogService<
     };
   }
 
-  // Portabilidad de datos a pedido del titular (#33, auditoría) — perfil
-  // completo + su historial de pedidos propio, no un reporte agregado como
-  // los de ReportsService. El total de cada pedido se recalcula igual que
-  // orderTotal en el frontend (quantity * unitPrice no es un _sum que
-  // Prisma pueda hacer solo, mismo motivo que ReportsService.getSalesReport).
+  // Historial de abonos del cliente en todas sus remisiones, del más
+  // reciente al más viejo — incluye los anulados (con su motivo) porque el
+  // historial es justamente para poder explicar cualquier diferencia.
+  async getPayments(customerId: string) {
+    await this.findOne(customerId);
+
+    return this.prisma.remissionPayment.findMany({
+      where: { remission: { order: { customerId } } },
+      include: {
+        remission: { select: { id: true, number: true, orderId: true } },
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { paidAt: 'desc' },
+    });
+  }
+
   async exportExcel(id: string): Promise<Buffer> {
     const customer = await this.findOne(id);
     const orders = await this.prisma.order.findMany({
@@ -109,6 +104,7 @@ export class CustomersService extends CatalogService<
 
     const ordersSheet = workbook.addWorksheet('Pedidos');
     ordersSheet.columns = [
+      { header: 'No.', key: 'number', width: 8 },
       { header: 'Fecha', key: 'createdAt', width: 14 },
       { header: 'Estado', key: 'status', width: 16 },
       { header: 'Líneas', key: 'itemCount', width: 10 },
@@ -116,6 +112,7 @@ export class CustomersService extends CatalogService<
     ];
     ordersSheet.addRows(
       orders.map((order) => ({
+        number: order.number,
         createdAt: order.createdAt.toISOString().slice(0, 10),
         status: order.status,
         itemCount: order.items.length,

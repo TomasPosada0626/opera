@@ -326,7 +326,7 @@ describe('Customers (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           orderId: order1.orderId,
-          paymentStatus: 'PAGADO',
+          initialPayment: { amount: 100, method: 'EFECTIVO' },
           items: [{ orderItemId: order1.orderItemId, quantity: 4 }],
         })
         .expect(201);
@@ -338,8 +338,7 @@ describe('Customers (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           orderId: order2.orderId,
-          paymentStatus: 'ABONADO',
-          amountPaid: 30,
+          initialPayment: { amount: 30, method: 'TRANSFERENCIA' },
           items: [{ orderItemId: order2.orderItemId, quantity: 2 }],
         })
         .expect(201);
@@ -351,7 +350,6 @@ describe('Customers (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           orderId: order3.orderId,
-          paymentStatus: 'CARTERA',
           items: [{ orderItemId: order3.orderItemId, quantity: 3 }],
         })
         .expect(201);
@@ -383,6 +381,48 @@ describe('Customers (e2e)', () => {
         ]),
       );
       expect(ordersBody.data).toHaveLength(3);
+
+      // El historial de abonos del cliente trae los dos pagos reales.
+      const paymentsResponse = await request(app.getHttpServer())
+        .get(`/customers/${customerId}/payments`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      const payments = paymentsResponse.body as {
+        amount: string;
+        method: string;
+      }[];
+      expect(payments.map((payment) => Number(payment.amount)).sort()).toEqual(
+        [100, 30].sort(),
+      );
+    });
+
+    it('leaves voided remissions out of the balance', async () => {
+      const before = await request(app.getHttpServer())
+        .get(`/customers/${customerId}/balance`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      // 5 x 8 = 40 despachado y luego anulado: el saldo no debe moverse.
+      const order = await createAndWarehouseOrder(5, 8);
+      const remission = await request(app.getHttpServer())
+        .post('/remissions')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          orderId: order.orderId,
+          items: [{ orderItemId: order.orderItemId, quantity: 5 }],
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .patch(`/remissions/${(remission.body as { id: string }).id}/void`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ reason: 'Despachado al cliente equivocado' })
+        .expect(200);
+
+      const after = await request(app.getHttpServer())
+        .get(`/customers/${customerId}/balance`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(after.body).toEqual(before.body);
     });
   });
 });

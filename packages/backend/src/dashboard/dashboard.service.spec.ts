@@ -18,8 +18,9 @@ const mockedCountRecentWarnings = countRecentWarnings as jest.Mock;
 describe('DashboardService', () => {
   let prisma: {
     productionOrder: { groupBy: jest.Mock };
-    order: { groupBy: jest.Mock; findMany: jest.Mock };
+    order: { groupBy: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     supplierPurchase: { findMany: jest.Mock };
+    remission: { aggregate: jest.Mock };
   };
   let inventory: { getLowStockProducts: jest.Mock };
   let reports: { getInventoryReport: jest.Mock };
@@ -29,8 +30,9 @@ describe('DashboardService', () => {
   beforeEach(() => {
     prisma = {
       productionOrder: { groupBy: jest.fn() },
-      order: { groupBy: jest.fn(), findMany: jest.fn() },
+      order: { groupBy: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       supplierPurchase: { findMany: jest.fn() },
+      remission: { aggregate: jest.fn() },
     };
     inventory = { getLowStockProducts: jest.fn() };
     reports = { getInventoryReport: jest.fn() };
@@ -45,6 +47,11 @@ describe('DashboardService', () => {
     prisma.productionOrder.groupBy.mockResolvedValue([]);
     prisma.order.groupBy.mockResolvedValue([]);
     prisma.order.findMany.mockResolvedValue([]);
+    prisma.order.count.mockResolvedValue(0);
+    prisma.remission.aggregate.mockResolvedValue({
+      _sum: { total: null, amountPaid: null },
+      _count: 0,
+    });
     prisma.supplierPurchase.findMany.mockResolvedValue([]);
     inventory.getLowStockProducts.mockResolvedValue([]);
     reports.getInventoryReport.mockResolvedValue([]);
@@ -98,8 +105,8 @@ describe('DashboardService', () => {
 
     expect(result.production).toEqual({
       PENDIENTE: 0,
-      EN_PROCESO: 0,
       COMPLETADA: 3,
+      CANCELADA: 0,
     });
   });
 
@@ -115,7 +122,63 @@ describe('DashboardService', () => {
       PENDIENTE: 2,
       EN_PRODUCCION: 0,
       EN_ALMACEN: 5,
+      DESPACHADO: 0,
       CANCELADO: 0,
+    });
+  });
+
+  it('reports receivables as total minus paid over the remissions not fully paid', async () => {
+    prisma.remission.aggregate.mockResolvedValue({
+      _sum: {
+        total: new Prisma.Decimal(500),
+        amountPaid: new Prisma.Decimal(120),
+      },
+      _count: 3,
+    });
+
+    const result = await service.getSummary();
+
+    expect(result.receivables.total.toString()).toBe('380');
+    expect(result.receivables.remissionCount).toBe(3);
+    expect(prisma.remission.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { voidedAt: null, paymentStatus: { not: 'PAGADO' } },
+      }),
+    );
+  });
+
+  it('lists overdue orders with their number and customer, oldest promise first', async () => {
+    prisma.order.count.mockResolvedValue(1);
+    prisma.order.findMany.mockImplementation(
+      (args: { where?: { estimatedDeliveryDate?: unknown } }) =>
+        Promise.resolve(
+          args.where?.estimatedDeliveryDate
+            ? [
+                {
+                  id: 'order-9',
+                  number: 9,
+                  status: 'EN_PRODUCCION',
+                  estimatedDeliveryDate: new Date('2026-10-01'),
+                  customer: { id: 'c1', name: 'Ferretería Sur' },
+                },
+              ]
+            : [],
+        ),
+    );
+
+    const result = await service.getSummary();
+
+    expect(result.overdueOrders).toEqual({
+      count: 1,
+      orders: [
+        {
+          id: 'order-9',
+          number: 9,
+          customerName: 'Ferretería Sur',
+          status: 'EN_PRODUCCION',
+          estimatedDeliveryDate: new Date('2026-10-01'),
+        },
+      ],
     });
   });
 

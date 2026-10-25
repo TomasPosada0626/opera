@@ -53,6 +53,16 @@ export class ReportsController {
     return this.reportsService.getTopProducts(query);
   }
 
+  @Get('cartera')
+  @ApiOperation({
+    summary: 'Cartera: saldo pendiente por cliente',
+    description:
+      'Remisiones vigentes sin pagar del todo, agrupadas por cliente, de mayor a menor saldo, con los días de la impaga más vieja.',
+  })
+  getReceivablesReport() {
+    return this.reportsService.getReceivablesReport();
+  }
+
   // @Res() de Express directo (no el flujo normal de retorno de Nest) — el
   // .xlsx es contenido binario con sus propios headers, mismo patrón que el
   // PDF de remisiones (RemissionsController.getPdf).
@@ -96,6 +106,18 @@ export class ReportsController {
       'Content-Type': XLSX_CONTENT_TYPE,
       'Content-Disposition':
         'attachment; filename="productos-mas-vendidos.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  @Get('cartera/excel')
+  @ApiOperation({ summary: 'Cartera por cliente, como .xlsx' })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx.' })
+  async getReceivablesExcel(@Res() res: Response) {
+    const buffer = await this.reportsService.getReceivablesExcel();
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': 'attachment; filename="cartera.xlsx"',
     });
     res.send(buffer);
   }

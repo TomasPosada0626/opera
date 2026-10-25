@@ -5,15 +5,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, RemissionPaymentStatus } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { AuditService } from '../audit/audit.service';
-import { ListQueryDto } from '../common/dto/list-query.dto';
 import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateRemissionDto } from './dto/create-remission.dto';
-import { UpdateRemissionPaymentDto } from './dto/update-remission-payment.dto';
+import { CreatePaymentDto } from './dto/create-payment.dto';
+import { ListRemissionsDto } from './dto/list-remissions.dto';
+import { VoidPaymentDto } from './dto/void-payment.dto';
 import { VoidRemissionDto } from './dto/void-remission.dto';
 
 type TransactionClient = Prisma.TransactionClient;
@@ -21,6 +22,10 @@ const remissionInclude = {
   order: { include: { customer: true, warehouse: true } },
   user: { select: { id: true, name: true } },
   items: { include: { orderItem: { include: { product: true } } } },
+  payments: {
+    include: { user: { select: { id: true, name: true } } },
+    orderBy: { paidAt: 'asc' as const },
+  },
 };
 const sortableFields = ['createdAt', 'number'] as const;
 
@@ -38,6 +43,23 @@ interface Shortage {
   available: string;
 }
 
+// La única regla de estado de pago del sistema: se deriva de lo abonado
+// contra el total, nunca se elige a mano. Exportada para que los tests y
+// cualquier otro módulo usen exactamente la misma.
+export function paymentStatusFor(
+  total: Prisma.Decimal,
+  amountPaid: Prisma.Decimal,
+): RemissionPaymentStatus {
+  if (amountPaid.greaterThanOrEqualTo(total)) {
+    return 'PAGADO';
+  }
+  return amountPaid.greaterThan(0) ? 'ABONADO' : 'CARTERA';
+}
+
+function formatMoney(value: Prisma.Decimal): string {
+  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 2 });
+}
+
 @Injectable()
 export class RemissionsService {
   private readonly logger = new Logger(RemissionsService.name);
@@ -52,13 +74,17 @@ export class RemissionsService {
   // SearchService (#77), solo matchea si `search` es exactamente un
   // entero. Un `search` no numérico devuelve una página vacía en vez de
   // ignorarse, para no confundir "no encontré nada" con "no filtré nada".
-  findAll(query: ListQueryDto) {
+  // paymentStatus/customerId permiten armar la vista de cobro ("qué me
+  // deben y quién") sin traer todas las remisiones al cliente.
+  findAll(query: ListRemissionsDto) {
     const {
       page = 1,
       pageSize = 20,
       sortBy,
       sortOrder = 'desc',
       search,
+      paymentStatus,
+      customerId,
     } = query;
     const orderBy = resolveOrderBy(
       sortBy,
@@ -67,10 +93,14 @@ export class RemissionsService {
       'createdAt',
     );
     const parsedNumber = search ? Number(search) : undefined;
-    const where =
-      search !== undefined
+    const filters: Prisma.RemissionWhereInput = {
+      ...(search !== undefined
         ? { number: Number.isInteger(parsedNumber) ? parsedNumber : -1 }
-        : undefined;
+        : {}),
+      ...(paymentStatus ? { paymentStatus, voidedAt: null } : {}),
+      ...(customerId ? { order: { customerId } } : {}),
+    };
+    const where = Object.keys(filters).length > 0 ? filters : undefined;
 
     return paginate(
       () => this.prisma.remission.count({ where }),
@@ -110,7 +140,9 @@ export class RemissionsService {
   // producto a precios distintos (ver OrderItem), y ambas consumen del
   // mismo stock físico. Serializable + P2034/P2028 tratados igual, mismo
   // patrón que OrdersService.markWarehoused() y
-  // ProductionOrdersService.complete() (#33).
+  // ProductionOrdersService.complete() (#33). En la misma transacción: el
+  // abono inicial (si el cliente pagó al recibir) y el paso del pedido a
+  // DESPACHADO cuando esta remisión completa lo pedido.
   async create(dto: CreateRemissionDto, actingUserId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: dto.orderId },
@@ -123,10 +155,12 @@ export class RemissionsService {
     // almacén — uno PENDIENTE/EN_PRODUCCION nunca pasó por markWarehoused
     // (no hay stock suyo que despachar), y uno CANCELADO no debe poder
     // "revivir" como una entrega real (encontrado en revisión de seguridad
-    // de cierre de M6, #80).
+    // de cierre de M6, #80). Uno DESPACHADO ya no tiene nada pendiente.
     if (order.status !== 'EN_ALMACEN') {
       throw new BadRequestException(
-        'Solo se puede despachar un pedido que ya está en almacén',
+        order.status === 'DESPACHADO'
+          ? 'Este pedido ya se despachó por completo'
+          : 'Solo se puede despachar un pedido que ya está en almacén',
       );
     }
 
@@ -147,22 +181,37 @@ export class RemissionsService {
       requestedByOrderItem.set(item.orderItemId, current.plus(item.quantity));
     }
 
+    let total = new Prisma.Decimal(0);
+    for (const [orderItemId, requested] of requestedByOrderItem) {
+      total = total.plus(
+        requested.times(orderItemById.get(orderItemId)!.unitPrice),
+      );
+    }
+    const initialPayment = dto.initialPayment;
+    if (initialPayment && total.lessThan(initialPayment.amount)) {
+      throw new BadRequestException(
+        `El pago (${formatMoney(new Prisma.Decimal(initialPayment.amount))}) supera el total de la remisión (${formatMoney(total)})`,
+      );
+    }
+
     try {
       const remission = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
-          // Un solo groupBy para TODAS las líneas del request en vez de un
+          // Un solo groupBy para TODAS las líneas del pedido en vez de un
           // aggregate por orderItemId dentro del for — mismo motivo que el
           // batching en ProductionOrdersService.complete(): menos tiempo
           // con locks abiertos dentro de la transacción Serializable, menos
           // contención real entre despachos concurrentes (señalado en la
-          // auditoría de escalabilidad). remission.voidedAt: null excluye
-          // remisiones anuladas (#99) — una vez anulada, su cantidad deja
-          // de contar como "entregado" y el pedido vuelve a admitir un
-          // despacho correcto por esa cantidad.
+          // auditoría de escalabilidad). Todas las líneas, no solo las de
+          // este request, para saber al final si el pedido quedó completo.
+          // remission.voidedAt: null excluye remisiones anuladas (#99) —
+          // una vez anulada, su cantidad deja de contar como "entregado" y
+          // el pedido vuelve a admitir un despacho correcto por esa
+          // cantidad.
           const deliveredGrouped = await tx.remissionItem.groupBy({
             by: ['orderItemId'],
             where: {
-              orderItemId: { in: [...requestedByOrderItem.keys()] },
+              orderItemId: { in: order.items.map((item) => item.id) },
               remission: { voidedAt: null },
             },
             _sum: { quantity: true },
@@ -241,34 +290,69 @@ export class RemissionsService {
             });
           }
 
-          // Un solo createMany para todos los productos despachados en vez
-          // de un create por producto dentro del for — menos tiempo con
-          // locks abiertos dentro de la transacción Serializable (señalado
-          // en la re-auditoría de escalabilidad).
-          await tx.stockMovement.createMany({
-            data: Array.from(quantityByProduct, ([productId, quantity]) => ({
-              productId,
-              warehouseId: order.warehouseId,
-              type: 'SALIDA' as const,
-              quantity: quantity.negated(),
-              reason: `Despacho, remisión del pedido ${order.id}`,
-              userId: actingUserId,
-            })),
-          });
-
-          return tx.remission.create({
+          const amountPaid = new Prisma.Decimal(initialPayment?.amount ?? 0);
+          const created = await tx.remission.create({
             data: {
               orderId: dto.orderId,
               userId: actingUserId,
-              paymentStatus: dto.paymentStatus,
-              amountPaid: dto.amountPaid,
+              total,
+              amountPaid,
+              paymentStatus: paymentStatusFor(total, amountPaid),
               items: {
                 create: dto.items.map((item) => ({
                   orderItemId: item.orderItemId,
                   quantity: item.quantity,
                 })),
               },
+              ...(initialPayment
+                ? {
+                    payments: {
+                      create: {
+                        amount: initialPayment.amount,
+                        method: initialPayment.method,
+                        paidAt: initialPayment.paidAt
+                          ? new Date(initialPayment.paidAt)
+                          : new Date(),
+                        note: initialPayment.note?.trim() || undefined,
+                        userId: actingUserId,
+                      },
+                    },
+                  }
+                : {}),
             },
+          });
+
+          // Un solo createMany para todos los productos despachados en vez
+          // de un create por producto dentro del for — menos tiempo con
+          // locks abiertos dentro de la transacción Serializable (señalado
+          // en la re-auditoría de escalabilidad). Después de crear la
+          // remisión para que el Kardex cite su número, no un UUID.
+          await tx.stockMovement.createMany({
+            data: Array.from(quantityByProduct, ([productId, quantity]) => ({
+              productId,
+              warehouseId: order.warehouseId,
+              type: 'SALIDA' as const,
+              quantity: quantity.negated(),
+              reason: `Despacho, remisión No. ${created.number} del pedido No. ${order.number}`,
+              userId: actingUserId,
+            })),
+          });
+
+          const isFullyDispatched = order.items.every((item) => {
+            const delivered = (
+              deliveredByOrderItem.get(item.id) ?? new Prisma.Decimal(0)
+            ).plus(requestedByOrderItem.get(item.id) ?? 0);
+            return delivered.greaterThanOrEqualTo(item.quantity);
+          });
+          if (isFullyDispatched) {
+            await tx.order.updateMany({
+              where: { id: order.id, status: 'EN_ALMACEN' },
+              data: { status: 'DESPACHADO', dispatchedAt: new Date() },
+            });
+          }
+
+          return tx.remission.findUniqueOrThrow({
+            where: { id: created.id },
             include: remissionInclude,
           });
         },
@@ -297,43 +381,150 @@ export class RemissionsService {
     }
   }
 
-  // El pago normalmente se confirma después del despacho, no al momento de
-  // crear la remisión — por eso es editable aparte. Sin protección de
-  // concurrencia especial: es una actualización de campos simples, sin
-  // lectura-decisión-escritura de por medio, así que no hay ventana de
-  // carrera que proteger (a diferencia de create()).
-  async updatePayment(
-    id: string,
-    dto: UpdateRemissionPaymentDto,
+  // Registra un abono real. El saldo pendiente se lee y se actualiza dentro
+  // de la misma transacción Serializable: dos abonos simultáneos sobre la
+  // misma remisión no pueden pasar ambos el chequeo de "no superar el
+  // saldo" con el mismo amountPaid viejo (el segundo recibe 409).
+  async addPayment(
+    remissionId: string,
+    dto: CreatePaymentDto,
     actingUserId: string,
   ) {
-    const before = await this.findOne(id);
+    try {
+      const { remission, payment } = await this.prisma.$transaction(
+        async (tx: TransactionClient) => {
+          const current = await tx.remission.findUnique({
+            where: { id: remissionId },
+          });
+          if (!current) {
+            throw new NotFoundException('Remisión no encontrada');
+          }
+          if (current.voidedAt) {
+            throw new BadRequestException(
+              'No se pueden registrar abonos en una remisión anulada',
+            );
+          }
+          const pending = current.total.minus(current.amountPaid);
+          if (pending.lessThan(dto.amount)) {
+            throw new BadRequestException(
+              pending.lessThanOrEqualTo(0)
+                ? 'Esta remisión ya está pagada por completo'
+                : `El abono (${formatMoney(new Prisma.Decimal(dto.amount))}) supera el saldo pendiente (${formatMoney(pending)})`,
+            );
+          }
 
-    const updated = await this.prisma.remission.update({
-      where: { id },
-      data: {
-        paymentStatus: dto.paymentStatus,
-        amountPaid: dto.amountPaid,
+          const created = await tx.remissionPayment.create({
+            data: {
+              remissionId,
+              amount: dto.amount,
+              method: dto.method,
+              paidAt: dto.paidAt ? new Date(dto.paidAt) : new Date(),
+              note: dto.note?.trim() || undefined,
+              userId: actingUserId,
+            },
+          });
+          const amountPaid = current.amountPaid.plus(dto.amount);
+          const updated = await tx.remission.update({
+            where: { id: remissionId },
+            data: {
+              amountPaid,
+              paymentStatus: paymentStatusFor(current.total, amountPaid),
+            },
+            include: remissionInclude,
+          });
+          return { remission: updated, payment: created };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      await this.audit.log({
+        userId: actingUserId,
+        entity: 'Remission',
+        entityId: remission.id,
+        action: 'ADD_PAYMENT',
+        after: {
+          paymentId: payment.id,
+          amount: payment.amount,
+          method: payment.method,
+          paidAt: payment.paidAt,
+          amountPaid: remission.amountPaid,
+          paymentStatus: remission.paymentStatus,
+        },
+      });
+
+      return remission;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2034' || error.code === 'P2028')
+      ) {
+        throw new ConflictException(
+          'Otro abono se registró al mismo tiempo, intenta de nuevo',
+        );
+      }
+      throw error;
+    }
+  }
+
+  // Anular un abono (registrado por error, cheque devuelto): queda en el
+  // historial con su motivo y deja de contar. amountPaid se recalcula
+  // sumando los abonos vigentes, no restando — así el resumen siempre
+  // coincide con el historial aunque algo lo hubiera desfasado antes.
+  async voidPayment(
+    remissionId: string,
+    paymentId: string,
+    dto: VoidPaymentDto,
+    actingUserId: string,
+  ) {
+    const remission = await this.prisma.$transaction(
+      async (tx: TransactionClient) => {
+        const result = await tx.remissionPayment.updateMany({
+          where: { id: paymentId, remissionId, voidedAt: null },
+          data: { voidedAt: new Date(), voidReason: dto.reason },
+        });
+        if (result.count === 0) {
+          const exists = await tx.remissionPayment.findFirst({
+            where: { id: paymentId, remissionId },
+          });
+          if (!exists) {
+            throw new NotFoundException('Abono no encontrado');
+          }
+          throw new BadRequestException('El abono ya está anulado');
+        }
+
+        const current = await tx.remission.findUniqueOrThrow({
+          where: { id: remissionId },
+        });
+        const { _sum } = await tx.remissionPayment.aggregate({
+          where: { remissionId, voidedAt: null },
+          _sum: { amount: true },
+        });
+        const amountPaid = _sum.amount ?? new Prisma.Decimal(0);
+        return tx.remission.update({
+          where: { id: remissionId },
+          data: {
+            amountPaid,
+            paymentStatus: paymentStatusFor(current.total, amountPaid),
+          },
+          include: remissionInclude,
+        });
       },
-      include: remissionInclude,
-    });
+    );
 
     await this.audit.log({
       userId: actingUserId,
       entity: 'Remission',
-      entityId: updated.id,
-      action: 'UPDATE_PAYMENT',
-      before: {
-        paymentStatus: before.paymentStatus,
-        amountPaid: before.amountPaid,
-      },
+      entityId: remission.id,
+      action: 'VOID_PAYMENT',
       after: {
-        paymentStatus: updated.paymentStatus,
-        amountPaid: updated.amountPaid,
+        paymentId,
+        voidReason: dto.reason,
+        amountPaid: remission.amountPaid,
+        paymentStatus: remission.paymentStatus,
       },
     });
 
-    return updated;
+    return remission;
   }
 
   // #99: corregir una remisión con cantidad equivocada no edita ni borra
@@ -347,24 +538,34 @@ export class RemissionsService {
   // Serializable: escribir una ENTRADA nunca falla por sobregiro (a
   // diferencia de una SALIDA), así que no hay una decisión de stock que
   // proteger, solo el guard de "no anular dos veces".
+  // Con abonos vigentes no se anula: esa plata la recibió el negocio, y si
+  // la remisión dejara de contar, el saldo del cliente subiría como si no
+  // hubiera pagado. Primero se anulan los abonos (y se registran en la
+  // remisión corregida). Si el pedido estaba DESPACHADO, vuelve a
+  // EN_ALMACEN: lo anulado vuelve a estar pendiente de entregar.
   async voidRemission(id: string, dto: VoidRemissionDto, actingUserId: string) {
     const remission = await this.findOne(id);
     if (remission.voidedAt) {
       throw new BadRequestException('La remisión ya está anulada');
     }
+    if (remission.payments.some((payment) => !payment.voidedAt)) {
+      throw new BadRequestException(
+        'Esta remisión tiene abonos registrados. Anúlalos primero y regístralos en la remisión corregida.',
+      );
+    }
 
     const voided = await this.prisma.$transaction(
       async (tx: TransactionClient) => {
         const result = await tx.remission.updateMany({
-          where: { id, voidedAt: null },
+          where: { id, voidedAt: null, payments: { none: { voidedAt: null } } },
           data: { voidedAt: new Date(), voidReason: dto.reason },
         });
         if (result.count === 0) {
           this.logger.warn(
-            `Guard atómico: la remisión ${id} ya fue anulada antes de esta solicitud`,
+            `Guard atómico: la remisión ${id} ya fue anulada (o recibió un abono) antes de esta solicitud`,
           );
           throw new ConflictException(
-            'La remisión ya fue anulada, intenta de nuevo',
+            'La remisión cambió antes de poder anularla, intenta de nuevo',
           );
         }
 
@@ -386,6 +587,11 @@ export class RemissionsService {
             reason: `Anulación de remisión No. ${remission.number}: ${dto.reason}`,
             userId: actingUserId,
           })),
+        });
+
+        await tx.order.updateMany({
+          where: { id: remission.orderId, status: 'DESPACHADO' },
+          data: { status: 'EN_ALMACEN', dispatchedAt: null },
         });
 
         return tx.remission.findUniqueOrThrow({
@@ -419,8 +625,9 @@ export class RemissionsService {
     return { buffer, number: remission.number };
   }
 
-  // No incluye paymentStatus/amountPaid a propósito — es dato interno del
-  // negocio, nunca algo que vea el cliente en el documento que se lleva.
+  // No incluye paymentStatus/amountPaid/abonos a propósito — es dato
+  // interno del negocio, nunca algo que vea el cliente en el documento que
+  // se lleva.
   private renderPdf(
     remission: Awaited<ReturnType<RemissionsService['findOne']>>,
   ): Promise<Buffer> {
@@ -435,6 +642,7 @@ export class RemissionsService {
       doc.moveDown();
       doc.fontSize(10);
       doc.text(`No. ${remission.number}`);
+      doc.text(`Pedido No. ${remission.order.number}`);
       doc.text(`Fecha: ${remission.createdAt.toLocaleDateString('es-CO')}`);
       doc.text(`Cliente: ${remission.order.customer.name}`);
       doc.text(`Bodega: ${remission.order.warehouse.name}`);

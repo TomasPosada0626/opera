@@ -57,7 +57,7 @@ export class ProductionOrdersController {
   @ApiResponse({
     status: 400,
     description:
-      'Producto no es FINISHED_GOOD, sin receta activa, o sin stock suficiente de algún componente.',
+      'Producto no es FINISHED_GOOD, sin lista de materiales, o sin stock suficiente de algún componente.',
   })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(
@@ -72,7 +72,7 @@ export class ProductionOrdersController {
   @ApiOperation({
     summary: 'Completar orden de producción (ADMIN)',
     description:
-      'Consume la receta vigente, genera los StockMovement de componentes/terminado y calcula el costo — todo atómico bajo Serializable.',
+      'Consume la lista de materiales vigente, genera los StockMovement de componentes/terminado y calcula el costo — todo atómico bajo Serializable.',
   })
   @ApiResponse({ status: 400, description: 'Stock insuficiente al revalidar.' })
   @ApiResponse({ status: 404, description: 'Orden no encontrada.' })

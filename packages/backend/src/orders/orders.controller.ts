@@ -20,6 +20,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
+import { UpdateOrderDto } from './dto/update-order.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -50,7 +51,8 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Listar pedidos (paginado)',
     description:
-      'Filtra por estado con ?status=PENDIENTE|EN_PRODUCCION|EN_ALMACEN|CANCELADO y/o por cliente con ?customerId=.',
+      'Filtra por estado con ?status=PENDIENTE|EN_PRODUCCION|EN_ALMACEN|DESPACHADO|CANCELADO, por cliente con ?customerId=, ' +
+      'solo atrasados con ?overdue=true (fecha de envío estimada vencida y sin despachar) y por número exacto con ?search=.',
   })
   findAll(@Query() query: ListOrdersDto) {
     return this.ordersService.findAll(query);
@@ -61,6 +63,25 @@ export class OrdersController {
   @ApiResponse({ status: 404, description: 'Pedido no encontrado.' })
   findOne(@Param('id') id: string) {
     return this.ordersService.findOne(id);
+  }
+
+  @Patch(':id')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Editar fecha de envío estimada y notas (ADMIN)',
+    description:
+      'Solo datos de seguimiento — las líneas, el cliente y la bodega no se editan. null borra el valor.',
+  })
+  @ApiResponse({ status: 200, description: 'Pedido actualizado.' })
+  @ApiResponse({ status: 400, description: 'El pedido está cancelado.' })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({ status: 404, description: 'Pedido no encontrado.' })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.ordersService.update(id, dto, req.user.sub);
   }
 
   @Patch(':id/mark-production')
@@ -90,12 +111,14 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Marcar pedido enviado a almacén (ADMIN)',
     description:
-      'El terminado entra al stock de verdad acá — genera una ENTRADA por línea, cantidad completa pedida.',
+      'El terminado entra al stock de verdad acá — genera una ENTRADA por línea, cantidad completa pedida. ' +
+      'Si el producto tiene lista de materiales, descuenta sus materias primas y el terminado entra con su costo.',
   })
   @ApiResponse({ status: 200, description: 'Pedido marcado en almacén.' })
   @ApiResponse({
     status: 400,
-    description: 'El pedido no está en estado EN_PRODUCCION.',
+    description:
+      'El pedido no está en estado EN_PRODUCCION, o falta materia prima en la bodega (detalle en shortages).',
   })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   @ApiResponse({ status: 404, description: 'Pedido no encontrado.' })

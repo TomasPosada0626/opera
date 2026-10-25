@@ -67,6 +67,17 @@ export class CustomersController {
     return this.customersService.getBalance(id);
   }
 
+  @Get(':id/payments')
+  @ApiOperation({
+    summary: 'Historial de abonos del cliente',
+    description:
+      'Todos los abonos de todas sus remisiones, del más reciente al más viejo, incluidos los anulados con su motivo.',
+  })
+  @ApiResponse({ status: 404, description: 'Cliente no encontrado.' })
+  getPayments(@Param('id') id: string) {
+    return this.customersService.getPayments(id);
+  }
+
   // @Res() de Express directo, mismo patrón que ReportsController — el
   // .xlsx es contenido binario con sus propios headers.
   @Get(':id/export')

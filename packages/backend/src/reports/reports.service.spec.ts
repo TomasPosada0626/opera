@@ -23,6 +23,7 @@ describe('ReportsService', () => {
     stockMovement: { groupBy: jest.Mock };
     order: { findMany: jest.Mock };
     orderItem: { findMany: jest.Mock };
+    remission: { findMany: jest.Mock };
   };
   let inventory: { getAverageCostForProducts: jest.Mock };
   let service: ReportsService;
@@ -33,6 +34,7 @@ describe('ReportsService', () => {
       stockMovement: { groupBy: jest.fn() },
       order: { findMany: jest.fn() },
       orderItem: { findMany: jest.fn() },
+      remission: { findMany: jest.fn() },
     };
     inventory = { getAverageCostForProducts: jest.fn() };
     service = new ReportsService(
@@ -242,6 +244,62 @@ describe('ReportsService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('getReceivablesReport', () => {
+    const remission = (
+      customerId: string,
+      name: string,
+      total: number,
+      paid: number,
+      createdAt: string,
+    ) => ({
+      total: new Prisma.Decimal(total),
+      amountPaid: new Prisma.Decimal(paid),
+      createdAt: new Date(createdAt),
+      order: { customer: { id: customerId, name } },
+    });
+
+    it('groups pending remissions per customer, biggest balance first, with the oldest pending date', async () => {
+      prisma.remission.findMany.mockResolvedValue([
+        remission('c1', 'Ferretería Sur', 100, 40, '2026-10-10'),
+        remission('c2', 'Obras Norte', 500, 0, '2026-10-20'),
+        remission('c1', 'Ferretería Sur', 50, 0, '2026-10-01'),
+      ]);
+
+      const rows = await service.getReceivablesReport(
+        new Date('2026-10-24T00:00:00Z'),
+      );
+
+      expect(rows.map((row) => row.customerName)).toEqual([
+        'Obras Norte',
+        'Ferretería Sur',
+      ]);
+      const sur = rows[1];
+      expect(sur.remissionCount).toBe(2);
+      expect(sur.totalBilled.toString()).toBe('150');
+      expect(sur.totalPaid.toString()).toBe('40');
+      expect(sur.balance.toString()).toBe('110');
+      expect(sur.oldestPendingAt).toEqual(new Date('2026-10-01'));
+      expect(sur.daysPending).toBe(23);
+      expect(prisma.remission.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { voidedAt: null, paymentStatus: { not: 'PAGADO' } },
+        }),
+      );
+    });
+
+    it('writes the same rows to a Cartera sheet', async () => {
+      prisma.remission.findMany.mockResolvedValue([
+        remission('c1', 'Ferretería Sur', 100, 40, '2026-10-10'),
+      ]);
+
+      const buffer = await service.getReceivablesExcel();
+
+      const sheet = await readSheet(buffer, 'Cartera');
+      expect(sheet.getRow(2).getCell(1).value).toBe('Ferretería Sur');
+      expect(sheet.getRow(2).getCell(5).value).toBe(60);
     });
   });
 

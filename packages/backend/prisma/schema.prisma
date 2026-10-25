@@ -42,6 +42,7 @@ model User {
   productionOrders       ProductionOrder[]
   orders                 Order[]
   remissions             Remission[]
+  remissionPayments      RemissionPayment[]
   supplierPurchases      SupplierPurchase[]
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
@@ -440,6 +441,10 @@ enum OrderStatus {
   PENDIENTE
   EN_PRODUCCION
   EN_ALMACEN
+  // Lo fija RemissionsService solo, nunca un endpoint propio: cuando lo
+  // remisionado (sin anuladas) cubre todas las líneas del pedido. Si una
+  // remisión se anula después, el pedido vuelve a EN_ALMACEN.
+  DESPACHADO
   CANCELADO
 }
 
@@ -448,35 +453,51 @@ enum OrderStatus {
 // negocio fabrica sobre pedido: no hay stock de terminado esperando venta,
 // así que crear el pedido NO mueve inventario — el stock del terminado
 // nace cuando de verdad existe. El ciclo real: PENDIENTE (creado, nada se
-// mueve) -> EN_PRODUCCION (bandera manual con timestamp para contar días,
-// sin consumo de materiales por receta — imposible de calcular de forma
-// confiable por la variación entre pedidos y la pérdida de material) ->
-// EN_ALMACEN (el terminado entra al stock de verdad, ENTRADA por línea).
-// El descuento de stock por venta vive en Remission, no aquí — ver su
-// comentario. warehouseId sigue siendo una sola bodega por pedido, mismo
-// patrón que ProductionOrder.
+// mueve) -> EN_PRODUCCION (bandera manual con timestamp para contar días)
+// -> EN_ALMACEN (el terminado entra al stock de verdad, ENTRADA por línea;
+// si el producto tiene lista de materiales, en esa misma transacción se
+// descuentan sus materias primas y el terminado entra con su costo — ver
+// ADR 0009; sin lista de materiales, entra sin consumir nada, como antes)
+// -> DESPACHADO (lo remisionado cubre todo lo pedido). El descuento de
+// stock por venta vive en Remission, no aquí — ver su comentario.
+// warehouseId sigue siendo una sola bodega por pedido, mismo patrón que
+// ProductionOrder.
 model Order {
-  id                  String      @id @default(uuid())
-  customerId          String
-  customer            Customer    @relation(fields: [customerId], references: [id])
-  warehouseId         String
-  warehouse           Warehouse   @relation(fields: [warehouseId], references: [id])
-  userId              String
-  user                User        @relation(fields: [userId], references: [id])
-  status              OrderStatus @default(PENDIENTE)
+  id                    String      @id @default(uuid())
+  // Consecutivo legible ("Pedido No. 45") para hablar del pedido por
+  // teléfono o en el Kardex — mismo motivo que Remission.number.
+  number                Int         @unique @default(autoincrement())
+  customerId            String
+  customer              Customer    @relation(fields: [customerId], references: [id])
+  warehouseId           String
+  warehouse             Warehouse   @relation(fields: [warehouseId], references: [id])
+  userId                String
+  user                  User        @relation(fields: [userId], references: [id])
+  status                OrderStatus @default(PENDIENTE)
   // Se fijan al transicionar (mark-production / mark-warehoused), nunca se
   // recalculan — mismo espíritu que ProductionOrder.completedAt: son la
   // marca de cuándo ocurrió el hito, no un valor derivable de otra parte.
-  productionStartedAt DateTime?
-  warehousedAt        DateTime?
-  items               OrderItem[]
-  remissions          Remission[]
-  createdAt           DateTime    @default(now())
-  updatedAt           DateTime    @updatedAt
+  // createdAt -> productionStartedAt -> warehousedAt -> dispatchedAt son
+  // las cuatro estaciones del pedido; el tiempo en cada una se deriva de la
+  // diferencia entre marcas consecutivas, no se guarda aparte.
+  productionStartedAt   DateTime?
+  warehousedAt          DateTime?
+  dispatchedAt          DateTime?
+  cancelledAt           DateTime?
+  // Fecha de envío comprometida con el cliente. Solo fecha (sin hora ni
+  // zona) a propósito: "el 15 de noviembre" es el mismo día en cualquier
+  // huso; un DateTime completo se correría un día al mostrarse en Colombia.
+  estimatedDeliveryDate DateTime?   @db.Date
+  notes                 String?
+  items                 OrderItem[]
+  remissions            Remission[]
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
   @@index([customerId])
   @@index([warehouseId])
   @@index([status])
+  @@index([estimatedDeliveryDate])
 }
 
 // unitPrice se captura explícito por línea al crear el pedido (#51) — no
@@ -521,11 +542,12 @@ enum RemissionPaymentStatus {
 // línea) — el pedido ya no descuenta nada al crearse (ver comentario de
 // Order), así que el descuento real por venta vive aquí, en el momento en
 // que la mercancía de verdad sale del almacén.
-// paymentStatus/amountPaid: el estado de pago se confirma normalmente
-// después del despacho, no necesariamente al momento de crear la remisión
-// — por eso son editables después (PATCH /remissions/:id/payment), no solo
-// capturables una vez. Es dato interno del negocio: el PDF/impresión de la
-// remisión (lo que ve el cliente) nunca lo incluye.
+// Cobro: cada abono es una fila de RemissionPayment (cuándo, cuánto, por
+// qué medio), nunca un número que se sobreescribe. paymentStatus y
+// amountPaid son solo el resumen de esos abonos (sin anulados), y los
+// escribe RemissionsService en la MISMA transacción que crea o anula el
+// abono — nadie los edita a mano. Es dato interno del negocio: el
+// PDF/impresión de la remisión (lo que ve el cliente) nunca lo incluye.
 // number es el consecutivo del documento (numeración de remisiones, uso
 // típico en la práctica comercial) — autoincremental porque un UUID no
 // sirve para un número que un humano necesita leer/citar en papel.
@@ -536,11 +558,14 @@ model Remission {
   order         Order                  @relation(fields: [orderId], references: [id])
   userId        String
   user          User                   @relation(fields: [userId], references: [id])
+  // Valor de lo despachado: SUM(cantidad * precio de la línea del pedido).
+  // Se fija al crear la remisión y no cambia nunca (ni la remisión ni las
+  // líneas del pedido se editan), así que guardarlo no puede
+  // desincronizarse y evita recalcularlo en saldo, cartera y dashboard.
+  total         Decimal                @db.Decimal(14, 4)
   paymentStatus RemissionPaymentStatus @default(CARTERA)
-  // Solo tiene sentido cuando paymentStatus = ABONADO — cuánto de esta
-  // remisión ya se pagó, no el saldo total del cliente (eso es un cálculo
-  // aparte, fuera de alcance de este modelo).
-  amountPaid    Decimal?               @db.Decimal(14, 4)
+  amountPaid    Decimal                @default(0) @db.Decimal(14, 4)
+  payments      RemissionPayment[]
   // Corregir una remisión con cantidad equivocada (#99) no edita ni borra
   // la fila (ni ella ni el StockMovement que generó son editables — mismo
   // espíritu append-only que el Kardex, ADR 0001): se "anula", la fila
@@ -555,6 +580,37 @@ model Remission {
   createdAt     DateTime               @default(now())
 
   @@index([orderId])
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  TRANSFERENCIA
+  TARJETA
+  CHEQUE
+  OTRO
+}
+
+// Un abono real de un cliente a una remisión. Append-only, mismo espíritu
+// que el Kardex (ADR 0001): un abono mal registrado no se edita ni se
+// borra, se anula con motivo y deja de contar en amountPaid. paidAt es la
+// fecha en que el cliente pagó (puede ser anterior a cuando se registró),
+// createdAt es cuándo se cargó en Opera.
+model RemissionPayment {
+  id          String        @id @default(uuid())
+  remissionId String
+  remission   Remission     @relation(fields: [remissionId], references: [id], onDelete: Cascade)
+  amount      Decimal       @db.Decimal(14, 4)
+  method      PaymentMethod
+  paidAt      DateTime
+  note        String?
+  userId      String
+  user        User          @relation(fields: [userId], references: [id])
+  voidedAt    DateTime?
+  voidReason  String?
+  createdAt   DateTime      @default(now())
+
+  @@index([remissionId])
+  @@index([paidAt])
 }
 
 // orderItemId (no productId suelto) — la cantidad entregada se rastrea
