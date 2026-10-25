@@ -1,0 +1,8 @@
+# Prettier (.prettierrc) espera LF -- sin esto, un checkout en Windows con
+# core.autocrlf=true deja el working copy en CRLF y `pnpm format:check`
+# falla localmente en archivos que en CI (Linux) pasan bien.
+* text=auto eol=lf
+
+*.ico binary
+*.png binary
+*.pdf binary

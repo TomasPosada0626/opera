@@ -1,0 +1,33 @@
+name: Audit (programado)
+
+# CI (ci.yml) solo corre `pnpm audit` cuando hay un push o un PR -- entre el
+# 2026-09-16 y el 2026-10-24 no hubo ninguno y se acumularon 79 advisories
+# nuevas en `main` sin que nadie se enterara (auditoría ronda 6). Este
+# workflow corre los mismos dos audits que ci.yml una vez por semana sobre
+# `main`, así una advisory nueva aparece como corrida roja en Actions (y
+# como mail de GitHub al dueño del repo) aunque nadie esté pusheando.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # `pnpm audit` lee solo pnpm-lock.yaml, no necesita `pnpm install`.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
+      - name: Audit production dependencies (moderate+)
+        run: pnpm audit --audit-level=moderate --prod
