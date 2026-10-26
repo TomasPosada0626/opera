@@ -8,16 +8,25 @@ import type { RemissionDetail } from '../../types/order';
 // abajo la de la empresa, para cortarla por la mitad. Mismo diseño y mismas
 // medidas (en puntos) que el PDF del backend (remissions/remission-pdf.ts).
 //
-// Si los productos no caben en media hoja, cada copia va en su propia hoja
-// completa: se mide la primera copia ya dibujada, nunca se corta ni se
-// achica una línea para que quepa.
+// Debajo de los productos van solo 2 filas en blanco, no todo el resto de
+// la plantilla: rellenar hasta 16 filas hacía que un solo nombre largo (dos
+// renglones) desbordara la media hoja, y cada copia salía en su propia hoja
+// con decenas de filas vacías, gastando el doble de papel (encontrado
+// imprimiendo la primera remisión real). Se mide la primera copia ya
+// dibujada: si no cabe en media hoja con las 2 filas en blanco, se prueba
+// sin ellas, y solo si tampoco cabe cada copia va en su hoja. Nunca se
+// corta ni se achica una línea para que quepa.
 
 const COPIES = ['Copia del cliente', 'Copia de la empresa'];
 
-// Filas de producto (vacías incluidas, como en la plantilla) que caben en
-// media hoja y en una hoja entera con el resto del formato.
-const ROWS_HALF_SHEET = 16;
-const ROWS_FULL_SHEET = 49;
+type Layout = 'half' | 'half-tight' | 'full';
+
+// Filas en blanco debajo de los productos, para lo que se agregue a mano.
+const BLANK_ROWS: Record<Layout, number> = {
+  half: 2,
+  'half-tight': 0,
+  full: 2,
+};
 
 export const RETURNS_NOTICE =
   'PASADOS 8 DÍAS NO SE ACEPTAN RECLAMOS NI DEVOLUCIONES DE MERCANCÍA';
@@ -38,8 +47,9 @@ const SHEET_CSS = `
   position: relative; box-sizing: border-box; overflow: hidden;
   padding: 18pt 24pt 14pt; display: flex; flex-direction: column;
 }
-.remission-sheet[data-layout='half'] .remission-copy { height: 396pt; }
-.remission-sheet[data-layout='full'] .remission-copy { min-height: 792pt; }
+/* Media hoja exacta, haya los productos que haya: así la línea de corte
+   siempre queda en la mitad de la hoja carta. */
+.remission-sheet[data-layout^='half'] .remission-copy { height: 396pt; }
 .remission-sheet[data-layout='full'] .remission-copy + .remission-copy {
   break-before: page;
 }
@@ -272,24 +282,31 @@ function RemissionCopy({
 }
 
 export function RemissionSheet({ remission }: { remission: RemissionDetail }) {
-  const [layout, setLayout] = useState<'half' | 'full'>('half');
+  const [layout, setLayout] = useState<Layout>('half');
   const firstCopyRef = useRef<HTMLDivElement>(null);
 
-  // Si con media hoja la primera copia se desborda (nombres largos que
-  // ocupan dos renglones, muchos productos), cada copia pasa a hoja entera.
+  // Una remisión distinta vuelve a probar desde media hoja.
+  const [measuredFor, setMeasuredFor] = useState(remission);
+  if (measuredFor !== remission) {
+    setMeasuredFor(remission);
+    setLayout('half');
+  }
+
+  // Si la primera copia se desborda de la media hoja (muchos productos,
+  // nombres que ocupan dos renglones), primero se quitan las filas en
+  // blanco y, si aun así no cabe, cada copia pasa a su propia hoja.
   useLayoutEffect(() => {
     const copy = firstCopyRef.current?.querySelector('.remission-copy');
     if (
-      layout === 'half' &&
+      layout !== 'full' &&
       copy instanceof HTMLElement &&
       copy.scrollHeight > copy.clientHeight + 1
     ) {
-      setLayout('full');
+      setLayout(layout === 'half' ? 'half-tight' : 'full');
     }
   }, [layout, remission]);
 
-  const rows = layout === 'half' ? ROWS_HALF_SHEET : ROWS_FULL_SHEET;
-  const emptyRows = Math.max(0, rows - remission.items.length);
+  const emptyRows = BLANK_ROWS[layout];
 
   return (
     <>
@@ -300,7 +317,7 @@ export function RemissionSheet({ remission }: { remission: RemissionDetail }) {
             remission={remission}
             copy={COPIES[0]}
             emptyRows={emptyRows}
-            cutBelow={layout === 'half'}
+            cutBelow={layout !== 'full'}
           />
         </div>
         <RemissionCopy

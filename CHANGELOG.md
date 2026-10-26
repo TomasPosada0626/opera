@@ -161,6 +161,12 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Remisión impresa: debajo de los productos van solo 2 renglones en blanco, no
+  el resto de la plantilla. Rellenar hacía que un solo nombre largo desbordara
+  la media hoja y cada copia saliera en su propia hoja (con decenas de filas
+  vacías), gastando el doble de papel. Ahora las dos copias salen en una hoja
+  carta; solo si un pedido no cabe ni sin los renglones en blanco, cada copia
+  va en su hoja, sin relleno (versión 1.0.3).
 - Instalador y primer arranque, a partir de las dos primeras PCs reales
   (versión 1.0.1, adenda en
   [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)):

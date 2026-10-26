@@ -8,9 +8,10 @@ import { formatRemissionNumber } from './remission-number';
 // la de la empresa — la imprimen y la cortan por la mitad. Mismo diseño que
 // la pantalla de impresión del escritorio (PrintRemissionPage.tsx).
 //
-// Si los productos no caben en media hoja, cada copia va en su propia hoja
-// completa (y sigue en otra si hace falta): nunca se corta ni se achica una
-// línea para que quepa.
+// Debajo de los productos van 2 filas en blanco. Si no caben en media hoja,
+// se prueba sin ellas, y solo si tampoco caben cada copia va en su propia
+// hoja completa (y sigue en otra si hace falta): nunca se corta ni se achica
+// una línea para que quepa.
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
 const HALF_HEIGHT = PAGE_HEIGHT / 2;
@@ -25,10 +26,19 @@ const INFO_ROW_HEIGHT = 13;
 const GAP = 4;
 const TABLE_HEADER_HEIGHT = 13;
 const MIN_ROW_HEIGHT = 12;
+// Filas en blanco debajo de los productos, para lo que se agregue a mano.
+// Antes se rellenaba hasta el final de la copia, como la plantilla en papel;
+// con eso un solo nombre largo mandaba cada copia a su propia hoja (ver
+// RemissionSheet.tsx en el escritorio).
+const BLANK_ROWS = 2;
 const TOTALS_ROW_HEIGHT = 13;
 const SIGNATURE_ROW_HEIGHT = 20;
 const TOTALS_HEIGHT = TOTALS_ROW_HEIGHT * 2 + SIGNATURE_ROW_HEIGHT;
 const CELL_PADDING = 3;
+// Arriba y abajo del nombre del producto (el único texto que puede ocupar
+// dos renglones): con 3 pt cada fila de un renglón medía 15 pt en vez de
+// 12, y cabían menos productos en media hoja que en la pantalla.
+const WRAP_PADDING = 1.5;
 
 const LABEL_SIZE = 6.5;
 const VALUE_SIZE = 7.5;
@@ -159,7 +169,7 @@ function cell(
     .fillColor(options.color ?? INK);
   const textWidth = width - CELL_PADDING * 2;
   if (options.wrap) {
-    doc.text(text, x + CELL_PADDING, y + CELL_PADDING, {
+    doc.text(text, x + CELL_PADDING, y + WRAP_PADDING, {
       width: textWidth,
       align: options.align ?? 'left',
     });
@@ -420,10 +430,10 @@ function drawTotals(
   );
 }
 
-// Una copia entre `top` y `bottom` (media hoja o una hoja entera). Las
-// filas vacías completan el espacio hasta los totales, como en la
-// plantilla; en hoja entera, si las filas no caben, la tabla sigue en una
-// hoja nueva y los totales van en la última.
+// Una copia entre `top` y `bottom` (media hoja o una hoja entera), con
+// `blankRows` filas en blanco debajo de los productos y los totales
+// pegados a ellas. En hoja entera, si las filas no caben, la tabla sigue en
+// una hoja nueva y los totales van en la última.
 function drawCopy(
   doc: PDFKit.PDFDocument,
   remission: RemissionForPdf,
@@ -431,6 +441,7 @@ function drawCopy(
   copy: string,
   top: number,
   bottom: number,
+  blankRows: number,
 ): void {
   let y = drawHeader(doc, remission, copy, top + TOP_PADDING);
   y = drawInfo(doc, remission, y);
@@ -448,12 +459,13 @@ function drawCopy(
     y += row.height;
   }
   const empty: Row = { cells: [], height: MIN_ROW_HEIGHT };
-  while (y + MIN_ROW_HEIGHT <= totalsTop()) {
+  for (let index = 0; index < blankRows; index += 1) {
+    if (y + MIN_ROW_HEIGHT > totalsTop()) {
+      break;
+    }
     drawRow(doc, empty, y);
     y += MIN_ROW_HEIGHT;
   }
-  // Pegado a la última fila, sin hueco: lo que sobre (menos de una fila)
-  // queda como margen de abajo.
   drawTotals(doc, remission, y);
 }
 
@@ -501,7 +513,7 @@ export function renderRemissionPdf(
           doc.heightOfString(name, {
             width: COLUMNS[0].width - CELL_PADDING * 2,
           }) +
-            CELL_PADDING * 2,
+            WRAP_PADDING * 2,
         ),
       };
     });
@@ -516,15 +528,32 @@ export function renderRemissionPdf(
       TOTALS_HEIGHT +
       BOTTOM_PADDING;
     const rowsHeight = rows.reduce((total, row) => total + row.height, 0);
+    const fitsInHalf = (blankRows: number) =>
+      fixedHeight + rowsHeight + blankRows * MIN_ROW_HEIGHT <= HALF_HEIGHT;
 
-    if (fixedHeight + rowsHeight <= HALF_HEIGHT) {
-      drawCopy(doc, remission, rows, COPIES[0], 0, HALF_HEIGHT);
+    // Media hoja con las filas en blanco; si no cabe, sin ellas; y solo si
+    // tampoco cabe, cada copia en su hoja (mismo criterio que la pantalla).
+    const halfBlankRows = fitsInHalf(BLANK_ROWS)
+      ? BLANK_ROWS
+      : fitsInHalf(0)
+        ? 0
+        : null;
+    if (halfBlankRows !== null) {
+      drawCopy(doc, remission, rows, COPIES[0], 0, HALF_HEIGHT, halfBlankRows);
       drawCutLine(doc);
-      drawCopy(doc, remission, rows, COPIES[1], HALF_HEIGHT, PAGE_HEIGHT);
+      drawCopy(
+        doc,
+        remission,
+        rows,
+        COPIES[1],
+        HALF_HEIGHT,
+        PAGE_HEIGHT,
+        halfBlankRows,
+      );
     } else {
-      drawCopy(doc, remission, rows, COPIES[0], 0, PAGE_HEIGHT);
+      drawCopy(doc, remission, rows, COPIES[0], 0, PAGE_HEIGHT, BLANK_ROWS);
       doc.addPage();
-      drawCopy(doc, remission, rows, COPIES[1], 0, PAGE_HEIGHT);
+      drawCopy(doc, remission, rows, COPIES[1], 0, PAGE_HEIGHT, BLANK_ROWS);
     }
 
     doc.end();
