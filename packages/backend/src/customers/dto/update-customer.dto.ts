@@ -31,4 +31,35 @@ export class UpdateCustomerDto {
   @IsString()
   @MaxLength(300)
   address?: string;
+
+  // Datos de la remisión impresa (ver Customer en schema.prisma).
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  country?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  mobile?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  zone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  salesRep?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  paymentTerms?: string;
 }

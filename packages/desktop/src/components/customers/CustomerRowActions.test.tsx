@@ -31,6 +31,12 @@ function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     email: null,
     phone: null,
     address: null,
+    city: null,
+    country: null,
+    mobile: null,
+    zone: null,
+    salesRep: null,
+    paymentTerms: null,
     isActive: true,
     ...overrides,
   };

@@ -33,11 +33,16 @@ export function RemissionForm({ order, onSuccess }: RemissionFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const createRemission = useCreateRemission();
 
-  const remissionTotal = order.items.reduce(
+  const remissionSubtotal = order.items.reduce(
     (sum, item) =>
       sum + (Number(quantities[item.id]) || 0) * Number(item.unitPrice),
     0,
   );
+  // Con el IVA del pedido, igual que lo calcula el backend: es lo que el
+  // cliente debe y el tope del pago al recibir.
+  const vatRate = Number(order.vatRate);
+  const remissionVat = Math.round(remissionSubtotal * vatRate) / 100;
+  const remissionTotal = remissionSubtotal + remissionVat;
 
   function dispatchEverything() {
     setQuantities(
@@ -154,7 +159,12 @@ export function RemissionForm({ order, onSuccess }: RemissionFormProps) {
           );
         })}
         <div className="flex items-baseline justify-end gap-2 pt-1">
-          <span className="text-ink-muted text-xs">Valor de la remisión</span>
+          <span className="text-ink-muted text-xs">
+            Valor de la remisión
+            {vatRate > 0 && remissionVat > 0 && (
+              <> (incluye IVA {formatMoney(remissionVat)})</>
+            )}
+          </span>
           <span className="figures text-ink text-base font-semibold">
             {formatMoney(remissionTotal)}
           </span>

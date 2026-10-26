@@ -119,6 +119,23 @@ describe('RemissionForm', () => {
     expect(screen.getAllByText(/\$\s?250/).length).toBeGreaterThan(0);
   });
 
+  // Lo que el cliente debe por la remisión lleva el IVA del pedido, igual
+  // que lo calcula el backend (y es el tope del pago al recibir).
+  it('adds the order VAT to the value of the remission', async () => {
+    const user = userEvent.setup();
+    renderWithClient(
+      <RemissionForm order={{ ...order, vatRate: '19' }} onSuccess={vi.fn()} />,
+    );
+
+    await user.click(
+      screen.getByRole('button', { name: 'Despachar todo lo pendiente' }),
+    );
+
+    // 250 + 19 % = 297,50
+    expect(screen.getByText(/incluye IVA \$\s?47,5/)).toBeInTheDocument();
+    expect(screen.getAllByText(/\$\s?297,5/).length).toBeGreaterThan(0);
+  });
+
   it('submits a partial delivery with no payment by default (stays in cartera)', async () => {
     mockedApiFetch.mockResolvedValue({ id: 'rem-1' });
     const onSuccess = vi.fn();

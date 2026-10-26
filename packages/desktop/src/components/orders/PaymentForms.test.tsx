@@ -143,6 +143,30 @@ describe('EditOrderTrackingForm', () => {
     mockedApiFetch.mockReset();
   });
 
+  // Cada remisión guardó el IVA con el que se emitió: después de la
+  // primera, el IVA del pedido ya no se toca (ni se manda).
+  it('locks the VAT once the order has an active remission', async () => {
+    mockedApiFetch.mockResolvedValue(buildOrder());
+    const onSuccess = vi.fn();
+    const user = userEvent.setup();
+    renderWithClient(
+      <EditOrderTrackingForm
+        order={buildOrder({ vatRate: '19', remissions: [buildRemission()] })}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    expect(screen.getByLabelText('IVA')).toBeDisabled();
+    expect(
+      screen.getByText('Ya tiene remisiones: el IVA quedó fijo en ellas.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Guardar/ }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    const [, options] = lastCall();
+    expect(JSON.parse(options.body as string)).not.toHaveProperty('vatRate');
+  });
+
   it('saves a new date and clears empty notes as null', async () => {
     mockedApiFetch.mockResolvedValue(buildOrder());
     const onSuccess = vi.fn();
@@ -169,6 +193,8 @@ describe('EditOrderTrackingForm', () => {
     expect(JSON.parse(options.body as string)).toEqual({
       estimatedDeliveryDate: '2026-02-01',
       notes: null,
+      // Sin remisiones todavía: el IVA del pedido se puede corregir.
+      vatRate: 0,
     });
   });
 });

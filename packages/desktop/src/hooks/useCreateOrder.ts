@@ -8,6 +8,8 @@ export interface CreateOrderInput {
   items: { productId: string; quantity: number; unitPrice: number }[];
   // "AAAA-MM-DD" — fecha de envío prometida al cliente.
   estimatedDeliveryDate?: string;
+  // Porcentaje: 0 (sin IVA) o 19.
+  vatRate?: number;
   notes?: string;
 }
 

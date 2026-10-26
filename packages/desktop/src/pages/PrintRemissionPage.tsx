@@ -2,19 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ArrowLeft, Printer, Search } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { RemissionSheet } from '../components/orders/RemissionSheet';
 import { useRemission } from '../hooks/useRemission';
-import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 import { apiFetch, ApiError } from '../lib/api-client';
 import type { PaginatedResult } from '../types/product';
 import type { RemissionDetail } from '../types/order';
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString('es-CO', { dateStyle: 'long' });
-}
-
-function formatQuantity(value: string): string {
-  return Number(value).toLocaleString('es-CO', { maximumFractionDigits: 3 });
-}
 
 // Standalone (fuera de AppLayout, sin sidebar/topbar) para que no haya nada
 // que ocultar con @media print — la página entera es la superficie
@@ -42,7 +34,7 @@ function PrintRemissionPage() {
         `/remissions?search=${encodeURIComponent(searchTerm.trim())}&pageSize=1`,
       );
       if (result.data.length === 0) {
-        setSearchError(`No existe la remisión No. ${searchTerm.trim()}`);
+        setSearchError(`No existe la remisión ${searchTerm.trim()}`);
         return;
       }
       setRemissionId(result.data[0].id);
@@ -58,12 +50,12 @@ function PrintRemissionPage() {
   }
 
   return (
-    <div className="bg-surface text-ink min-h-screen">
+    <div className="bg-surface text-ink min-h-screen print:min-h-0 print:bg-white">
       <div
         data-print="hide"
         className="border-line bg-surface-raised sticky top-0 z-10 border-b p-4 print:hidden"
       >
-        <div className="mx-auto flex max-w-2xl flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto flex max-w-[832px] flex-wrap items-end justify-between gap-4">
           <Link
             to="/"
             className="text-ink-muted hover:text-ink flex items-center gap-1.5 text-sm"
@@ -85,7 +77,7 @@ function PrintRemissionPage() {
               <input
                 id="remission-search"
                 type="text"
-                inputMode="numeric"
+                placeholder="HT 3286"
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 className="field h-9 px-3"
@@ -100,14 +92,14 @@ function PrintRemissionPage() {
         {searchError && (
           <p
             role="alert"
-            className="text-danger mx-auto max-w-2xl pt-2 text-sm"
+            className="text-danger mx-auto max-w-[832px] pt-2 text-sm"
           >
             {searchError}
           </p>
         )}
       </div>
 
-      <div className="mx-auto max-w-2xl px-6 py-10">
+      <div className="mx-auto max-w-[880px] px-6 py-10 print:m-0 print:max-w-none print:p-0">
         {!remissionId && (
           <p className="text-ink-muted text-center">
             Busca una remisión por su número para verla e imprimirla.
@@ -135,11 +127,19 @@ function PrintRemissionPage() {
   );
 }
 
+// La hoja con las dos copias (cliente arriba, empresa abajo) es lo único que
+// sale impreso: el botón y el aviso de anulada llevan print:hidden.
 function RemissionPrintView({ remission }: { remission: RemissionDetail }) {
-  const showWarehouses = useHasSeveralWarehouses();
   return (
     <div>
-      <div data-print="hide" className="mb-6 flex justify-end print:hidden">
+      <div
+        data-print="hide"
+        className="mb-6 flex items-center justify-between gap-4 print:hidden"
+      >
+        <p className="text-ink-muted text-[13px]">
+          Hoja carta vertical: copia del cliente arriba y de la empresa abajo.
+          Córtala por la línea punteada.
+        </p>
         <Button onClick={() => window.print()}>
           <Printer className="h-4 w-4" />
           Imprimir
@@ -156,90 +156,7 @@ function RemissionPrintView({ remission }: { remission: RemissionDetail }) {
         </p>
       )}
 
-      <article className="border-line bg-surface-raised rounded-2xl border p-10 shadow-sm print:rounded-none print:border-none print:p-0 print:shadow-none">
-        <header className="border-ink flex items-start justify-between gap-6 border-b-2 pb-6">
-          <div>
-            <h1 className="text-[28px] leading-none font-semibold tracking-[-0.02em]">
-              Remisión
-            </h1>
-            <p className="text-ink-muted mt-2 text-sm">
-              Documento de entrega de mercancía
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-ink-muted text-[11px] font-semibold tracking-[0.14em] uppercase">
-              No.
-            </p>
-            <p className="figures text-[32px] leading-none font-semibold">
-              {remission.number}
-            </p>
-          </div>
-        </header>
-
-        <dl className="mt-6 grid grid-cols-2 gap-x-10 gap-y-4 text-sm">
-          {[
-            ['Cliente', remission.order.customer.name],
-            ['Fecha', formatDate(remission.createdAt)],
-            ['Pedido', `No. ${remission.order.number}`],
-            ...(showWarehouses
-              ? [['Bodega', remission.order.warehouse.name]]
-              : []),
-            ['Entregado por', remission.user.name],
-          ].map(([label, value]) => (
-            <div key={label} className="flex flex-col gap-0.5">
-              <dt className="text-ink-muted text-[11px] font-semibold tracking-[0.1em] uppercase">
-                {label}
-              </dt>
-              <dd className="text-ink font-medium">{value}</dd>
-            </div>
-          ))}
-        </dl>
-
-        {/* Sin estado de pago a propósito, igual que el PDF (#54) — es dato
-            interno del negocio, nunca algo que vea el cliente en el
-            documento que se lleva. */}
-        <table className="mt-8 w-full text-sm">
-          <thead>
-            <tr className="border-ink border-b text-left">
-              <th className="text-ink-muted w-10 py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
-                #
-              </th>
-              <th className="text-ink-muted py-2 text-[11px] font-semibold tracking-[0.1em] uppercase">
-                Producto
-              </th>
-              <th className="text-ink-muted py-2 text-right text-[11px] font-semibold tracking-[0.1em] uppercase">
-                Cantidad
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {remission.items.map((item, index) => (
-              <tr key={item.id} className="border-line border-b">
-                <td className="figures text-ink-faint py-3">{index + 1}</td>
-                <td className="py-3">
-                  {item.orderItem.product.sku} — {item.orderItem.product.name}
-                </td>
-                <td className="figures py-3 text-right font-medium">
-                  {formatQuantity(item.quantity)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Constancia de recibido: la práctica comercial de una remisión
-            es que quien recibe firme la copia que se queda en el taller. */}
-        <div className="mt-20 grid grid-cols-2 gap-12 text-sm">
-          {['Entregado por', 'Recibido por (nombre, cédula y firma)'].map(
-            (label) => (
-              <div key={label} className="flex flex-col gap-2">
-                <div className="border-ink h-12 border-b" />
-                <span className="text-ink-muted text-xs">{label}</span>
-              </div>
-            ),
-          )}
-        </div>
-      </article>
+      <RemissionSheet remission={remission} />
     </div>
   );
 }

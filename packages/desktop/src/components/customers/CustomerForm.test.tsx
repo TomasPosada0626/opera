@@ -31,6 +31,12 @@ function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     email: 'contacto@muebles.com',
     phone: '3001234567',
     address: 'Cra 10 # 20-30',
+    city: null,
+    country: null,
+    mobile: null,
+    zone: null,
+    salesRep: null,
+    paymentTerms: null,
     isActive: true,
     ...overrides,
   };
@@ -90,6 +96,39 @@ describe('CustomerForm', () => {
       phone: undefined,
       address: undefined,
     });
+  });
+
+  // Lo que pide la remisión impresa: se llena una vez en la ficha del
+  // cliente y sale solo en cada remisión.
+  it('sends the remission fields (city, country, mobile, zone, sales rep, payment terms)', async () => {
+    mockedApiFetch.mockResolvedValue({ id: 'customer-2' });
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    renderWithClient(<CustomerForm onSuccess={onSuccess} />);
+
+    await user.type(screen.getByLabelText('Nombre'), 'Confecciones El Roble');
+    await user.type(screen.getByLabelText('Ciudad'), 'Medellín');
+    await user.type(screen.getByLabelText('País'), 'Colombia');
+    await user.type(screen.getByLabelText('Celular'), '310 555 1234');
+    await user.type(screen.getByLabelText('Zona'), 'Antioquia');
+    await user.type(screen.getByLabelText('Asesor'), 'Carlos Pérez');
+    await user.type(
+      screen.getByLabelText('Condiciones de pago'),
+      'Crédito 30 días',
+    );
+    await user.click(screen.getByRole('button', { name: 'Crear cliente' }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(findCall('POST')?.[1].body as string)).toEqual(
+      expect.objectContaining({
+        city: 'Medellín',
+        country: 'Colombia',
+        mobile: '310 555 1234',
+        zone: 'Antioquia',
+        salesRep: 'Carlos Pérez',
+        paymentTerms: 'Crédito 30 días',
+      }),
+    );
   });
 
   it('pre-fills the form and updates an existing customer', async () => {

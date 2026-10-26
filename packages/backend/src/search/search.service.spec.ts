@@ -70,6 +70,15 @@ describe('SearchService', () => {
     );
   });
 
+  it('finds a remission by its printed number ("HT 3285"), but not an order', async () => {
+    await service.search({ q: 'HT 3285', limit: 5 });
+
+    expect(prisma.remission.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { number: 3285 } }),
+    );
+    expect(prisma.order.findMany).not.toHaveBeenCalled();
+  });
+
   it('skips the remission lookup entirely for a non-numeric term', async () => {
     const result = await service.search({ q: 'silla', limit: 5 });
 

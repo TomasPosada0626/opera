@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, RemissionPaymentStatus } from '@prisma/client';
-import PDFDocument from 'pdfkit';
+import { renderRemissionPdf } from './remission-pdf';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { AuditService } from '../audit/audit.service';
@@ -16,12 +16,23 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListRemissionsDto } from './dto/list-remissions.dto';
 import { VoidPaymentDto } from './dto/void-payment.dto';
 import { VoidRemissionDto } from './dto/void-remission.dto';
+import {
+  formatRemissionNumber,
+  parseRemissionNumber,
+} from './remission-number';
+import { vatAmountFor } from '../orders/vat';
 
 type TransactionClient = Prisma.TransactionClient;
 const remissionInclude = {
   order: { include: { customer: true, warehouse: true } },
   user: { select: { id: true, name: true } },
-  items: { include: { orderItem: { include: { product: true } } } },
+  // product.unit: la columna UNID EMP de la remisión impresa (millar o
+  // unidad, ver remission-pdf.ts).
+  items: {
+    include: {
+      orderItem: { include: { product: { include: { unit: true } } } },
+    },
+  },
   payments: {
     include: { user: { select: { id: true, name: true } } },
     orderBy: { paidAt: 'asc' as const },
@@ -92,11 +103,11 @@ export class RemissionsService {
       sortableFields,
       'createdAt',
     );
-    const parsedNumber = search ? Number(search) : undefined;
+    // "HT 3285" o "3285": el número tal como sale impreso también sirve.
+    const parsedNumber =
+      search !== undefined ? parseRemissionNumber(search) : null;
     const filters: Prisma.RemissionWhereInput = {
-      ...(search !== undefined
-        ? { number: Number.isInteger(parsedNumber) ? parsedNumber : -1 }
-        : {}),
+      ...(search !== undefined ? { number: parsedNumber ?? -1 } : {}),
       ...(paymentStatus ? { paymentStatus, voidedAt: null } : {}),
       ...(customerId ? { order: { customerId } } : {}),
     };
@@ -181,12 +192,16 @@ export class RemissionsService {
       requestedByOrderItem.set(item.orderItemId, current.plus(item.quantity));
     }
 
-    let total = new Prisma.Decimal(0);
+    let subtotal = new Prisma.Decimal(0);
     for (const [orderItemId, requested] of requestedByOrderItem) {
-      total = total.plus(
+      subtotal = subtotal.plus(
         requested.times(orderItemById.get(orderItemId)!.unitPrice),
       );
     }
+    // Lo que el cliente debe por esta remisión (cartera, abonos) lleva el
+    // IVA del pedido incluido.
+    const vatAmount = vatAmountFor(subtotal, order.vatRate);
+    const total = subtotal.plus(vatAmount);
     const initialPayment = dto.initialPayment;
     if (initialPayment && total.lessThan(initialPayment.amount)) {
       throw new BadRequestException(
@@ -295,6 +310,8 @@ export class RemissionsService {
             data: {
               orderId: dto.orderId,
               userId: actingUserId,
+              subtotal,
+              vatAmount,
               total,
               amountPaid,
               paymentStatus: paymentStatusFor(total, amountPaid),
@@ -333,7 +350,7 @@ export class RemissionsService {
               warehouseId: order.warehouseId,
               type: 'SALIDA' as const,
               quantity: quantity.negated(),
-              reason: `Despacho, remisión No. ${created.number} del pedido No. ${order.number}`,
+              reason: `Despacho, remisión ${formatRemissionNumber(created.number)} del pedido No. ${order.number}`,
               userId: actingUserId,
             })),
           });
@@ -584,7 +601,7 @@ export class RemissionsService {
             warehouseId: remission.order.warehouseId,
             type: 'ENTRADA' as const,
             quantity,
-            reason: `Anulación de remisión No. ${remission.number}: ${dto.reason}`,
+            reason: `Anulación de remisión ${formatRemissionNumber(remission.number)}: ${dto.reason}`,
             userId: actingUserId,
           })),
         });
@@ -617,56 +634,13 @@ export class RemissionsService {
   // disco — no hay nada que limpiar después ni una carpeta de "remisiones
   // temporales" que mantener; el PDF se genera al vuelo en cada request.
   // Devuelve el número junto con el buffer para que el controller arme el
-  // nombre del archivo sin pedir la remisión una segunda vez.
+  // nombre del archivo sin pedir la remisión una segunda vez. Dos copias en
+  // una hoja carta, con el formato en papel de Herrajes Toro (ver
+  // remission-pdf.ts).
   async generatePdf(id: string): Promise<{ buffer: Buffer; number: number }> {
     const remission = await this.findOne(id);
-    const buffer = await this.renderPdf(remission);
+    const buffer = await renderRemissionPdf(remission);
 
     return { buffer, number: remission.number };
-  }
-
-  // No incluye paymentStatus/amountPaid/abonos a propósito — es dato
-  // interno del negocio, nunca algo que vea el cliente en el documento que
-  // se lleva.
-  private renderPdf(
-    remission: Awaited<ReturnType<RemissionsService['findOne']>>,
-  ): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50, size: 'letter' });
-      const chunks: Buffer[] = [];
-      doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      doc.fontSize(20).text('Remisión', { align: 'center' });
-      doc.moveDown();
-      doc.fontSize(10);
-      doc.text(`No. ${remission.number}`);
-      doc.text(`Pedido No. ${remission.order.number}`);
-      doc.text(`Fecha: ${remission.createdAt.toLocaleDateString('es-CO')}`);
-      doc.text(`Cliente: ${remission.order.customer.name}`);
-      doc.text(`Bodega: ${remission.order.warehouse.name}`);
-      doc.text(`Entregado por: ${remission.user.name}`);
-      doc.moveDown();
-
-      const productX = 50;
-      const quantityX = 400;
-      doc
-        .font('Helvetica-Bold')
-        .text('Producto', productX, doc.y, { continued: true })
-        .text('Cantidad', quantityX, doc.y);
-      doc.font('Helvetica').moveDown(0.5);
-
-      for (const item of remission.items) {
-        const { product } = item.orderItem;
-        const rowY = doc.y;
-        doc.text(`${product.sku} — ${product.name}`, productX, rowY, {
-          width: quantityX - productX - 10,
-        });
-        doc.text(item.quantity.toString(), quantityX, rowY);
-      }
-
-      doc.end();
-    });
   }
 }

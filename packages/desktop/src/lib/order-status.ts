@@ -127,11 +127,22 @@ export function deliveryState(
   return { kind: 'upcoming', days };
 }
 
-export function orderTotal(order: Pick<Order, 'items'>): number {
+export function orderSubtotal(order: Pick<Order, 'items'>): number {
   return order.items.reduce(
     (sum, item) => sum + Number(item.quantity) * Number(item.unitPrice),
     0,
   );
+}
+
+// Mismo cálculo y redondeo al centavo que el backend (orders/vat.ts).
+export function orderVat(order: Pick<Order, 'items' | 'vatRate'>): number {
+  return Math.round(orderSubtotal(order) * Number(order.vatRate)) / 100;
+}
+
+// Con IVA: lo que el pedido le cuesta al cliente, igual que el total de
+// sus remisiones (que es lo que entra a cartera).
+export function orderTotal(order: Pick<Order, 'items' | 'vatRate'>): number {
+  return orderSubtotal(order) + orderVat(order);
 }
 
 // Excluye remisiones anuladas (#99) — su ENTRADA de reverso ya corrigió el

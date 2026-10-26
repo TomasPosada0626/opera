@@ -12,7 +12,8 @@ interface EditOrderTrackingFormProps {
 
 // Solo lo que cambia mientras el pedido avanza (la fecha que se renegocia
 // con el cliente, una nota de taller) — las líneas no se editan porque ya
-// pueden tener stock y remisiones atados.
+// pueden tener stock y remisiones atados. El IVA sí, pero solo antes de la
+// primera remisión: cada remisión guarda el IVA con el que se emitió.
 export function EditOrderTrackingForm({
   order,
   onSuccess,
@@ -21,6 +22,10 @@ export function EditOrderTrackingForm({
     order.estimatedDeliveryDate?.slice(0, 10) ?? '',
   );
   const [notes, setNotes] = useState(order.notes ?? '');
+  const [vatRate, setVatRate] = useState(String(Number(order.vatRate)));
+  const hasActiveRemissions = order.remissions.some(
+    (remission) => remission.voidedAt === null,
+  );
   const updateOrder = useUpdateOrder();
 
   function handleSubmit(event: FormEvent) {
@@ -30,6 +35,7 @@ export function EditOrderTrackingForm({
         orderId: order.id,
         estimatedDeliveryDate: date || null,
         notes: notes.trim() || null,
+        ...(hasActiveRemissions ? {} : { vatRate: Number(vatRate) }),
       },
       { onSuccess },
     );
@@ -46,6 +52,24 @@ export function EditOrderTrackingForm({
           onChange={(event) => setDate(event.target.value)}
           className="field h-9 px-3"
         />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <FieldLabel htmlFor="trackingVat">IVA</FieldLabel>
+        <select
+          id="trackingVat"
+          value={vatRate}
+          disabled={hasActiveRemissions}
+          onChange={(event) => setVatRate(event.target.value)}
+          className="field h-9 px-3 disabled:opacity-60"
+        >
+          <option value="19">Con IVA (19 %)</option>
+          <option value="0">Sin IVA</option>
+        </select>
+        {hasActiveRemissions && (
+          <p className="text-ink-muted text-xs">
+            Ya tiene remisiones: el IVA quedó fijo en ellas.
+          </p>
+        )}
       </div>
       <div className="flex flex-col gap-1.5">
         <FieldLabel htmlFor="trackingNotes" hint={`${notes.length}/1000`}>

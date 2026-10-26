@@ -48,6 +48,12 @@ const customer: Customer = {
   email: 'compras@valle.co',
   phone: '300 000 0000',
   address: 'Calle 1 # 2-3',
+  city: null,
+  country: null,
+  mobile: null,
+  zone: null,
+  salesRep: null,
+  paymentTerms: null,
   isActive: true,
 };
 
@@ -146,7 +152,7 @@ describe('CustomerDetailPage', () => {
 
     expect(await screen.findByText(/Nequi/)).toBeInTheDocument();
     expect(screen.getByText(/Anulado: Cheque devuelto/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Rem\. 3/)).toHaveLength(2);
+    expect(screen.getAllByText(/HT 3/)).toHaveLength(2);
   });
 
   it('downloads the .xlsx export when "Exportar datos" is clicked', async () => {

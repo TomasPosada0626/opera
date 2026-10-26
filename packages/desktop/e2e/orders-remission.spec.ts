@@ -116,7 +116,8 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
 
   // 6. La remisión aparece en el listado del pedido con la cantidad
   // correcta reflejada en la columna "Entregado" de la línea.
-  await expect(page.getByText(/Remisión No\. \d+/)).toBeVisible();
+  // Numeradas como el talonario en papel de Herrajes Toro: "HT 3286".
+  await expect(page.getByText(/^HT \d+$/)).toBeVisible();
   const itemRow = page.getByRole('row', {
     name: new RegExp(fixtures.productSku),
   });
@@ -127,8 +128,16 @@ test('un pedido despachado parcialmente por remisión mueve stock real (#54/#99)
   // muestra la remisión — ruta hoy sin cobertura.
   await page.getByRole('link', { name: 'Imprimir' }).click();
   await expect(page).toHaveURL(/#\/imprimir-remision\?id=/);
-  await expect(page.getByRole('heading', { name: 'Remisión' })).toBeVisible();
-  await expect(page.getByText(new RegExp(fixtures.productSku))).toBeVisible();
+  // Una hoja con dos copias: la del cliente arriba y la de la empresa abajo.
+  const clientCopy = page.getByRole('region', { name: 'Copia del cliente' });
+  await expect(clientCopy).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Copia de la empresa' }),
+  ).toBeVisible();
+  await expect(clientCopy.getByText(/REMISIÓN\s+HT \d+/)).toBeVisible();
+  await expect(
+    clientCopy.getByText(new RegExp(fixtures.productSku)),
+  ).toBeVisible();
 
   // 8. Verificar en Inventario que el stock refleja el flujo completo: 20
   // iniciales (fixture) + 5 entrados al pasar a EN_ALMACEN - 3 despachados

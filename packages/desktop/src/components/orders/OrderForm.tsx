@@ -20,6 +20,8 @@ const orderSchema = z.object({
   // pedido va atrasado.
   estimatedDeliveryDate: z.string().min(1, 'Elige la fecha de envío'),
   notes: z.string().max(1000, 'Máximo 1000 caracteres').optional(),
+  // No todas las ventas llevan IVA: se elige por pedido.
+  vatRate: z.enum(['19', '0']),
 });
 type OrderFormValues = z.infer<typeof orderSchema>;
 
@@ -66,21 +68,27 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
     formState: { errors },
   } = useForm<OrderFormValues>({
     resolver: zodResolver(orderSchema),
-    defaultValues: { estimatedDeliveryDate: defaultDeliveryDate(), notes: '' },
+    defaultValues: {
+      estimatedDeliveryDate: defaultDeliveryDate(),
+      notes: '',
+      vatRate: '19',
+    },
   });
   const [lines, setLines] = useState<OrderLineDraft[]>([emptyLine()]);
   const [linesError, setLinesError] = useState<string | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerError, setCustomerError] = useState<string | null>(null);
   const notes = useWatch({ control, name: 'notes' }) ?? '';
+  const vatRate = Number(useWatch({ control, name: 'vatRate' }) ?? '19');
 
   const createOrder = useCreateOrder();
 
-  const total = lines.reduce(
+  const subtotal = lines.reduce(
     (sum, line) =>
       sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0),
     0,
   );
+  const vat = Math.round(subtotal * vatRate) / 100;
 
   function updateLine(key: string, patch: Partial<OrderLineDraft>) {
     setLines((prev) =>
@@ -130,6 +138,7 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
         items,
         estimatedDeliveryDate: values.estimatedDeliveryDate,
         notes: values.notes?.trim() || undefined,
+        vatRate: Number(values.vatRate),
       },
       { onSuccess },
     );
@@ -169,6 +178,18 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
           />
           <FieldError message={errors.estimatedDeliveryDate?.message} />
         </div>
+
+        <div className="flex flex-col gap-1.5">
+          <FieldLabel htmlFor="vatRate">IVA</FieldLabel>
+          <select
+            id="vatRate"
+            className="field h-9 px-3"
+            {...register('vatRate')}
+          >
+            <option value="19">Con IVA (19 %)</option>
+            <option value="0">Sin IVA</option>
+          </select>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2.5">
@@ -177,9 +198,22 @@ export function OrderForm({ onSuccess }: OrderFormProps) {
             Productos
           </span>
           <span className="text-ink-muted text-xs">
+            {vatRate > 0 && (
+              <>
+                Subtotal{' '}
+                <span className="figures text-ink-secondary">
+                  {formatMoney(subtotal)}
+                </span>
+                {' · '}IVA{' '}
+                <span className="figures text-ink-secondary">
+                  {formatMoney(vat)}
+                </span>
+                {' · '}
+              </>
+            )}
             Total{' '}
             <span className="figures text-ink text-sm font-semibold">
-              {formatMoney(total)}
+              {formatMoney(subtotal + vat)}
             </span>
           </span>
         </div>

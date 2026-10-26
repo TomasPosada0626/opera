@@ -56,6 +56,12 @@ function buildCustomer(overrides: Partial<Customer> = {}): Customer {
     email: 'compras@mueblesdelvalle.test',
     phone: '3001234567',
     address: null,
+    city: null,
+    country: null,
+    mobile: null,
+    zone: null,
+    salesRep: null,
+    paymentTerms: null,
     isActive: true,
     ...overrides,
   };

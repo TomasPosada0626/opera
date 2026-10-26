@@ -8,6 +8,12 @@ export interface CustomerInput {
   email?: string;
   phone?: string;
   address?: string;
+  city?: string;
+  country?: string;
+  mobile?: string;
+  zone?: string;
+  salesRep?: string;
+  paymentTerms?: string;
 }
 
 export function useCreateCustomer() {

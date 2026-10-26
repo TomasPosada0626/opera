@@ -105,8 +105,10 @@ describe('Remissions (e2e)', () => {
       where: { remissionId: { in: remissionIds } },
     });
     await prisma.remission.deleteMany({ where: { id: { in: remissionIds } } });
-    await prisma.orderItem.deleteMany({ where: { orderId } });
-    await prisma.order.deleteMany({ where: { id: orderId } });
+    // Todos los pedidos del cliente de prueba, no solo el principal (el
+    // test de IVA crea uno propio).
+    await prisma.orderItem.deleteMany({ where: { order: { customerId } } });
+    await prisma.order.deleteMany({ where: { customerId } });
     await prisma.customer.delete({ where: { id: customerId } });
     await prisma.stockMovement.deleteMany({ where: { productId } });
     await prisma.product.delete({ where: { id: productId } });
@@ -155,7 +157,18 @@ describe('Remissions (e2e)', () => {
       .expect(201);
     const firstBody = first.body as { id: string; number: number };
     remissionIds.push(firstBody.id);
-    expect(firstBody.number).toBeGreaterThan(0);
+    // El consecutivo sigue al talonario en papel de Herrajes Toro (migración
+    // 20261026180000_remisiones_desde_ht_3286).
+    expect(firstBody.number).toBeGreaterThanOrEqual(3286);
+
+    // Y se encuentra tal como sale impresa: "HT <número>".
+    const found = await request(app.getHttpServer())
+      .get(`/remissions?search=${encodeURIComponent(`HT ${firstBody.number}`)}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect((found.body as { data: { id: string }[] }).data[0]?.id).toBe(
+      firstBody.id,
+    );
 
     // El pedido ya no descuenta stock al crearse — la remisión es la que
     // de verdad lo mueve. 10 reales, se despachan 6 -> quedan 4.
@@ -383,5 +396,60 @@ describe('Remissions (e2e)', () => {
       .get('/remissions/00000000-0000-0000-0000-000000000000')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(404);
+  });
+
+  // No todas las ventas llevan IVA: se elige por pedido y la remisión lo
+  // suma al total que el cliente debe. Una vez remisionado, ya no cambia.
+  it('adds the order VAT to the remission total and then locks it', async () => {
+    const orderResponse = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        customerId,
+        warehouseId,
+        vatRate: 19,
+        items: [{ productId, quantity: 5, unitPrice: 20 }],
+      })
+      .expect(201);
+    const vatOrder = orderResponse.body as {
+      id: string;
+      vatRate: string;
+      items: { id: string }[];
+    };
+    expect(Number(vatOrder.vatRate)).toBe(19);
+    await request(app.getHttpServer())
+      .patch(`/orders/${vatOrder.id}/mark-production`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/orders/${vatOrder.id}/mark-warehoused`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(201);
+
+    const remissionResponse = await request(app.getHttpServer())
+      .post('/remissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        orderId: vatOrder.id,
+        items: [{ orderItemId: vatOrder.items[0].id, quantity: 5 }],
+      })
+      .expect(201);
+    const remission = remissionResponse.body as {
+      id: string;
+      subtotal: string;
+      vatAmount: string;
+      total: string;
+    };
+    remissionIds.push(remission.id);
+    // 5 × 20 = 100; IVA 19 % = 19; total 119.
+    expect(Number(remission.subtotal)).toBe(100);
+    expect(Number(remission.vatAmount)).toBe(19);
+    expect(Number(remission.total)).toBe(119);
+
+    await request(app.getHttpServer())
+      .patch(`/orders/${vatOrder.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vatRate: 0 })
+      .expect(400);
   });
 });

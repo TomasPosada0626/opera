@@ -32,6 +32,12 @@ const customer: Customer = {
   email: null,
   phone: null,
   address: null,
+  city: null,
+  country: null,
+  mobile: null,
+  zone: null,
+  salesRep: null,
+  paymentTerms: null,
   isActive: true,
 };
 
@@ -266,7 +272,49 @@ describe('OrderForm', () => {
       estimatedDeliveryDate: expect.stringMatching(
         /^\d{4}-\d{2}-\d{2}$/,
       ) as string,
+      // Con IVA por defecto; se cambia en el selector si no lleva.
+      vatRate: 19,
     });
+  });
+
+  // No todas las ventas llevan IVA: se elige por pedido, y el total que se
+  // ve mientras se arma el pedido lo refleja.
+  it('shows subtotal, VAT and total, and sends an order without VAT when chosen', async () => {
+    mockHappyPathGets();
+    const user = userEvent.setup();
+    const onSuccess = vi.fn();
+    renderWithClient(<OrderForm onSuccess={onSuccess} />);
+
+    await selectCustomerAndWarehouse(user);
+    await pickProduct(user, 'silla', 'PT-1 — Silla de madera');
+    await user.type(screen.getByLabelText('Cantidad línea 1'), '4');
+    await user.type(screen.getByLabelText('Precio unitario línea 1'), '25');
+
+    // 4 × 25 = 100, + 19 % = 119.
+    expect(screen.getByText('$ 19')).toBeInTheDocument();
+    expect(screen.getByText('$ 119')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('IVA'), 'Sin IVA');
+    expect(screen.queryByText('$ 19')).not.toBeInTheDocument();
+
+    mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
+      if (options?.method === 'POST') {
+        return Promise.resolve({ id: 'order-1' });
+      }
+      if (path.startsWith('/customers'))
+        return Promise.resolve(customersResponse([customer]));
+      if (path.startsWith('/warehouses'))
+        return Promise.resolve(warehousesResponse([warehouse, warehouse2]));
+      if (path.startsWith('/products'))
+        return Promise.resolve(productsResponse([chair, table]));
+      return Promise.reject(new Error(`Unexpected: ${path}`));
+    });
+    await user.click(screen.getByRole('button', { name: /Crear pedido/ }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    expect(
+      JSON.parse(findPostCall()?.[1].body as string) as { vatRate: number },
+    ).toEqual(expect.objectContaining({ vatRate: 0 }));
   });
 
   it('shows the backend shortage message when the order cannot be created', async () => {
