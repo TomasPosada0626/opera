@@ -896,6 +896,23 @@ describe('RemissionsService', () => {
       expect(pageCount(buffer)).toBe(1);
     });
 
+    // Antes se rellenaba la copia con filas vacías y un pedido mediano ya
+    // gastaba dos hojas; ahora solo van 2 en blanco, y si hace falta,
+    // ninguna, antes de pasar a una hoja por copia.
+    it('still fits both copies on one page with 16 lines, dropping the blank rows', async () => {
+      prisma.remission.findUnique.mockResolvedValue({
+        ...baseRemission,
+        items: Array.from({ length: 16 }, (_, index) => ({
+          ...baseRemission.items[0],
+          id: `remission-item-${index}`,
+        })),
+      });
+
+      const { buffer } = await service.generatePdf('remission-1');
+
+      expect(pageCount(buffer)).toBe(1);
+    });
+
     it('gives each copy its own page when the lines do not fit in half a page', async () => {
       prisma.remission.findUnique.mockResolvedValue({
         ...baseRemission,

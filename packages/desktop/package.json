@@ -1,7 +1,7 @@
 {
   "name": "desktop",
   "productName": "Opera",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Cliente de escritorio de Opera (Electron + React + Vite + Tailwind)",
   "author": "Tomas Posada",
   "private": true,

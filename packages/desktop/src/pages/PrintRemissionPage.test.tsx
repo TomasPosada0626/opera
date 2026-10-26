@@ -141,8 +141,40 @@ describe('PrintRemissionPage', () => {
       expect(view.getByText('Unidad')).toBeInTheDocument();
       expect(view.getByText('IVA 19%')).toBeInTheDocument();
       expect(view.getByText(RETURNS_NOTICE)).toBeInTheDocument();
-      // 16 filas en media hoja: la que tiene producto y 15 vacías.
-      expect(copy.querySelectorAll('[data-empty-row]')).toHaveLength(15);
+      // Solo 2 filas en blanco debajo de los productos, no el resto de la
+      // plantilla: rellenar mandaba cada copia a su propia hoja.
+      expect(copy.querySelectorAll('[data-empty-row]')).toHaveLength(2);
+    }
+    expect(document.querySelector('.remission-sheet')).toHaveAttribute(
+      'data-layout',
+      'half',
+    );
+  });
+
+  // Si la copia no cabe en media hoja: primero sin filas en blanco y, solo
+  // si tampoco, una hoja por copia (sin filas de relleno).
+  it('drops the blank rows, then gives each copy its own sheet, when the copy overflows', async () => {
+    const scrollHeight = vi
+      .spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockReturnValue(1000);
+    try {
+      mockedApiFetch.mockResolvedValue(buildRemission());
+
+      renderAt('/imprimir-remision?id=remission-1');
+
+      const clientCopy = await screen.findByRole('region', {
+        name: 'Copia del cliente',
+      });
+      await waitFor(() =>
+        expect(document.querySelector('.remission-sheet')).toHaveAttribute(
+          'data-layout',
+          'full',
+        ),
+      );
+      expect(clientCopy.querySelectorAll('[data-empty-row]')).toHaveLength(2);
+      expect(clientCopy).not.toHaveClass('remission-copy--cut');
+    } finally {
+      scrollHeight.mockRestore();
     }
   });
 
@@ -161,7 +193,7 @@ describe('PrintRemissionPage', () => {
       name: 'Copia del cliente',
     });
     expect(within(clientCopy).getByText('IVA')).toBeInTheDocument();
-    expect(within(clientCopy).queryByText(/IVA d/)).not.toBeInTheDocument();
+    expect(within(clientCopy).queryByText(/IVA \d/)).not.toBeInTheDocument();
   });
 
   it('shows nothing to print until a remission is chosen', () => {
