@@ -215,17 +215,42 @@ function fakeDetachedLauncher(): FakeChild & { unref: () => void } {
   return child;
 }
 
-// `whoami /groups`: imprime los grupos de la sesión por stdout.
-function fakeWhoami(groups: string): FakeChild {
+// Un comando que imprime algo por stdout y sale: `whoami /groups`,
+// `reg query`, `tasklist`.
+function fakeOutput(stdout: string, exitCode = 0): FakeChild {
   const child = new EventEmitter() as FakeChild & { stdout: EventEmitter };
   child.stderr = new EventEmitter();
   child.stdout = new EventEmitter();
   child.kill = vi.fn();
   queueMicrotask(() => {
-    child.stdout.emit('data', Buffer.from(groups));
-    child.emit('exit', 0, null);
+    child.stdout.emit('data', Buffer.from(stdout));
+    child.emit('exit', exitCode, null);
   });
   return child;
+}
+
+// `whoami /groups`: imprime los grupos de la sesión por stdout.
+function fakeWhoami(groups: string): FakeChild {
+  return fakeOutput(groups);
+}
+
+// `reg query <clave> /v Path`, con el formato real de Windows.
+function fakeRegPath(value: string): FakeChild {
+  return fakeOutput(
+    `\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\r\n    Path    REG_EXPAND_SZ    ${value}\r\n\r\n`,
+  );
+}
+
+// Lo que corre ensureDockerRunning() cuando no encuentra Docker Desktop en
+// Program Files: el PATH del registro (sistema y usuario) y si hay una
+// instalación de Docker pendiente (la tarea del instalador o su proceso).
+function dockerNotFoundSpawns(): Array<() => FakeChild> {
+  return [
+    () => fakeRegPath('C:\\Windows\\system32;C:\\Windows'), // reg HKLM
+    () => fakeOutput('', 1), // reg HKCU: sin Path propio
+    () => fakeCommand({ exitCode: 1 }), // schtasks: no hay tarea
+    () => fakeOutput('INFO: No hay tareas ejecutándose.'), // tasklist
+  ];
 }
 
 function postgresSecretPath(): string {
@@ -276,6 +301,9 @@ describe('backend-manager', () => {
       path.join(os.tmpdir(), 'opera-programfiles-'),
     );
     process.env['ProgramFiles'] = programFilesDir;
+    // Vacío: findDockerDesktopExe() busca Docker también en el PATH, y el
+    // de la máquina que corre el suite puede tener un Docker Desktop real.
+    process.env['PATH'] = '';
     seedPostgresSecret();
     // Solo existe dentro de un proceso Electron real (y es `readonly` en su
     // tipo, mismo motivo que main.test.ts usa `Object.defineProperty` para
@@ -312,7 +340,10 @@ describe('backend-manager', () => {
   });
 
   it('si Docker Desktop no está instalado, lo dice sin intentar nada más', async () => {
-    queueSpawns([() => fakeCommand({ exitCode: 1 })]); // docker info falla
+    queueSpawns([
+      () => fakeCommand({ exitCode: 1 }), // docker info falla
+      ...dockerNotFoundSpawns(),
+    ]);
 
     const win = fakeWindow();
     initBackendManager(win);
@@ -323,7 +354,88 @@ describe('backend-manager', () => {
     expect(lastStatusSent(win).message).toMatch(
       /Docker Desktop no está instalado/,
     );
-    expect(spawnMock).toHaveBeenCalledTimes(1);
+    // Buscó en el PATH del registro y si había una instalación pendiente,
+    // pero no intentó abrir ni instalar nada.
+    expect(spawnMock.mock.calls.map(([command]) => command as string)).toEqual([
+      'docker',
+      'reg',
+      'reg',
+      'schtasks',
+      'tasklist',
+    ]);
+  });
+
+  // Segunda PC real: Docker Desktop instalado a mano quedó fuera de
+  // Program Files, y Opera decía que no estaba instalado.
+  it('encuentra Docker Desktop fuera de Program Files a través del PATH del registro', async () => {
+    const root = path.join(programFilesDir, 'OtraCarpeta', 'Docker');
+    const binDir = path.join(root, 'resources', 'bin');
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(path.join(binDir, 'docker.exe'), '');
+    const exe = path.join(root, 'Docker Desktop.exe');
+    writeFileSync(exe, '');
+    process.env['OPERA_TEST_DOCKER_ROOT'] = root;
+    try {
+      queueSpawns([
+        () => fakeCommand({ exitCode: 1 }), // docker info: no responde
+        // %VAR% sin expandir, como lo guarda REG_EXPAND_SZ. path.join y no
+        // "\\" fijo: el suite también corre en Linux (CI).
+        () =>
+          fakeRegPath(
+            `C:\\Windows\\system32;${path.join('%OPERA_TEST_DOCKER_ROOT%', 'resources', 'bin')}`,
+          ),
+        () => fakeOutput('', 1), // reg HKCU
+        fakeDetachedLauncher, // abre ESE Docker Desktop
+        ...happyPathSpawns({ containerExists: true }),
+      ]);
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.waitFor(() => {
+        expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+      });
+      expect(spawnMock).toHaveBeenNthCalledWith(4, exe, [], {
+        detached: true,
+        stdio: 'ignore',
+      });
+      // El resto de los `docker ...` (y el backend) encuentran el binario
+      // aunque el PATH que heredó Opera sea viejo.
+      expect(process.env['PATH']?.split(path.delimiter)).toContain(binDir);
+    } finally {
+      delete process.env['OPERA_TEST_DOCKER_ROOT'];
+    }
+  });
+
+  // El instalador retoma la instalación de Docker sola después del
+  // reinicio, sin nada en pantalla: si se abre Opera mientras tanto, espera.
+  it('si la instalación de Docker sigue en curso tras el reinicio, espera a que termine', async () => {
+    queueSpawns([
+      () => fakeCommand({ exitCode: 1 }), // docker info: no responde
+      () => fakeRegPath('C:\\Windows\\system32'), // reg HKLM
+      () => fakeOutput('', 1), // reg HKCU
+      () => fakeCommand({ exitCode: 0 }), // schtasks: la tarea existe
+      fakeDetachedLauncher, // ya instalado: lo abre
+      ...happyPathSpawns({ containerExists: true }),
+    ]);
+    const win = fakeWindow();
+    // Docker Desktop "termina de instalarse" apenas Opera avisa que espera.
+    vi.mocked(win.webContents.send).mockImplementation((_channel, status) => {
+      if ((status as BackendStatus).message?.startsWith('Terminando')) {
+        installFakeDockerDesktop();
+      }
+    });
+
+    initBackendManager(win);
+
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+    expect(win.webContents.send).toHaveBeenCalledWith('backend:status', {
+      state: 'starting',
+      message:
+        'Terminando de instalar Docker Desktop… Puede tardar varios minutos; no apagues la PC.',
+    });
   });
 
   describe('Docker Desktop instalado pero sin correr', () => {
@@ -752,7 +864,9 @@ describe('backend-manager', () => {
       return path.join(userDataDir, 'backups');
     }
 
-    it('corre un backup 6 horas después de un arranque exitoso, con el contenedor y la carpeta correctos, y guarda cuándo', async () => {
+    // Antes el primer intento llegaba recién a las 6 horas seguidas con
+    // Opera abierta: un día en que la cerraban antes, no se respaldaba nada.
+    it('corre un backup 5 minutos después de un arranque exitoso, con el contenedor y la carpeta correctos, y guarda cuándo', async () => {
       vi.useFakeTimers();
       try {
         queueSpawns([
@@ -762,7 +876,10 @@ describe('backend-manager', () => {
         const win = fakeWindow();
         initBackendManager(win);
 
-        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+        await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+        expect(spawnMock).toHaveBeenCalledTimes(6);
+
+        await vi.advanceTimersByTimeAsync(60 * 1000 + 100);
 
         expect(spawnMock).toHaveBeenCalledTimes(7);
         const backupCall = spawnMock.mock.calls[6] as [
@@ -777,6 +894,11 @@ describe('backend-manager', () => {
 
         const marker = readFileSync(lastBackupMarkerPath(), 'utf-8');
         expect(Number.isFinite(Date.parse(marker))).toBe(true);
+
+        // A las 6 horas el intervalo vuelve a mirar, pero el respaldo de
+        // hace menos de 24 horas alcanza: no se repite.
+        await vi.advanceTimersByTimeAsync(SIX_HOURS_MS);
+        expect(spawnMock).toHaveBeenCalledTimes(7);
       } finally {
         vi.useRealTimers();
       }
@@ -1391,6 +1513,71 @@ describe('backend-manager', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Segunda PC real: con 20 s, el primer arranque (el antivirus revisando
+  // los archivos del backend) terminaba en "Opera no respondió a tiempo".
+  it('espera hasta 2 minutos a que el backend responda antes de rendirse', async () => {
+    vi.useFakeTimers();
+    try {
+      queueSpawns(happyPathSpawns({ containerExists: false }));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(false)));
+
+      const win = fakeWindow();
+      initBackendManager(win);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(lastStatusSent(win).state).toBe('starting');
+
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(lastStatusSent(win)).toEqual({
+        state: 'error',
+        message: 'Opera no respondió a tiempo.',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('si el backend se cae mientras arranca, lo dice enseguida en vez de esperar los 2 minutos', async () => {
+    vi.useFakeTimers();
+    try {
+      const backendChild = fakeLongRunningProcess();
+      queueSpawns(happyPathSpawns({ containerExists: false, backendChild }));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fakeResponse(false)));
+
+      const win = fakeWindow();
+      initBackendManager(win);
+      await vi.advanceTimersByTimeAsync(100);
+      backendChild.emit('exit', 1, null);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(lastStatusSent(win)).toEqual({
+        state: 'error',
+        message: 'Opera se detuvo inesperadamente.',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Segunda PC real: con Opera en C:\Program Files, el CLI de Prisma no
+  // podía crear su caché junto al backend (EPERM) y la migración fallaba.
+  it('corre las migraciones con la caché de Prisma en el perfil, fuera de Program Files', async () => {
+    queueSpawns(happyPathSpawns({ containerExists: false }));
+    const win = fakeWindow();
+    initBackendManager(win);
+    await vi.waitFor(() => {
+      expect(lastStatusSent(win)).toEqual({ state: 'ready' });
+    });
+
+    const migrateCall = spawnMock.mock.calls[4] as [
+      string,
+      string[],
+      { env: Record<string, string> },
+    ];
+    expect(migrateCall[1]).toContain('migrate');
+    expect(migrateCall[2].env.CACHE_DIR).toBe(path.join(userDataDir, 'cache'));
   });
 
   it('el stderr real del proceso del backend llega a appendErrorLog con type "backend-stderr"', async () => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { RouterProvider } from 'react-router';
-import { router } from './router';
+import { getRouter } from './router';
 import { queryClient } from './lib/query-client';
 import { UpdateBanner } from './components/ui/UpdateBanner';
 import { ToastContainer } from './components/ui/ToastContainer';
@@ -31,10 +31,11 @@ function App() {
     return <BackendStartupScreen status={status} />;
   }
 
+  // Recién acá, con el backend listo: ver getRouter() en router.tsx.
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <RouterProvider router={getRouter()} />
         <UpdateBanner />
         <ToastContainer />
         {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}

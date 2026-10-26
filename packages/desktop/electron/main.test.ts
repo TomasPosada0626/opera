@@ -83,6 +83,12 @@ vi.mock('./backend-manager', () => ({
   shutdownBackend: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('./user-data-migration', () => ({
+  migrateLegacyUserData: vi.fn(),
+}));
+
+const { migrateLegacyUserData } = await import('./user-data-migration');
+
 function ipcHandler(channel: string) {
   const call = vi
     .mocked(ipcMain.handle)
@@ -230,6 +236,10 @@ describe('electron/main (packaged, sin VITE_DEV_SERVER_URL)', () => {
 
   it('inicia el backend-manager fuera de dev', () => {
     expect(initBackendManager).toHaveBeenCalledWith(win);
+  });
+
+  it('trae los datos de %APPDATA%\\desktop (1.0.0) antes de usar userData', () => {
+    expect(migrateLegacyUserData).toHaveBeenCalled();
   });
 
   it('deniega abrir ventanas nuevas', () => {

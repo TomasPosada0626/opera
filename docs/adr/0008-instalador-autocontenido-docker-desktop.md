@@ -96,3 +96,42 @@ primera vez que se abre, guardada solo en esa base de datos local.
   ningún script puede activarla — el instalador detecta ese caso (Docker
   Desktop falla al iniciar) y muestra un mensaje explicando que hay que
   activarla manualmente, pero no puede resolverlo por sí solo.
+
+## Adenda (2026-10-26): lo que mostró la primera instalación real
+
+La 1.0.0 se instaló en las dos primeras PCs reales de Herrajes Toro y, en
+las dos, hizo falta terminar a mano desde PowerShell. Las causas y su
+corrección en la 1.0.1:
+
+1. **El instalador es de 32 bits.** `dism.exe` a secas resolvía al de
+   `SysWOW64`, que se niega a modificar un Windows de 64 bits: WSL nunca se
+   activaba y el reinicio con resume nunca se programaba. Ahora `dism` y
+   `wsl` se llaman por `%WINDIR%\Sysnative` (`$NativeSystemDir`).
+2. **Las features de Windows ya no alcanzan para WSL.** Desde Windows 11
+   22H2, WSL es un paquete aparte. Docker Desktop abría con "WSL is not
+   installed". El instalador ahora corre `wsl --install --no-distribution`
+   (o `wsl --update`) antes del reinicio, y reinicia siempre que WSL no
+   funcionaba al empezar.
+3. **El resume perdía su consentimiento.** La corrida de resume reinstala
+   Opera, y eso vacía `$INSTDIR`, donde vivían las marcas de
+   consentimiento y de usuario. Ahora viven, junto con la copia del
+   instalador, en `%ProgramData%\Opera\setup`, una carpeta que se arma de
+   cero y se restringe a SYSTEM/Administradores antes de escribir nada.
+   Así desaparece también la ventana TOCTOU de la copia. Si el instalador
+   de Docker falla, ya no se anuncia "Docker Desktop quedó instalado".
+4. **El backend empaquetado no tenía cliente de Prisma.** `pnpm deploy`
+   no corre el `postinstall` del backend. `scripts/generate-backend-prisma.js`
+   lo genera dentro de `resources/backend` y hace fallar el build si queda
+   incompleto.
+5. **`prisma migrate deploy` fallaba con EPERM en `C:\Program Files`**: el
+   CLI crea su caché en `node_modules/.cache`. Ahora va a `userData`
+   (`CACHE_DIR`).
+6. **Detalles del arranque**:
+   - Docker Desktop instalado fuera de Program Files ahora se encuentra
+     por el PATH del registro.
+   - El plazo para que el backend responda pasó de 20 s a 2 min, y una
+     caída del backend se informa enseguida.
+   - El primer arranque ya no abre el login en vez de "crear la primera
+     cuenta": el router se crea recién con el backend listo.
+   - La carpeta de datos es `%APPDATA%\Opera` (la 1.0.0 usaba
+     `%APPDATA%\desktop`; se copia sola).

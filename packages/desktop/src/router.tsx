@@ -55,156 +55,172 @@ async function needsSetup(): Promise<boolean> {
 // contraseña, imprimir remisión) y NotFound necesitan el suyo propio porque
 // no viven dentro de ese Outlet.
 
+type AppRouter = ReturnType<typeof createHashRouter>;
+
+let router: AppRouter | null = null;
+
+// Se crea recién cuando App lo monta (con el backend ya listo), no al
+// importar este módulo: createHashRouter dispara el loader de la ruta
+// inicial en el acto, y en la app empaquetada eso pasaba mientras el
+// backend todavía arrancaba -- /setup/status fallaba, needsSetup() asumía
+// que ya había cuenta y una instalación nueva abría en el login en vez de
+// en "crear la primera cuenta" (encontrado en la primera PC real).
+export function getRouter(): AppRouter {
+  router ??= createAppRouter();
+  return router;
+}
+
 // HashRouter (no BrowserRouter): la app empaquetada carga desde file://, sin
 // servidor que resuelva rutas de historial en un refresh — el hash sí
 // funciona con un archivo estático.
-export const router = createHashRouter([
-  {
-    element: <RootLayout />,
-    children: [
-      {
-        path: '/login',
-        // Primero needsSetup (instalación sin ningún usuario todavía manda
-        // directo a /configurar, sesión previa o no) y recién después la
-        // lógica ya existente: con sesión, /login no tiene nada que hacer,
-        // manda al dashboard. `createHashRouter` dispara el loader de la
-        // ruta inicial al crearse (import-time de este módulo), antes de
-        // que main.tsx termine de hidratar el token — hay que esperar esa
-        // hidratación aquí mismo, no basta con esperarla una vez en main.tsx.
-        loader: async () => {
-          if (await needsSetup()) {
-            return redirect('/configurar');
-          }
-          await initAuthToken();
-          return getAuthToken() ? redirect('/') : null;
-        },
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <LoginPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: '/configurar',
-        // Ruta de una sola vez por instalación -- si ya hay un usuario
-        // (needsSetup: false), no tiene nada que hacer acá, misma idea que
-        // /login redirigiendo al dashboard con sesión activa.
-        loader: async () => {
-          return (await needsSetup()) ? null : redirect('/login');
-        },
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <SetupPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: '/olvide-contrasena',
-        // Mismo criterio que /login: con sesión activa no tiene nada que
-        // hacer acá, manda al dashboard en vez de mostrar el flujo.
-        loader: async () => {
-          await initAuthToken();
-          return getAuthToken() ? redirect('/') : null;
-        },
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <ForgotPasswordPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: '/imprimir-remision',
-        // Standalone (fuera de AppLayout) a propósito: sin sidebar/topbar
-        // que ocultar con @media print — toda la página es la superficie
-        // imprimible salvo su propia barra de búsqueda.
-        loader: async () => {
-          await initAuthToken();
-          return getAuthToken() ? null : redirect('/login');
-        },
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <PrintRemissionPage />
-          </Suspense>
-        ),
-      },
-      {
-        element: <AppLayout />,
-        // Un solo loader en el layout protege TODAS sus rutas hijas — no
-        // hay que repetir "¿hay token?" en cada una (#41).
-        loader: async () => {
-          await initAuthToken();
-          return getAuthToken() ? null : redirect('/login');
-        },
-        children: [
-          { path: '/', element: <DashboardPage /> },
-          { path: '/inventario', element: <InventoryPage /> },
-          {
-            path: '/inventario/:productId/kardex',
-            element: <KardexPage />,
+const createAppRouter = (): AppRouter =>
+  createHashRouter([
+    {
+      element: <RootLayout />,
+      children: [
+        {
+          path: '/login',
+          // Primero needsSetup (instalación sin ningún usuario todavía manda
+          // directo a /configurar, sesión previa o no) y recién después la
+          // lógica ya existente: con sesión, /login no tiene nada que hacer,
+          // manda al dashboard. `createHashRouter` dispara el loader de la
+          // ruta inicial al crearse (ver getRouter) -- se espera la
+          // hidratación del token aquí mismo en vez de confiar en el orden de
+          // main.tsx (es la misma promesa memoizada, no cuesta nada).
+          loader: async () => {
+            if (await needsSetup()) {
+              return redirect('/configurar');
+            }
+            await initAuthToken();
+            return getAuthToken() ? redirect('/') : null;
           },
-          { path: '/produccion', element: <ProductionOrdersPage /> },
-          { path: '/productos', element: <ProductsPage /> },
-          { path: '/categorias', element: <CategoriesPage /> },
-          { path: '/unidades', element: <UnitsPage /> },
-          { path: '/bodegas', element: <WarehousesPage /> },
-          { path: '/pedidos', element: <OrdersPage /> },
-          { path: '/pedidos/:orderId', element: <OrderDetailPage /> },
-          { path: '/clientes', element: <CustomersPage /> },
-          {
-            path: '/clientes/:customerId',
-            element: <CustomerDetailPage />,
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <LoginPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: '/configurar',
+          // Ruta de una sola vez por instalación -- si ya hay un usuario
+          // (needsSetup: false), no tiene nada que hacer acá, misma idea que
+          // /login redirigiendo al dashboard con sesión activa.
+          loader: async () => {
+            return (await needsSetup()) ? null : redirect('/login');
           },
-          { path: '/proveedores', element: <SuppliersPage /> },
-          {
-            path: '/proveedores/:supplierId',
-            element: <SupplierDetailPage />,
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <SetupPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: '/olvide-contrasena',
+          // Mismo criterio que /login: con sesión activa no tiene nada que
+          // hacer acá, manda al dashboard en vez de mostrar el flujo.
+          loader: async () => {
+            await initAuthToken();
+            return getAuthToken() ? redirect('/') : null;
           },
-          { path: '/compras', element: <PurchaseOrdersPage /> },
-          {
-            path: '/compras/:purchaseOrderId',
-            element: <PurchaseOrderDetailPage />,
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <ForgotPasswordPage />
+            </Suspense>
+          ),
+        },
+        {
+          path: '/imprimir-remision',
+          // Standalone (fuera de AppLayout) a propósito: sin sidebar/topbar
+          // que ocultar con @media print — toda la página es la superficie
+          // imprimible salvo su propia barra de búsqueda.
+          loader: async () => {
+            await initAuthToken();
+            return getAuthToken() ? null : redirect('/login');
           },
-          { path: '/reportes', element: <ReportsPage /> },
-          {
-            path: '/usuarios',
-            // Ocultar el ítem del sidebar es UX, no seguridad — la
-            // seguridad real ya la hace el backend (@Roles('ADMIN') en
-            // /users desde M1). Este loader es la versión de "no dejar
-            // llegar por URL directa" del mismo filtro, no un reemplazo.
-            // Los loaders hijos corren en paralelo con el del layout
-            // padre (no en secuencia), así que también necesita esperar
-            // la hidratación por su cuenta.
-            loader: async () => {
-              await initAuthToken();
-              return getCurrentUser()?.roles.includes('ADMIN')
-                ? null
-                : redirect('/');
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <PrintRemissionPage />
+            </Suspense>
+          ),
+        },
+        {
+          element: <AppLayout />,
+          // Un solo loader en el layout protege TODAS sus rutas hijas — no
+          // hay que repetir "¿hay token?" en cada una (#41).
+          loader: async () => {
+            await initAuthToken();
+            return getAuthToken() ? null : redirect('/login');
+          },
+          children: [
+            { path: '/', element: <DashboardPage /> },
+            { path: '/inventario', element: <InventoryPage /> },
+            {
+              path: '/inventario/:productId/kardex',
+              element: <KardexPage />,
             },
-            element: <UsersPage />,
-          },
-          {
-            path: '/auditoria',
-            // Mismo criterio que /usuarios: el backend ya exige ADMIN en
-            // GET /audit; esto solo evita llegar por URL a una pantalla
-            // vacía.
-            loader: async () => {
-              await initAuthToken();
-              return getCurrentUser()?.roles.includes('ADMIN')
-                ? null
-                : redirect('/');
+            { path: '/produccion', element: <ProductionOrdersPage /> },
+            { path: '/productos', element: <ProductsPage /> },
+            { path: '/categorias', element: <CategoriesPage /> },
+            { path: '/unidades', element: <UnitsPage /> },
+            { path: '/bodegas', element: <WarehousesPage /> },
+            { path: '/pedidos', element: <OrdersPage /> },
+            { path: '/pedidos/:orderId', element: <OrderDetailPage /> },
+            { path: '/clientes', element: <CustomersPage /> },
+            {
+              path: '/clientes/:customerId',
+              element: <CustomerDetailPage />,
             },
-            element: <AuditPage />,
-          },
-        ],
-      },
-      {
-        path: '*',
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <NotFoundPage />
-          </Suspense>
-        ),
-      },
-    ],
-  },
-]);
+            { path: '/proveedores', element: <SuppliersPage /> },
+            {
+              path: '/proveedores/:supplierId',
+              element: <SupplierDetailPage />,
+            },
+            { path: '/compras', element: <PurchaseOrdersPage /> },
+            {
+              path: '/compras/:purchaseOrderId',
+              element: <PurchaseOrderDetailPage />,
+            },
+            { path: '/reportes', element: <ReportsPage /> },
+            {
+              path: '/usuarios',
+              // Ocultar el ítem del sidebar es UX, no seguridad — la
+              // seguridad real ya la hace el backend (@Roles('ADMIN') en
+              // /users desde M1). Este loader es la versión de "no dejar
+              // llegar por URL directa" del mismo filtro, no un reemplazo.
+              // Los loaders hijos corren en paralelo con el del layout
+              // padre (no en secuencia), así que también necesita esperar
+              // la hidratación por su cuenta.
+              loader: async () => {
+                await initAuthToken();
+                return getCurrentUser()?.roles.includes('ADMIN')
+                  ? null
+                  : redirect('/');
+              },
+              element: <UsersPage />,
+            },
+            {
+              path: '/auditoria',
+              // Mismo criterio que /usuarios: el backend ya exige ADMIN en
+              // GET /audit; esto solo evita llegar por URL a una pantalla
+              // vacía.
+              loader: async () => {
+                await initAuthToken();
+                return getCurrentUser()?.roles.includes('ADMIN')
+                  ? null
+                  : redirect('/');
+              },
+              element: <AuditPage />,
+            },
+          ],
+        },
+        {
+          path: '*',
+          element: (
+            <Suspense fallback={<PageFallback />}>
+              <NotFoundPage />
+            </Suspense>
+          ),
+        },
+      ],
+    },
+  ]);

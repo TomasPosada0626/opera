@@ -45,11 +45,22 @@ const BACKEND_PORT = '3000';
 const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
 
 const POSTGRES_READY_TIMEOUT_MS = 30_000;
-const BACKEND_READY_TIMEOUT_MS = 20_000;
+// 2 minutos, no 20 s: el primer arranque en una PC recién instalada pasa
+// por el antivirus de Windows, que revisa uno por uno los miles de archivos
+// del backend -- con 20 s, la segunda PC real donde se instaló mostró
+// "Opera no respondió a tiempo" sin que nada estuviera roto. Si el backend
+// se cae mientras tanto, waitForBackendHealth() no espera todo esto.
+const BACKEND_READY_TIMEOUT_MS = 120_000;
 // Docker Desktop recién instalado (o tras un reinicio) tarda bastante más
 // que Postgres en quedar listo: arranca su máquina virtual de WSL.
 const DOCKER_START_TIMEOUT_MS = 180_000;
+// Lo que puede tardar la instalación de Docker Desktop que el instalador
+// de Opera retoma sola después del reinicio (ver isDockerSetupPending).
+const DOCKER_SETUP_TIMEOUT_MS = 30 * 60 * 1000;
 const POLL_INTERVAL_MS = 1_000;
+// Esperas largas (la instalación de Docker) no necesitan preguntar cada
+// segundo: cada pregunta lanza procesos de Windows.
+const SLOW_POLL_INTERVAL_MS = 5_000;
 
 let win: BrowserWindow | null = null;
 let currentStatus: BackendStatus = { state: 'starting' };
@@ -73,13 +84,14 @@ async function waitUntil(
   check: () => Promise<boolean>,
   timeoutMs: number,
   timeoutMessage: string,
+  intervalMs = POLL_INTERVAL_MS,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!(await check())) {
     if (Date.now() >= deadline) {
       throw new Error(timeoutMessage);
     }
-    await sleep(POLL_INTERVAL_MS);
+    await sleep(intervalMs);
   }
 }
 
@@ -212,12 +224,97 @@ function dockerDesktopDir(): string {
 // lanza (el backend, el script de respaldo).
 function ensureDockerOnPath(): void {
   const binDir = path.join(dockerDesktopDir(), 'resources', 'bin');
-  const current = process.env['PATH'] ?? '';
-  if (existsSync(binDir) && !current.split(path.delimiter).includes(binDir)) {
-    process.env['PATH'] = current
-      ? `${binDir}${path.delimiter}${current}`
-      : binDir;
+  if (existsSync(binDir)) {
+    prependToPath(binDir);
   }
+}
+
+function prependToPath(dir: string): void {
+  const current = process.env['PATH'] ?? '';
+  if (!current.split(path.delimiter).includes(dir)) {
+    process.env['PATH'] = current ? `${dir}${path.delimiter}${current}` : dir;
+  }
+}
+
+function expandEnvVars(value: string): string {
+  return value
+    .replace(/%([^%]+)%/g, (whole, name: string) => process.env[name] ?? whole)
+    .trim();
+}
+
+// El PATH guardado en el registro (sistema y usuario), no el de este
+// proceso: el que heredó Opera puede ser anterior a instalar Docker (mismo
+// caso que ensureDockerOnPath, pero para cualquier carpeta).
+async function registryPathDirs(): Promise<string[]> {
+  const keys = [
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+    'HKCU\\Environment',
+  ];
+  const dirs: string[] = [];
+  for (const key of keys) {
+    const output = await spawnForOutput('reg', ['query', key, '/v', 'Path']);
+    const line = output
+      ?.split(/\r?\n/)
+      .find((candidate) => /\bREG_(?:EXPAND_)?SZ\b/.test(candidate));
+    const value = line?.split(/\bREG_(?:EXPAND_)?SZ\b/)[1]?.trim();
+    if (value) {
+      dirs.push(...value.split(';').map(expandEnvVars).filter(Boolean));
+    }
+  }
+  return dirs;
+}
+
+// Docker Desktop no siempre queda en Program Files: instalado a mano en la
+// segunda PC real (Docker 4.97) quedó en otra carpeta, y Opera decía "no
+// está instalado" con Docker funcionando. Se busca primero donde lo deja su
+// instalador por defecto y después junto a cualquier `docker.exe` del PATH
+// (Docker agrega su carpeta resources\bin al instalarse, dos niveles debajo
+// de "Docker Desktop.exe").
+async function findDockerDesktopExe(): Promise<string | null> {
+  const defaultExe = path.join(dockerDesktopDir(), 'Docker Desktop.exe');
+  if (existsSync(defaultExe)) {
+    return defaultExe;
+  }
+  const dirs = [
+    ...(process.env['PATH'] ?? '').split(path.delimiter),
+    ...(await registryPathDirs()),
+  ];
+  for (const dir of dirs) {
+    if (!dir || !existsSync(path.join(dir, 'docker.exe'))) {
+      continue;
+    }
+    const exe = path.resolve(dir, '..', '..', 'Docker Desktop.exe');
+    if (existsSync(exe)) {
+      prependToPath(dir);
+      return exe;
+    }
+  }
+  return null;
+}
+
+// El instalador de Opera retoma la instalación de Docker Desktop sola
+// después del reinicio (tarea OperaFinishSetup, ver installer.nsh), sin
+// nada en pantalla. Si alguien abre Opera mientras tanto, se espera a que
+// termine en vez de decir que Docker no está instalado.
+async function isDockerSetupPending(): Promise<boolean> {
+  try {
+    const { code } = await spawnAndWait('schtasks', [
+      '/Query',
+      '/TN',
+      'OperaFinishSetup',
+    ]);
+    if (code === 0) {
+      return true;
+    }
+  } catch {
+    // Sin schtasks se mira solo el proceso del instalador.
+  }
+  const tasks = await spawnForOutput('tasklist', [
+    '/FI',
+    'IMAGENAME eq Docker Desktop Installer.exe',
+    '/NH',
+  ]);
+  return tasks !== null && /docker desktop installer/i.test(tasks);
 }
 
 // Si Docker Desktop no está corriendo, Opera lo abre sola y espera, en vez
@@ -229,8 +326,24 @@ async function ensureDockerRunning(): Promise<void> {
     return;
   }
 
-  const dockerDesktopExe = path.join(dockerDesktopDir(), 'Docker Desktop.exe');
-  if (!existsSync(dockerDesktopExe)) {
+  let dockerDesktopExe = await findDockerDesktopExe();
+  if (!dockerDesktopExe && (await isDockerSetupPending())) {
+    setStatus({
+      state: 'starting',
+      message:
+        'Terminando de instalar Docker Desktop… Puede tardar varios minutos; no apagues la PC.',
+    });
+    await waitUntil(
+      async () => {
+        dockerDesktopExe = await findDockerDesktopExe();
+        return dockerDesktopExe !== null || !(await isDockerSetupPending());
+      },
+      DOCKER_SETUP_TIMEOUT_MS,
+      'La instalación de Docker Desktop no terminó a tiempo. Reinicia la PC y vuelve a abrir Opera.',
+      SLOW_POLL_INTERVAL_MS,
+    );
+  }
+  if (!dockerDesktopExe) {
     throw new Error(
       'Docker Desktop no está instalado en esta PC. Vuelve a ejecutar el instalador de Opera y deja marcada la opción de instalar Docker Desktop.',
     );
@@ -514,6 +627,13 @@ async function runMigrations(databaseUrl: string): Promise<void> {
         ...process.env,
         ELECTRON_RUN_AS_NODE: '1',
         DATABASE_URL: databaseUrl,
+        // El CLI de Prisma busca dónde cachear sus motores con
+        // find-cache-dir, que por defecto crea node_modules/.cache/prisma
+        // junto al backend -- en C:\Program Files, donde una cuenta normal
+        // no puede escribir: la migración fallaba con EPERM en la segunda
+        // PC real (en la primera no, porque Opera quedó instalada en una
+        // carpeta del usuario). find-cache-dir respeta CACHE_DIR.
+        CACHE_DIR: path.join(app.getPath('userData'), 'cache'),
       },
     },
   );
@@ -553,6 +673,8 @@ function isPortInUse(port: number): Promise<boolean> {
     tester.listen(port, '127.0.0.1');
   });
 }
+
+const BACKEND_CRASHED_MESSAGE = 'Opera se detuvo inesperadamente.';
 
 // No espera su salida a propósito -- corre en segundo plano mientras dure la
 // sesión de Opera. Un `exit` inesperado (crash real, no el `SIGTERM` de
@@ -610,7 +732,7 @@ function startBackendProcess(env: Record<string, string>): void {
       });
       setStatus({
         state: 'error',
-        message: 'Opera se detuvo inesperadamente.',
+        message: BACKEND_CRASHED_MESSAGE,
       });
     }
   });
@@ -623,6 +745,11 @@ async function waitForBackendHealth(): Promise<void> {
   });
   await waitUntil(
     async () => {
+      // El handler de 'exit' de startBackendProcess ya lo soltó: no tiene
+      // sentido seguir esperando los 2 minutos a un proceso que no existe.
+      if (!backendProcess) {
+        throw new Error(BACKEND_CRASHED_MESSAGE);
+      }
       try {
         const response = await fetch(HEALTH_URL);
         return response.ok;
@@ -700,6 +827,13 @@ function stopBackendProcess(): Promise<void> {
 // horario comercial dispare al menos un chequeo. BACKUP_MIN_GAP_MS es quien
 // realmente decide si corresponde repetir el backup, no este intervalo.
 const BACKUP_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// Además, un primer chequeo a los 5 minutos de quedar lista: con solo el
+// intervalo, el respaldo recién se intentaba tras 6 horas SEGUIDAS con
+// Opera abierta, y en un día en que la cierran antes no se respaldaba
+// nada (encontrado revisando los respaldos con la primera PC real).
+// 5 minutos y no al instante: el arranque ya tiene bastante trabajo, y así
+// tampoco se cruza con quien recién empieza a usar Opera.
+const FIRST_BACKUP_DELAY_MS = 5 * 60 * 1000;
 // No repetir un backup si el último se completó hace menos de esto -- evita
 // respaldar de más si la app queda abierta muchas horas seguidas.
 //
@@ -1099,6 +1233,7 @@ function start(): Promise<void> {
       });
       await waitForBackendHealth();
       setStatus({ state: 'ready' });
+      scheduleFirstBackup();
     } catch (error) {
       // Redactado como red de seguridad final -- ningún código de este
       // archivo debería embeber la contraseña en un Error.message hoy, pero
@@ -1128,11 +1263,32 @@ function start(): Promise<void> {
 }
 
 let backupIntervalHandle: ReturnType<typeof setInterval> | null = null;
+let firstBackupHandle: ReturnType<typeof setTimeout> | null = null;
+// Una sola vez por sesión de Opera: un Reintentar o una restauración
+// vuelven a pasar por 'ready', y ahí ya manda el intervalo.
+let firstBackupScheduled = false;
+
+// Ver FIRST_BACKUP_DELAY_MS. runBackupIfDue() igual respeta el tope de 24
+// horas: abrir y cerrar Opera varias veces en el día no repite el respaldo.
+function scheduleFirstBackup(): void {
+  if (firstBackupScheduled) {
+    return;
+  }
+  firstBackupScheduled = true;
+  firstBackupHandle = setTimeout(() => {
+    firstBackupHandle = null;
+    if (currentStatus.state === 'ready') {
+      void runBackupIfDue();
+    }
+  }, FIRST_BACKUP_DELAY_MS);
+  firstBackupHandle.unref();
+}
 
 // Orquestado solo cuando !VITE_DEV_SERVER_URL (ver main.ts) -- en dev, el
 // backend se levanta a mano de la forma de siempre.
 export function initBackendManager(window: BrowserWindow): void {
   win = window;
+  firstBackupScheduled = false;
   ensureDockerOnPath();
   ipcMain.handle('backend:get-status', () => currentStatus);
   ipcMain.handle('backend:retry', () => start());
@@ -1159,6 +1315,10 @@ export async function shutdownBackend(): Promise<void> {
   if (backupIntervalHandle) {
     clearInterval(backupIntervalHandle);
     backupIntervalHandle = null;
+  }
+  if (firstBackupHandle) {
+    clearTimeout(firstBackupHandle);
+    firstBackupHandle = null;
   }
   // Esperar cualquier start()/backend:retry en vuelo ANTES de intentar
   // apagar -- sin esto, si alguien cierra la ventana justo mientras un

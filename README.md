@@ -269,9 +269,11 @@ arriba es el flujo manual para dev, contra el Postgres de
 producción), así que `backend-manager.ts` respalda sola, automáticamente,
 mientras Opera está abierta:
 
-- Corre cada 6 horas mientras la app sigue abierta (sin repetir antes de 24
-  horas desde el último éxito) — no hace falta ni Task Scheduler ni ninguna
-  acción manual.
+- Corre a los 5 minutos de que Opera queda lista y después cada 6 horas
+  mientras la app sigue abierta (sin repetir antes de 24 horas desde el
+  último éxito) — no hace falta ni Task Scheduler ni ninguna acción manual.
+  Antes solo existía el chequeo de las 6 horas, así que un día en que
+  Opera se cerraba antes no se respaldaba nada.
 - Guarda en `%APPDATA%\Opera\backups\opera-<fecha>.sql.gz`, dentro del
   perfil de la cuenta de Windows que usa Opera: otras cuentas sin permisos
   de administrador no pueden leerlos. (Hasta la ronda 6 iban a
@@ -388,24 +390,24 @@ El repo es público, así que el chequeo y la descarga de actualizaciones no nec
 
 Lo que necesita la PC donde se va a usar Opera:
 
-| Requisito      | Detalle                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------ |
-| Windows        | Windows 10 (22H2) u 11, de 64 bits. Sirve la edición Home.                                                   |
-| Memoria        | 8 GB de RAM recomendados (Docker Desktop reserva parte).                                                     |
-| Disco          | Unos 10 GB libres (Docker Desktop, la base de datos y los respaldos).                                        |
-| Virtualización | Activada en el BIOS/UEFI (Intel VT-x o AMD-V). El instalador avisa si está apagada.                          |
-| Internet       | Solo la primera vez que se abre Opera, para descargar la base de datos (unos 150 MB). Después no hace falta. |
+| Requisito      | Detalle                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows        | Windows 10 (22H2) u 11, de 64 bits. Sirve la edición Home.                                                                                                   |
+| Memoria        | 8 GB de RAM recomendados (Docker Desktop reserva parte).                                                                                                     |
+| Disco          | Unos 10 GB libres (Docker Desktop, la base de datos y los respaldos).                                                                                        |
+| Virtualización | Activada en el BIOS/UEFI (Intel VT-x o AMD-V). El instalador avisa si está apagada.                                                                          |
+| Internet       | Durante la instalación (descarga WSL de Microsoft) y la primera vez que se abre Opera, para descargar la base de datos (unos 150 MB). Después no hace falta. |
 
 Pasos:
 
 1. **Conseguir el instalador.** Descarga `Opera-Windows-<versión>-Setup.exe` del [Release de GitHub](https://github.com/TomasPosada0626/opera/releases) (o compílalo con `pnpm build`, queda en `packages/desktop/release/<versión>/`) y llévalo a la PC en una memoria USB.
 2. **Abrirlo.** Como el instalador no está firmado, Windows muestra "Windows protegió su PC": elige **Más información → Ejecutar de todas formas** (o fírmalo antes, ver [Firmar el instalador](#firmar-el-instalador)). Acepta el aviso de permisos de administrador.
 3. **Asistente.** Elige la carpeta y, en la página de Docker Desktop, deja marcadas las dos casillas (instalar Docker y crear el acceso directo). Si aparece el aviso de virtualización desactivada, sigue igual y actívala en el BIOS antes de abrir Opera.
-4. **Reinicios.** Si Windows necesita activar sus componentes de virtualización, la PC se reinicia sola a mitad de la instalación y, al volver a encender, la termina por su cuenta en unos minutos. Al terminar de instalar Docker Desktop, el instalador pide reiniciar: acepta (así la cuenta de Windows recibe el permiso para usar Docker).
+4. **Reinicios.** Si Windows necesita activar WSL y sus componentes de virtualización, la PC se reinicia sola a mitad de la instalación y, al volver a encender, instala Docker Desktop por su cuenta en unos minutos, sin nada en pantalla. Si se abre Opera mientras tanto, muestra "Terminando de instalar Docker Desktop" y espera. Al terminar de instalar Docker Desktop, el instalador pide reiniciar: acepta (así la cuenta de Windows recibe el permiso para usar Docker).
 5. **Primer arranque.** Abre Opera desde el acceso directo. La primera vez abre Docker Desktop por su cuenta, descarga y crea la base de datos y la prepara; la pantalla de arranque muestra en qué paso va. Puede tardar unos minutos solo esta vez. Docker Desktop puede mostrar su propia ventana de bienvenida: se puede cerrar (sigue funcionando en la bandeja) y no hace falta crear una cuenta de Docker.
 6. **Crear la cuenta.** Opera pide crear la cuenta de administrador (con un usuario como `herrajestoro`, no hace falta un correo) y después muestra el **código de recuperación**: anótalo en papel y guárdalo fuera del computador.
 7. **Cuenta de respaldo.** En **Usuarios → Nuevo usuario**, crea una segunda cuenta con rol ADMIN (por ejemplo `herrajestoro2`) con una contraseña distinta, guardada aparte. Si se pierden la contraseña y el código de la cuenta principal, desde la de respaldo se le pone una contraseña nueva con **Resetear contraseña**.
-8. **Listo.** Opera se abre sola cada vez que se hace doble clic en el acceso directo, aunque Docker Desktop esté cerrado. Los respaldos se hacen solos (uno por día, mientras Opera esté abierta) en `%APPDATA%\Opera\backups`; conviene copiar esa carpeta a una memoria USB o a la nube de vez en cuando.
+8. **Listo.** Opera se abre sola cada vez que se hace doble clic en el acceso directo, aunque Docker Desktop esté cerrado. Los respaldos se hacen solos (el primero del día a los 5 minutos de abrir Opera) en `%APPDATA%\Opera\backups`; como quedan en el mismo disco, conviene copiar esa carpeta a una memoria USB o a la nube una vez por semana.
 
 **Si ya había datos en otra PC**: en la PC anterior, copia el respaldo más reciente (`opera-<fecha>.sql.gz`) de `%APPDATA%\Opera\backups`. En la nueva, después de crear la cuenta, pégalo en esa misma carpeta y restáuralo desde el menú de usuario → **Respaldos**. Las cuentas y contraseñas pasan a ser las del respaldo.
 
@@ -421,7 +423,9 @@ Pasos:
 - **Opera dice que tu cuenta de Windows no tiene permiso para usar Docker**: el permiso (grupo `docker-users`) se aplica al iniciar sesión. Cierra sesión en Windows o reinicia la PC y vuelve a abrir Opera.
 - **La primera vez dice que no pudo crear la base de datos**: esa primera vez Opera descarga la imagen de PostgreSQL (unos 150 MB). Conecta la PC a internet y toca **Reintentar**; después ya no la necesita.
 - **No encuentro el Postgres de Opera en el puerto de siempre**: el Postgres que administra el instalador empaquetado corre en el puerto `5433` (contenedor `opera-postgres-app`), no en el `5432` de `docker-compose.yml` (dev) — a propósito, para que nunca colisionen en la misma PC.
-- **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` (errores de la app), `logs/opera-backend.log` (log rotado del backend) y `opera-secrets.json` respectivamente. Los respaldos automáticos están en `backups/` de esa misma carpeta. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano.
+- **Docker Desktop dice "WSL is not installed"**: falta el paquete de WSL, que el instalador descarga de Microsoft (necesita internet en ese momento). En PowerShell como administrador corre `wsl --install --no-distribution` (o `wsl --update`), reinicia la PC y abre Opera.
+- **Docker Desktop instalado a mano, fuera de `C:\Program Files\Docker`**: Opera lo encuentra igual a través del PATH de Windows (Docker agrega ahí su carpeta `resources\bin` al instalarse).
+- **¿Dónde queda el registro de errores o el `JWT_SECRET` de una instalación empaquetada?** En `app.getPath('userData')` de Electron (`%APPDATA%\Opera` en Windows) — `logs/opera-desktop.log` (errores de la app), `logs/opera-backend.log` (log rotado del backend) y `opera-secrets.json` respectivamente. Los respaldos automáticos están en `backups/` de esa misma carpeta. La app tiene un botón para exportar el log de errores sin tener que ir a buscarlo a mano. La 1.0.0 guardaba todo esto en `%APPDATA%\desktop` por un error de empaquetado; desde la 1.0.1, Opera lo copia sola a `%APPDATA%\Opera` la primera vez que abre (la carpeta vieja queda intacta).
 - **Otra PC de la red no se conecta al backend de la app empaquetada**: es a propósito. La app de escritorio arranca su backend escuchando solo en `127.0.0.1` (`HOST`), así que la API no queda expuesta al resto de la LAN; el renderer de la propia app es su único cliente.
 - **Se olvidó la contraseña y no hay correo configurado**: en la pantalla de login, "¿Olvidaste tu contraseña?" pide el correo de la cuenta y el código de recuperación que se anotó al crearla (o el último que se generó desde el menú de usuario).
 

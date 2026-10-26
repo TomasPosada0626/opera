@@ -15,11 +15,10 @@ initTheme();
 initErrorLogging();
 
 // Hidrata el cache del token desde `safeStorage` (IPC async) antes de
-// montar. La garantía real contra la carrera con `createHashRouter`
-// (dispara su loader inicial al crearse, en el import de arriba, antes
-// de que este await corra) vive en los loaders de router.tsx, que
-// esperan la misma promesa memoizada — esto solo evita un flash de UI
-// mientras esa hidratación está en curso.
+// montar. Los loaders de router.tsx igual esperan la misma promesa
+// memoizada (el router se crea recién cuando App lo monta, ver
+// getRouter) — esto solo evita un flash de UI mientras esa hidratación
+// está en curso.
 void (async () => {
   await initAuthToken();
 

@@ -16,6 +16,7 @@ import {
 } from './error-log-store';
 import { initAutoUpdater, restartAndInstall } from './updater';
 import { initBackendManager, shutdownBackend } from './backend-manager';
+import { migrateLegacyUserData } from './user-data-migration';
 
 // The built directory structure
 //
@@ -249,6 +250,10 @@ ipcMain.handle('error-log:report', (_event, entry: unknown) =>
 );
 ipcMain.handle('error-log:export', () => exportErrorLog());
 ipcMain.handle('updater:restart', () => restartAndInstall());
+
+// Antes que cualquier cosa lea o escriba en userData (el lock de instancia
+// única, el registro de errores, los secretos): ver user-data-migration.ts.
+migrateLegacyUserData();
 
 // Una sola Opera a la vez: un segundo doble clic en el acceso directo
 // levantaba otra ventana con su propio backend, que chocaba con el primero
