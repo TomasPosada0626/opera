@@ -31,6 +31,20 @@
 ; ningún prompt ni ventana visible -- y retoma la instalación en modo
 ; silencioso (/OperaResume /S) justo donde quedó.
 ;
+; Lo que aprendimos en la primera PC real (2026-10-26), que este archivo ya
+; corrige:
+;   - Este instalador es de 32 bits: `dism.exe` y `wsl.exe` a secas
+;     resolvían a C:\Windows\SysWOW64, y el dism de 32 bits se niega a
+;     tocar un Windows de 64 bits (error 11). WSL nunca se activaba y el
+;     reinicio nunca se programaba. Ahora van por $NativeSystemDir.
+;   - Activar las features con dism ya no alcanza: desde Windows 11 22H2,
+;     WSL es un paquete aparte (`wsl --install --no-distribution`). Sin él,
+;     Docker Desktop abría con "WSL is not installed".
+;   - La corrida de resume REINSTALA Opera, y la reinstalación vacía
+;     $INSTDIR: las marcas de consentimiento/usuario que vivían ahí
+;     desaparecían y el resume se salteaba Docker. Ahora viven en
+;     %ProgramData%\Opera\setup (ver PrepareSetupStateDir).
+;
 ; Contraseña de Postgres: tiene que ser UNA SOLA POR MÁQUINA, coordinada con
 ; el contenedor Docker (también por máquina) -- nunca generada por
 ; electron/backend-manager.ts en el primer arranque de cada cuenta de
@@ -40,7 +54,7 @@
 ; antes de que exista cualquier contenedor todavía), en la carpeta
 ; ProgramData de Windows (resuelta en runtime -- ver ProvisionPostgresSecret
 ; más abajo, NSIS no tiene una constante fija para esa ruta), con permisos
-; restringidos vía icacls -- mismo patrón que RESUME_EXE_PATH más abajo. Ver
+; restringidos vía icacls -- mismo patrón que PrepareSetupStateDir más abajo. Ver
 ; el comentario espejo en backend-manager.ts
 ; (ensureMachineWidePostgresPassword) para el resto del razonamiento
 ; (auditoría 2026-09-05, ronda 4).
@@ -70,6 +84,12 @@
   ; interactiva normal -- seteada en customInit, mucho antes de que exista
   ; ninguna página del wizard.
   Var IsResumeInstall
+  ; C:\Windows\System32 de verdad (el de 64 bits): este instalador es de 32
+  ; bits, y para él "System32" es SysWOW64 -- ver customInit.
+  Var NativeSystemDir
+  ; %ProgramData%\Opera\setup: lo que la corrida de resume necesita
+  ; encontrar después del reinicio (ver PrepareSetupStateDir).
+  Var SetupStateDir
 !endif
 
 !macro customInit
@@ -81,6 +101,23 @@
   ${Else}
     StrCpy $IsResumeInstall "1"
   ${EndIf}
+
+  ; "Sysnative" es el alias que Windows le da a un proceso de 32 bits para
+  ; llegar al System32 real; solo existe en un Windows de 64 bits.
+  StrCpy $NativeSystemDir "$WINDIR\System32"
+  ${If} ${FileExists} "$WINDIR\Sysnative\cmd.exe"
+    StrCpy $NativeSystemDir "$WINDIR\Sysnative"
+  ${EndIf}
+
+  ; Misma cadena de respaldo que ProvisionPostgresSecret más abajo.
+  ExpandEnvStrings $R0 "%ProgramData%"
+  ${If} $R0 == "%ProgramData%"
+    ExpandEnvStrings $R0 "%ALLUSERSPROFILE%"
+    ${If} $R0 == "%ALLUSERSPROFILE%"
+      StrCpy $R0 "C:\ProgramData"
+    ${EndIf}
+  ${EndIf}
+  StrCpy $SetupStateDir "$R0\Opera\setup"
 !macroend
 
 !macro customPageAfterChangeDir
@@ -123,7 +160,7 @@
       ; (auditoría 2026-09-01, ronda 2, datos/legal P2). Herrajes Toro (el
       ; uso real de este instalador) califica como "empresa pequeña" bajo
       ; esa licencia -- ver ADR 0008.
-      ${NSD_CreateLabel} 0 0 100% 54u "Opera guarda su información con Docker Desktop, que no está instalado en esta PC. Este instalador ya lo trae incluido: deja marcada la primera casilla para instalarlo ahora. Al hacerlo aceptas la licencia de Docker Desktop (docker.com/legal/docker-subscription-service-agreement). Si Windows lo necesita, la PC se reinicia sola y la instalación sigue después."
+      ${NSD_CreateLabel} 0 0 100% 54u "Opera guarda su información con Docker Desktop, que no está instalado en esta PC. Este instalador ya lo trae incluido: deja marcada la primera casilla para instalarlo ahora (necesita internet para descargar WSL de Microsoft). Al hacerlo aceptas la licencia de Docker Desktop (docker.com/legal/docker-subscription-service-agreement). Si Windows lo necesita, la PC se reinicia sola y la instalación sigue después."
       Pop $0
       ${NSD_CreateCheckbox} 0 58u 100% 12u "Instalar Docker Desktop (acepto su licencia)"
       Pop $DockerCheckbox
@@ -181,6 +218,7 @@
     ${EndIf}
 
     ${If} $DockerCheckboxState == ${BST_CHECKED}
+      !insertmacro PrepareSetupStateDir
       ; Se escribe ANTES de instalar -- es lo único que la corrida de resume
       ; (potencialmente días después, tras un reinicio) puede consultar para
       ; confirmar que esta decisión de verdad se tomó acá, tildando el
@@ -213,18 +251,32 @@
 ; Copia estable del propio instalador para que la tarea programada tenga algo
 ; que ejecutar después del reinicio aunque $EXEPATH (de dónde se lanzó
 ; originalmente, ej. un pendrive) ya no esté disponible.
-!define RESUME_EXE_PATH "$INSTDIR\resources\OperaSetupResume.exe"
+!define RESUME_EXE_PATH "$SetupStateDir\OperaSetupResume.exe"
 
 ; Prueba de que la corrida interactiva tildó el checkbox de Docker antes de
 ; programar el reinicio -- la corrida de resume la exige antes de instalar
-; Docker en silencio (ver customInstall). Vive junto al resto de los
-; artefactos temporales de esta instalación, se borra en CleanupResumeTask.
-!define DOCKER_CONSENT_MARKER "$INSTDIR\resources\.docker-consent-given"
+; Docker en silencio (ver customInstall). Se borra en CleanupResumeTask.
+!define DOCKER_CONSENT_MARKER "$SetupStateDir\docker-consent-given"
 
 ; La cuenta de Windows que va a usar Opera, anotada en la corrida
 ; interactiva: la corrida de resume corre como SYSTEM tras el reinicio y no
 ; tiene forma de saber quién instaló. Se borra en CleanupResumeTask.
-!define DOCKER_USER_MARKER "$INSTDIR\resources\.docker-user"
+!define DOCKER_USER_MARKER "$SetupStateDir\docker-user"
+
+; La carpeta de las marcas y de la copia del instalador, fuera de $INSTDIR
+; (la corrida de resume reinstala Opera y vacía $INSTDIR antes de llegar a
+; customInstall). Se arma de cero y se restringe a SYSTEM/Administradores
+; ANTES de escribir nada: la tarea programada ejecuta como SYSTEM lo que
+; haya ahí, así que una cuenta común no debe poder tocarlo. Borrarla
+; primero descarta una carpeta que alguien haya creado antes con sus
+; propios permisos. Los SID en vez de nombres: no dependen del idioma de
+; Windows.
+!macro PrepareSetupStateDir
+  RMDir /r "$SetupStateDir"
+  CreateDirectory "$SetupStateDir"
+  nsExec::ExecToLog 'icacls "$SetupStateDir" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)(F) *S-1-5-32-544:(OI)(CI)(F)'
+  Pop $0
+!macroend
 
 ; Si la virtualización está apagada en el BIOS, Docker Desktop se instala
 ; bien pero nunca arranca. Se avisa ANTES de instalar, en la página de
@@ -324,22 +376,21 @@
     ${If} $0 == "0"
     ${AndIf} $1 != ""
       ; Ventana TOCTOU aceptada (auditoría 2026-09-06, ronda 5, Seguridad
-      ; P2, mismo criterio que ScheduleResumeAndReboot más abajo): entre
-      ; este FileWrite y el icacls que sigue, el archivo existe un instante
-      ; con la contraseña en texto plano y el ACL heredado (sin restringir
-      ; todavía) de la carpeta recién creada. Más sensible que el TOCTOU ya
-      ; aceptado ahí (ese es sobre un .exe, no sobre un secreto). Explotarla
-      ; exige monitorear activamente la creación de este archivo durante un
-      ; UAC que la mayoría ve terminar en segundos -- riesgo bajo, aceptado
-      ; en vez de dejarlo implícito.
+      ; P2): entre este FileWrite y el icacls que sigue, el archivo existe
+      ; un instante con la contraseña en texto plano y el ACL heredado (sin
+      ; restringir todavía) de la carpeta recién creada. Explotarla exige
+      ; monitorear activamente la creación de este archivo durante un UAC
+      ; que la mayoría ve terminar en segundos -- riesgo bajo, aceptado en
+      ; vez de dejarlo implícito. (La copia del instalador para el resume ya
+      ; no tiene esta ventana: ver PrepareSetupStateDir.)
       FileOpen $2 "$R2" w
       FileWrite $2 '{"postgresPassword":"$1"}'
       FileClose $2
 
       ; SYSTEM/Administradores control total, cuentas locales comunes (Users,
       ; SID S-1-5-32-545) solo lectura -- necesitan poder leerlo para que
-      ; Opera arranque en esa cuenta, pero no para modificarlo. Mismo patrón
-      ; que RESUME_EXE_PATH más abajo.
+      ; Opera arranque en esa cuenta, pero no para modificarlo. Mismos SID
+      ; que PrepareSetupStateDir más abajo.
       nsExec::ExecToLog 'icacls "$R2" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F) *S-1-5-32-545:(R)'
       Pop $0
     ${Else}
@@ -349,21 +400,49 @@
 !macroend
 
 !macro InstallDockerDesktop
+  ; ¿WSL ya funciona? `wsl --status` sale con 0 solo si el paquete de WSL
+  ; está instalado y operativo. Solo en la corrida interactiva: la de resume
+  ; corre como SYSTEM, donde `wsl` no es confiable, y para entonces todo lo
+  ; de WSL ya se hizo antes del reinicio (preguntarlo ahí podía pedir otro
+  ; reinicio, y otro, para siempre).
+  StrCpy $3 "0"
+  ${If} $IsResumeInstall != "1"
+    nsExec::ExecToLog '"$NativeSystemDir\wsl.exe" --status'
+    Pop $3
+  ${EndIf}
+
   DetailPrint "Opera: activando Windows Subsystem for Linux..."
-  nsExec::ExecToLog 'dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart'
+  nsExec::ExecToLog '"$NativeSystemDir\dism.exe" /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart'
   Pop $1
 
   DetailPrint "Opera: activando Virtual Machine Platform..."
-  nsExec::ExecToLog 'dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart'
+  nsExec::ExecToLog '"$NativeSystemDir\dism.exe" /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart'
   Pop $0
+
+  ; El paquete de WSL en sí, que las features de arriba no traen. Lo baja
+  ; de Microsoft (necesita internet). `--update` es el respaldo para un
+  ; Windows cuyo wsl.exe no conoce --no-distribution.
+  ${If} $3 != "0"
+    DetailPrint "Opera: instalando WSL (lo descarga de Microsoft, puede tardar unos minutos)..."
+    nsExec::ExecToLog '"$NativeSystemDir\wsl.exe" --install --no-distribution'
+    Pop $4
+    ${If} $4 != "0"
+      nsExec::ExecToLog '"$NativeSystemDir\wsl.exe" --update'
+      Pop $4
+    ${EndIf}
+    DetailPrint "Opera: la instalación de WSL terminó con código $4"
+  ${EndIf}
 
   ; Hay que reiniciar ANTES de instalar Docker Desktop, no después: hasta que
   ; Windows no reinicia, las features recién activadas por dism no quedan
   ; realmente funcionando -- instalar Docker con --backend=wsl2 en ese estado
   ; (WSL "activado" en el registro pero no operativo todavía) es lo que hacía
-  ; fallar la instalación completa en una PC que nunca tuvo WSL.
+  ; fallar la instalación completa en una PC que nunca tuvo WSL. Lo mismo si
+  ; WSL no funcionaba al empezar: lo que se acaba de instalar recién queda
+  ; activo después del reinicio.
   ${If} $1 == ${DISM_REBOOT_REQUIRED}
   ${OrIf} $0 == ${DISM_REBOOT_REQUIRED}
+  ${OrIf} $3 != "0"
     !insertmacro ScheduleResumeAndReboot
     Return
   ${EndIf}
@@ -371,6 +450,17 @@
   DetailPrint "Opera: instalando Docker Desktop (puede tardar varios minutos)..."
   ExecWait '"$INSTDIR\resources\docker\Docker Desktop Installer.exe" install --quiet --accept-license --backend=wsl2' $2
   DetailPrint "Opera: instalador de Docker Desktop terminó con código $2"
+
+  ; Antes se seguía igual y se decía "Docker Desktop quedó instalado" aunque
+  ; su instalador hubiera fallado. 3010 = terminó bien pero pide reiniciar.
+  ${If} $2 != "0"
+  ${AndIf} $2 != ${DISM_REBOOT_REQUIRED}
+    !insertmacro CleanupResumeTask
+    ${If} $IsResumeInstall != "1"
+      MessageBox MB_OK|MB_ICONEXCLAMATION "No se pudo instalar Docker Desktop (código $2). Opera sí quedó instalada: descarga Docker Desktop de docker.com/products/docker-desktop, instálalo, reinicia la PC y abre Opera."
+    ${EndIf}
+    Return
+  ${EndIf}
 
   !insertmacro GrantDockerAccess
   !insertmacro CleanupResumeTask
@@ -396,32 +486,14 @@
   ; Si ya estamos en la corrida de resume, $EXEPATH ya ES la copia estable --
   ; copiarla sobre sí misma no hace falta (y podría fallar).
   ${If} $IsResumeInstall != "1"
+    ; La tarea programada de más abajo ejecuta este .exe como SYSTEM sin
+    ; ningún prompt: si una cuenta común pudiera reemplazarlo antes del
+    ; reinicio, sería una escalación de privilegios completa (auditoría
+    ; 2026-09-03, ronda 3). Vive en $SetupStateDir, que PrepareSetupStateDir
+    ; ya dejó restringida a SYSTEM/Administradores ANTES de esta copia: el
+    ; archivo nace con ese ACL heredado, sin la ventana TOCTOU que tenía
+    ; cuando se copiaba a $INSTDIR y se restringía después.
     CopyFiles /SILENT "$EXEPATH" "${RESUME_EXE_PATH}"
-
-    ; $INSTDIR es elegible por quien instala (allowToChangeInstallationDirectory
-    ; en electron-builder.json5) -- si se instala fuera de "Program Files" (p.
-    ; ej. una carpeta bajo Users\Public, escribible por cualquier cuenta local
-    ; por defecto), cualquier usuario sin privilegios podría reemplazar este
-    ; .exe antes del reinicio, y la tarea programada de más abajo lo ejecuta
-    ; como SYSTEM sin ningún prompt -- escalación de privilegios completa
-    ; (auditoría 2026-09-03, ronda 3). /inheritance:r corta la herencia de
-    ; permisos de la carpeta contenedora; los SID están en inglés (S-1-5-18 =
-    ; SYSTEM, S-1-5-32-544 = Administradores) para no depender del idioma de
-    ; Windows.
-    nsExec::ExecToLog 'icacls "${RESUME_EXE_PATH}" /inheritance:r /grant:r *S-1-5-18:(F) *S-1-5-32-544:(F)'
-    Pop $0
-    ; Riesgo residual ACEPTADO, no eliminado (auditoría 2026-09-05, ronda 4,
-    ; Seguridad P3): entre el CopyFiles de arriba y el icacls de acá, el
-    ; archivo existe brevemente con el ACL heredado de la carpeta
-    ; contenedora, sin restringir todavía -- una ventana TOCTOU real, aunque
-    ; angosta (milisegundos, sin ningún Sleep/yield entre las dos
-    ; instrucciones). AccessControl.nsh (que permitiría crear el archivo ya
-    ; con el ACL final, sin ventana) NO viene incluido en el NSIS que trae
-    ; electron-builder (nsis-3.0.4.1 -- confirmado revisando su carpeta
-    ; Include/, es un plugin aparte que no se descarga). Explotar esta
-    ; ventana exige monitorear activamente la creación de este archivo
-    ; durante un UAC que la mayoría ve terminar en segundos -- riesgo bajo,
-    ; documentado acá en vez de dejarlo implícito.
   ${EndIf}
 
   ; /RU SYSTEM: sin contraseña que guardar, y SYSTEM ya cuenta como admin
@@ -444,7 +516,10 @@
 !macro CleanupResumeTask
   nsExec::ExecToLog 'schtasks.exe /Delete /F /TN "${RESUME_TASK_NAME}"'
   Pop $0
-  Delete "${RESUME_EXE_PATH}"
+  ; /REBOOTOK: en la corrida de resume, la copia del instalador es el
+  ; propio proceso que está corriendo -- Windows la borra al reiniciar.
+  Delete /REBOOTOK "${RESUME_EXE_PATH}"
   Delete "${DOCKER_CONSENT_MARKER}"
   Delete "${DOCKER_USER_MARKER}"
+  RMDir /REBOOTOK "$SetupStateDir"
 !macroend
