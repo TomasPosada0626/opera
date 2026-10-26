@@ -9,6 +9,7 @@ import { Pagination } from '../components/ui/Pagination';
 import { CompleteOrderAction } from '../components/production/CompleteOrderAction';
 import { ProductionOrderForm } from '../components/production/ProductionOrderForm';
 import { useProductionOrders } from '../hooks/useProductionOrders';
+import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 import { getCurrentUser } from '../lib/current-user';
 import { formatDate, formatMoney, formatQuantity } from '../lib/format';
 import type {
@@ -39,6 +40,7 @@ function ProductionOrdersPage() {
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
 
   const ordersQuery = useProductionOrders({ page, pageSize: PAGE_SIZE });
+  const showWarehouses = useHasSeveralWarehouses();
   const orders = ordersQuery.data?.data ?? [];
 
   const columns: DataTableColumn<ProductionOrder>[] = [
@@ -60,14 +62,18 @@ function ProductionOrdersPage() {
         </div>
       ),
     },
-    {
-      key: 'warehouse',
-      header: 'Bodega',
-      className: 'whitespace-nowrap',
-      render: (order) => (
-        <span className="text-ink-secondary">{order.warehouse.name}</span>
-      ),
-    },
+    ...(showWarehouses
+      ? [
+          {
+            key: 'warehouse',
+            header: 'Bodega',
+            className: 'whitespace-nowrap',
+            render: (order: ProductionOrder) => (
+              <span className="text-ink-secondary">{order.warehouse.name}</span>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'quantity',
       header: 'Cantidad',

@@ -19,11 +19,14 @@ describe('DashboardService', () => {
   let prisma: {
     productionOrder: { groupBy: jest.Mock };
     order: { groupBy: jest.Mock; findMany: jest.Mock; count: jest.Mock };
-    supplierPurchase: { findMany: jest.Mock };
+    purchaseOrder: { findMany: jest.Mock };
     remission: { aggregate: jest.Mock };
   };
   let inventory: { getLowStockProducts: jest.Mock };
-  let reports: { getInventoryReport: jest.Mock };
+  let reports: {
+    getInventoryReport: jest.Mock;
+    getPayablesReport: jest.Mock;
+  };
   let audit: { getRecent: jest.Mock };
   let service: DashboardService;
 
@@ -31,11 +34,14 @@ describe('DashboardService', () => {
     prisma = {
       productionOrder: { groupBy: jest.fn() },
       order: { groupBy: jest.fn(), findMany: jest.fn(), count: jest.fn() },
-      supplierPurchase: { findMany: jest.fn() },
+      purchaseOrder: { findMany: jest.fn() },
       remission: { aggregate: jest.fn() },
     };
     inventory = { getLowStockProducts: jest.fn() };
-    reports = { getInventoryReport: jest.fn() };
+    reports = {
+      getInventoryReport: jest.fn(),
+      getPayablesReport: jest.fn().mockResolvedValue([]),
+    };
     audit = { getRecent: jest.fn() };
     service = new DashboardService(
       prisma as unknown as PrismaService,
@@ -52,7 +58,7 @@ describe('DashboardService', () => {
       _sum: { total: null, amountPaid: null },
       _count: 0,
     });
-    prisma.supplierPurchase.findMany.mockResolvedValue([]);
+    prisma.purchaseOrder.findMany.mockResolvedValue([]);
     inventory.getLowStockProducts.mockResolvedValue([]);
     reports.getInventoryReport.mockResolvedValue([]);
     audit.getRecent.mockResolvedValue([]);
@@ -182,14 +188,15 @@ describe('DashboardService', () => {
     });
   });
 
-  it('flattens recent purchases to supplier/product names', async () => {
-    prisma.supplierPurchase.findMany.mockResolvedValue([
+  it('flattens recent purchases to their number, supplier and total', async () => {
+    prisma.purchaseOrder.findMany.mockResolvedValue([
       {
         id: 'purchase-1',
+        number: 4,
+        status: 'PARCIAL',
         supplier: { id: 's1', name: 'Maderas del Sur' },
-        product: { id: 'p1', sku: 'MP-1', name: 'Tabla de pino' },
-        quantity: new Prisma.Decimal(10),
-        unitCost: new Prisma.Decimal(5),
+        _count: { items: 3 },
+        total: new Prisma.Decimal(50),
         purchasedAt: new Date('2026-08-01'),
       },
     ]);
@@ -199,13 +206,26 @@ describe('DashboardService', () => {
     expect(result.recentPurchases).toEqual([
       {
         id: 'purchase-1',
+        number: 4,
         supplierName: 'Maderas del Sur',
-        productName: 'Tabla de pino',
-        quantity: new Prisma.Decimal(10),
-        unitCost: new Prisma.Decimal(5),
+        status: 'PARCIAL',
+        itemCount: 3,
+        total: new Prisma.Decimal(50),
         purchasedAt: new Date('2026-08-01'),
       },
     ]);
+  });
+
+  it('adds up what is owed to suppliers from the payables report', async () => {
+    reports.getPayablesReport.mockResolvedValue([
+      { balance: new Prisma.Decimal(1200), purchaseOrderCount: 2 },
+      { balance: new Prisma.Decimal(300), purchaseOrderCount: 1 },
+    ]);
+
+    const result = await service.getSummary();
+
+    expect(result.payables.total.toNumber()).toBe(1500);
+    expect(result.payables.purchaseOrderCount).toBe(3);
   });
 
   it('computes each recent sale total from its order items', async () => {

@@ -1,6 +1,11 @@
 import type { DashboardSummary } from '../types/dashboard';
 import type { PaginatedResult } from '../types/product';
 import type { Order, Remission, RemissionPayment } from '../types/order';
+import type {
+  PurchaseOrder,
+  PurchaseOrderItem,
+  SupplierPayment,
+} from '../types/purchase-order';
 
 // Datos de prueba compartidos por los tests de pedidos/remisiones/dashboard
 // — antes cada archivo armaba su propio Order completo a mano y cualquier
@@ -117,10 +122,77 @@ export function buildDashboardSummary(
     },
     overdueOrders: { count: 0, orders: [] },
     receivables: { total: '0', remissionCount: 0 },
+    payables: { total: '0', purchaseOrderCount: 0 },
     recentPurchases: [],
     recentSales: [],
     recentActivity: [],
     recentWarnings: 0,
+    ...overrides,
+  };
+}
+
+export function buildPurchaseItem(
+  overrides: Partial<PurchaseOrderItem> = {},
+): PurchaseOrderItem {
+  return {
+    id: 'po-item-1',
+    productId: 'product-1',
+    quantity: '10',
+    unitCost: '500',
+    quantityReceived: '0',
+    position: 0,
+    product: {
+      id: 'product-1',
+      sku: 'MP-ACR-18',
+      name: 'Lámina de acero',
+      unit: { abbreviation: 'kg' },
+    },
+    receipts: [],
+    ...overrides,
+  };
+}
+
+export function buildSupplierPayment(
+  overrides: Partial<SupplierPayment> = {},
+): SupplierPayment {
+  return {
+    id: 'supplier-payment-1',
+    amount: '1000',
+    method: 'TRANSFERENCIA',
+    paidAt: '2026-10-20T12:00:00.000Z',
+    note: null,
+    voidedAt: null,
+    voidReason: null,
+    user: { id: 'user-1', name: 'Admin' },
+    ...overrides,
+  };
+}
+
+export function buildPurchaseOrder(
+  overrides: Partial<PurchaseOrder> = {},
+): PurchaseOrder {
+  return {
+    id: 'po-1',
+    number: 7,
+    status: 'PENDIENTE',
+    purchasedAt: '2026-10-18T12:00:00.000Z',
+    expectedDate: null,
+    supplierInvoice: null,
+    notes: null,
+    total: '5000',
+    amountPaid: '0',
+    tracksPayment: true,
+    closedAt: null,
+    cancelledAt: null,
+    supplier: { id: 'supplier-1', name: 'Aceros de Colombia S.A.' },
+    warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
+    user: { id: 'user-1', name: 'Admin' },
+    items: [buildPurchaseItem()],
+    payments: [],
+    receivedValue: '0',
+    payable: '0',
+    paymentStatus: 'PENDIENTE',
+    createdAt: '2026-10-18T12:00:00.000Z',
     ...overrides,
   };
 }

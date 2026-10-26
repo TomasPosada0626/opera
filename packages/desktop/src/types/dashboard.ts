@@ -1,3 +1,4 @@
+import type { PurchaseOrderStatus } from './purchase-order';
 import type { OrderStatus } from './order';
 
 export interface DashboardSummary {
@@ -34,12 +35,18 @@ export interface DashboardSummary {
     total: string;
     remissionCount: number;
   };
+  // Lo recibido de proveedores que todavía no se les ha pagado.
+  payables: {
+    total: string;
+    purchaseOrderCount: number;
+  };
   recentPurchases: {
     id: string;
+    number: number;
     supplierName: string;
-    productName: string;
-    quantity: string;
-    unitCost: string;
+    status: PurchaseOrderStatus;
+    itemCount: number;
+    total: string;
     purchasedAt: string;
   }[];
   recentSales: {

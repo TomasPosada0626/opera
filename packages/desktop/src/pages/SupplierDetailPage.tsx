@@ -1,34 +1,55 @@
 import { useState } from 'react';
-import { FileSpreadsheet, Mail, Phone, Plus } from 'lucide-react';
-import { useParams } from 'react-router';
+import {
+  FileSpreadsheet,
+  HandCoins,
+  Mail,
+  PackageOpen,
+  Phone,
+  Plus,
+  Wallet,
+} from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
+import { DetailLink } from '../components/ui/DetailLink';
+import { KPICard } from '../components/ui/KPICard';
 import { DeleteSupplierProductAction } from '../components/suppliers/DeleteSupplierProductAction';
-import { ReceivePurchaseAction } from '../components/suppliers/ReceivePurchaseAction';
 import { SupplierProductForm } from '../components/suppliers/SupplierProductForm';
-import { SupplierPurchaseForm } from '../components/suppliers/SupplierPurchaseForm';
+import {
+  PurchaseStatusBadge,
+  SupplierPaymentBadge,
+} from '../components/purchases/PurchaseBadges';
+import { PurchaseOrderForm } from '../components/purchases/PurchaseOrderForm';
 import { useSupplier } from '../hooks/useSupplier';
 import { useSupplierProducts } from '../hooks/useSupplierProducts';
-import { useSupplierPurchases } from '../hooks/useSupplierPurchases';
+import {
+  usePurchaseOrders,
+  useSupplierBalance,
+} from '../hooks/usePurchaseOrders';
 import { getCurrentUser } from '../lib/current-user';
 import { downloadFile } from '../lib/download-file';
-import { formatDate, formatMoney, formatQuantity } from '../lib/format';
+import { formatDate, formatMoney } from '../lib/format';
 
 function SupplierDetailPage() {
   const { supplierId } = useParams<{ supplierId: string }>();
   const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
+  const navigate = useNavigate();
 
   const supplierQuery = useSupplier(supplierId ?? '');
   const supplier = supplierQuery.data;
   const productsQuery = useSupplierProducts({ supplierId: supplierId ?? '' });
-  const purchasesQuery = useSupplierPurchases({
-    supplierId: supplierId ?? '',
+  const purchasesQuery = usePurchaseOrders({
+    page: 1,
+    pageSize: 20,
+    supplierId: supplierId ?? undefined,
   });
+  const balanceQuery = useSupplierBalance(supplierId ?? '');
+  const balance = balanceQuery.data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,6 +106,35 @@ function SupplierDetailPage() {
 
       {supplier && (
         <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <KPICard
+              icon={HandCoins}
+              label="Por pagar"
+              value={balance ? formatMoney(balance.payable) : '—'}
+              hint="De lo que ya llegó"
+              variant={
+                balance && Number(balance.payable) > 0 ? 'danger' : 'neutral'
+              }
+            />
+            <KPICard
+              icon={PackageOpen}
+              label="Comprado"
+              value={balance ? formatMoney(balance.totalPurchased) : '—'}
+              hint={
+                balance
+                  ? `Recibido: ${formatMoney(balance.totalReceived)}`
+                  : undefined
+              }
+              variant="neutral"
+            />
+            <KPICard
+              icon={Wallet}
+              label="Pagado"
+              value={balance ? formatMoney(balance.totalPaid) : '—'}
+              variant="neutral"
+            />
+          </div>
+
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-ink text-lg font-medium">
@@ -146,16 +196,14 @@ function SupplierDetailPage() {
 
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-ink text-lg font-medium">
-                Bitácora de compras
-              </h2>
-              {isAdmin && (
+              <h2 className="text-ink text-lg font-medium">Compras</h2>
+              {isAdmin && supplier.isActive && (
                 <Button
                   variant="secondary"
                   onClick={() => setIsPurchaseModalOpen(true)}
                 >
                   <Plus className="h-4 w-4" />
-                  Registrar compra
+                  Nueva compra
                 </Button>
               )}
             </div>
@@ -168,26 +216,12 @@ function SupplierDetailPage() {
               <Card className="p-0">
                 <table className="w-full text-left text-sm">
                   <thead>
-                    <tr className="border-line bg-chrome-strong border-b">
-                      <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
-                        Fecha
-                      </th>
-                      <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
-                        Producto
-                      </th>
-                      <th className="text-ink-muted px-4 py-3 text-right text-xs font-medium tracking-wide uppercase">
-                        Cantidad
-                      </th>
-                      <th className="text-ink-muted px-4 py-3 text-right text-xs font-medium tracking-wide uppercase">
-                        Costo unitario
-                      </th>
-                      <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
-                        Registrado por
-                      </th>
-                      <th className="text-ink-muted px-4 py-3 text-xs font-medium tracking-wide uppercase">
-                        Estado
-                      </th>
-                      {isAdmin && <th className="px-4 py-3" />}
+                    <tr className="border-line bg-chrome-strong text-ink-muted border-b text-[11px] font-semibold tracking-[0.08em] uppercase">
+                      <th className="px-4 py-3">Compra</th>
+                      <th className="px-4 py-3">Estado</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3">Pago</th>
+                      <th className="w-10 px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -196,35 +230,44 @@ function SupplierDetailPage() {
                         key={purchase.id}
                         className="border-line border-b last:border-b-0"
                       >
-                        <td className="text-ink px-4 py-3">
-                          {formatDate(purchase.purchasedAt)}
-                        </td>
-                        <td className="text-ink px-4 py-3">
-                          {purchase.product.sku} — {purchase.product.name}
-                        </td>
-                        <td className="text-ink px-4 py-3 text-right figures">
-                          {formatQuantity(purchase.quantity)}
-                        </td>
-                        <td className="text-ink px-4 py-3 text-right figures">
-                          {formatMoney(purchase.unitCost)}
-                        </td>
-                        <td className="text-ink-muted px-4 py-3">
-                          {purchase.user.name}
+                        <td className="px-4 py-3">
+                          <Link
+                            to={`/compras/${purchase.id}`}
+                            className="text-ink hover:text-accent figures font-semibold transition-colors"
+                          >
+                            #{purchase.number}
+                          </Link>
+                          <p className="text-ink-faint text-xs whitespace-nowrap">
+                            {formatDate(purchase.purchasedAt)} ·{' '}
+                            {purchase.items.length === 1
+                              ? purchase.items[0].product.name
+                              : `${purchase.items.length} productos`}
+                          </p>
                         </td>
                         <td className="px-4 py-3">
-                          {purchase.receivedAt ? (
-                            <Badge variant="success">Recibida</Badge>
-                          ) : (
-                            <Badge variant="warning">Pendiente</Badge>
-                          )}
+                          <PurchaseStatusBadge status={purchase.status} />
                         </td>
-                        {isAdmin && (
-                          <td className="px-4 py-3 text-right">
-                            {!purchase.receivedAt && purchase.warehouse && (
-                              <ReceivePurchaseAction purchaseId={purchase.id} />
+                        <td className="figures text-ink px-4 py-3 text-right font-medium whitespace-nowrap">
+                          {formatMoney(purchase.total)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col items-start gap-1">
+                            <SupplierPaymentBadge
+                              status={purchase.paymentStatus}
+                            />
+                            {Number(purchase.payable) > 0 && (
+                              <span className="figures text-danger text-xs whitespace-nowrap">
+                                Debe {formatMoney(purchase.payable)}
+                              </span>
                             )}
-                          </td>
-                        )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <DetailLink
+                            to={`/compras/${purchase.id}`}
+                            label={`Ver detalle de la compra ${purchase.number}`}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -247,12 +290,17 @@ function SupplierDetailPage() {
 
           {isPurchaseModalOpen && (
             <Modal
-              title="Registrar compra"
+              title="Nueva compra"
+              description={`${supplier.name} · El inventario no se mueve hasta recibir la mercancía.`}
+              size="lg"
               onClose={() => setIsPurchaseModalOpen(false)}
             >
-              <SupplierPurchaseForm
+              <PurchaseOrderForm
                 supplierId={supplier.id}
-                onSuccess={() => setIsPurchaseModalOpen(false)}
+                onSuccess={(order) => {
+                  setIsPurchaseModalOpen(false);
+                  void navigate(`/compras/${order.id}`);
+                }}
               />
             </Modal>
           )}

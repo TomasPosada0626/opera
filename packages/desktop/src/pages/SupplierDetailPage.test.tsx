@@ -17,11 +17,9 @@ import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
 import { downloadFile } from '../lib/download-file';
 import type { PaginatedResult } from '../types/product';
-import type {
-  Supplier,
-  SupplierProduct,
-  SupplierPurchase,
-} from '../types/supplier';
+import type { Supplier, SupplierProduct } from '../types/supplier';
+import type { PurchaseOrder } from '../types/purchase-order';
+import { buildPurchaseOrder } from '../test/factories';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
@@ -80,20 +78,42 @@ function paginated<T>(data: T[]): PaginatedResult<T> {
   };
 }
 
+const balance = {
+  totalPurchased: '9500',
+  totalReceived: '7500',
+  totalPaid: '5000',
+  payable: '2500',
+};
+
+// GETs de la ficha y del formulario de compra (que lista proveedores y
+// bodegas); cualquier escritura no esperada falla el test.
+function detailGet(
+  path: string,
+  products: SupplierProduct[],
+  purchases: PurchaseOrder[],
+) {
+  if (path === '/suppliers/supplier-1') return Promise.resolve(supplier);
+  if (path === '/suppliers/supplier-1/balance') return Promise.resolve(balance);
+  if (path.startsWith('/suppliers?'))
+    return Promise.resolve(paginated([supplier]));
+  if (path.startsWith('/supplier-products'))
+    return Promise.resolve(paginated(products));
+  if (path.startsWith('/purchase-orders'))
+    return Promise.resolve(paginated(purchases));
+  if (path.startsWith('/warehouses'))
+    return Promise.resolve([{ id: 'warehouse-1', name: 'Bodega principal' }]);
+  return Promise.reject(new Error(`Unexpected GET: ${path}`));
+}
+
 function mockDetailGets(
   products: SupplierProduct[] = [],
-  purchases: SupplierPurchase[] = [],
+  purchases: PurchaseOrder[] = [],
 ) {
   mockedApiFetch.mockImplementation((path: string, options?: RequestInit) => {
     if (options?.method) {
       return Promise.reject(new Error(`Unexpected write: ${path}`));
     }
-    if (path === '/suppliers/supplier-1') return Promise.resolve(supplier);
-    if (path.startsWith('/supplier-products'))
-      return Promise.resolve(paginated(products));
-    if (path.startsWith('/supplier-purchases'))
-      return Promise.resolve(paginated(purchases));
-    return Promise.reject(new Error(`Unexpected GET: ${path}`));
+    return detailGet(path, products, purchases);
   });
 }
 
@@ -135,7 +155,7 @@ describe('SupplierDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('lists prices and purchases when they exist', async () => {
+  it('shows what is owed to the supplier, and lists prices and purchases', async () => {
     mockDetailGets(
       [
         {
@@ -147,28 +167,27 @@ describe('SupplierDetailPage', () => {
         },
       ],
       [
-        {
-          id: 'purchase-1',
-          quantity: '10',
-          unitCost: '4500',
-          purchasedAt: '2026-01-05T00:00:00.000Z',
-          product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
-          user: { id: 'user-1', name: 'Admin' },
-          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
-          receivedAt: null,
-          stockMovementId: null,
-        },
+        buildPurchaseOrder({
+          status: 'PARCIAL',
+          total: '9500',
+          payable: '2500',
+          paymentStatus: 'ABONADA',
+        }),
       ],
     );
 
     renderWithClient(<SupplierDetailPage />);
 
-    // "MP-1 — Tabla de pino" aparece dos veces (tabla de precios y de
-    // compras) — findByText fallaría con "elemento múltiple encontrado".
-    expect(await screen.findAllByText('MP-1 — Tabla de pino')).toHaveLength(2);
+    expect(await screen.findByText('MP-1 — Tabla de pino')).toBeInTheDocument();
     expect(screen.getByText('$ 15.000')).toBeInTheDocument();
-    expect(screen.getByText('$ 4.500')).toBeInTheDocument();
-    expect(screen.getByText('Admin')).toBeInTheDocument();
+    expect(await screen.findByText('#7')).toHaveAttribute(
+      'href',
+      '/compras/po-1',
+    );
+    expect(screen.getByText('Llegó una parte')).toBeInTheDocument();
+    expect(screen.getByText('Debe $ 2.500')).toBeInTheDocument();
+    // Saldo del proveedor arriba.
+    expect(await screen.findByText('Recibido: $ 7.500')).toBeInTheDocument();
   });
 
   it('hides "Eliminar" for a price row when the user is not ADMIN', async () => {
@@ -207,12 +226,7 @@ describe('SupplierDetailPage', () => {
       if (options?.method) {
         return Promise.reject(new Error(`Unexpected write: ${path}`));
       }
-      if (path === '/suppliers/supplier-1') return Promise.resolve(supplier);
-      if (path.startsWith('/supplier-products'))
-        return Promise.resolve(paginated([priceRow]));
-      if (path.startsWith('/supplier-purchases'))
-        return Promise.resolve(paginated([]));
-      return Promise.reject(new Error(`Unexpected GET: ${path}`));
+      return detailGet(path, [priceRow], []);
     });
     const user = userEvent.setup();
 
@@ -230,61 +244,7 @@ describe('SupplierDetailPage', () => {
     });
   });
 
-  it('shows a received badge and no action for an already-received purchase', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockDetailGets(
-      [],
-      [
-        {
-          id: 'purchase-1',
-          quantity: '10',
-          unitCost: '4500',
-          purchasedAt: '2026-01-05T00:00:00.000Z',
-          product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
-          user: { id: 'user-1', name: 'Admin' },
-          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
-          receivedAt: '2026-01-06T00:00:00.000Z',
-          stockMovementId: 'movement-1',
-        },
-      ],
-    );
-
-    renderWithClient(<SupplierDetailPage />);
-
-    expect(await screen.findByText('Recibida')).toBeInTheDocument();
-    expect(
-      screen.queryByRole('button', { name: 'Marcar recibida' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows a pending badge and "Marcar recibida" for an ADMIN user', async () => {
-    setAuthToken(fakeJwt(['ADMIN']));
-    mockDetailGets(
-      [],
-      [
-        {
-          id: 'purchase-1',
-          quantity: '10',
-          unitCost: '4500',
-          purchasedAt: '2026-01-05T00:00:00.000Z',
-          product: { id: 'product-1', sku: 'MP-1', name: 'Tabla de pino' },
-          user: { id: 'user-1', name: 'Admin' },
-          warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
-          receivedAt: null,
-          stockMovementId: null,
-        },
-      ],
-    );
-
-    renderWithClient(<SupplierDetailPage />);
-
-    expect(await screen.findByText('Pendiente')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Marcar recibida' }),
-    ).toBeInTheDocument();
-  });
-
-  it('hides "Agregar precio" and "Registrar compra" for a non-ADMIN user', async () => {
+  it('hides "Agregar precio" and "Nueva compra" for a non-ADMIN user', async () => {
     setAuthToken(fakeJwt(['STAFF']));
     mockDetailGets();
 
@@ -295,7 +255,7 @@ describe('SupplierDetailPage', () => {
       screen.queryByRole('button', { name: 'Agregar precio' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Registrar compra' }),
+      screen.queryByRole('button', { name: 'Nueva compra' }),
     ).not.toBeInTheDocument();
   });
 
@@ -315,7 +275,7 @@ describe('SupplierDetailPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('opens the "Registrar compra" modal for an ADMIN user', async () => {
+  it('opens the "Nueva compra" modal for an ADMIN user', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
     mockDetailGets();
     const user = userEvent.setup();
@@ -323,11 +283,11 @@ describe('SupplierDetailPage', () => {
     renderWithClient(<SupplierDetailPage />);
 
     await user.click(
-      await screen.findByRole('button', { name: 'Registrar compra' }),
+      await screen.findByRole('button', { name: 'Nueva compra' }),
     );
 
     expect(
-      await screen.findByRole('dialog', { name: 'Registrar compra' }),
+      await screen.findByRole('dialog', { name: 'Nueva compra' }),
     ).toBeInTheDocument();
   });
 
@@ -349,7 +309,7 @@ describe('SupplierDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('closes the "Registrar compra" modal via its close button', async () => {
+  it('closes the "Nueva compra" modal via its close button', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
     mockDetailGets();
     const user = userEvent.setup();
@@ -357,13 +317,13 @@ describe('SupplierDetailPage', () => {
     renderWithClient(<SupplierDetailPage />);
 
     await user.click(
-      await screen.findByRole('button', { name: 'Registrar compra' }),
+      await screen.findByRole('button', { name: 'Nueva compra' }),
     );
-    await screen.findByRole('dialog', { name: 'Registrar compra' });
+    await screen.findByRole('dialog', { name: 'Nueva compra' });
     await user.click(screen.getByRole('button', { name: 'Cerrar' }));
 
     expect(
-      screen.queryByRole('dialog', { name: 'Registrar compra' }),
+      screen.queryByRole('dialog', { name: 'Nueva compra' }),
     ).not.toBeInTheDocument();
   });
 

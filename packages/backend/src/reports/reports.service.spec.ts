@@ -24,6 +24,7 @@ describe('ReportsService', () => {
     order: { findMany: jest.Mock };
     orderItem: { findMany: jest.Mock };
     remission: { findMany: jest.Mock };
+    purchaseOrder: { findMany: jest.Mock };
   };
   let inventory: { getAverageCostForProducts: jest.Mock };
   let service: ReportsService;
@@ -35,6 +36,7 @@ describe('ReportsService', () => {
       order: { findMany: jest.fn() },
       orderItem: { findMany: jest.fn() },
       remission: { findMany: jest.fn() },
+      purchaseOrder: { findMany: jest.fn() },
     };
     inventory = { getAverageCostForProducts: jest.fn() };
     service = new ReportsService(
@@ -300,6 +302,119 @@ describe('ReportsService', () => {
       const sheet = await readSheet(buffer, 'Cartera');
       expect(sheet.getRow(2).getCell(1).value).toBe('Ferretería Sur');
       expect(sheet.getRow(2).getCell(5).value).toBe(60);
+    });
+  });
+
+  describe('getPayablesReport', () => {
+    const d = (value: number) => new Prisma.Decimal(value);
+    const supplierA = { id: 'supplier-a', name: 'Aceros S.A.' };
+    const supplierB = { id: 'supplier-b', name: 'Empaques Ltda.' };
+
+    function order(
+      supplier: { id: string; name: string },
+      overrides: Record<string, unknown>,
+    ) {
+      return {
+        status: 'PARCIAL',
+        tracksPayment: true,
+        amountPaid: d(0),
+        purchasedAt: new Date('2026-10-01T12:00:00Z'),
+        supplier,
+        items: [],
+        ...overrides,
+      };
+    }
+
+    it('groups what arrived and is still unpaid by supplier, oldest debt first in age', async () => {
+      prisma.purchaseOrder.findMany.mockResolvedValue([
+        order(supplierA, {
+          amountPaid: d(1000),
+          items: [
+            {
+              quantityReceived: d(6),
+              unitCost: d(500),
+              receipts: [{ receivedAt: new Date('2026-10-05T12:00:00Z') }],
+            },
+          ],
+        }),
+        order(supplierA, {
+          status: 'RECIBIDA',
+          items: [
+            {
+              quantityReceived: d(2),
+              unitCost: d(100),
+              receipts: [{ receivedAt: new Date('2026-10-03T12:00:00Z') }],
+            },
+          ],
+        }),
+        // Pagada de más (anticipo): no es deuda, no aparece.
+        order(supplierB, {
+          amountPaid: d(900),
+          items: [
+            {
+              quantityReceived: d(1),
+              unitCost: d(500),
+              receipts: [{ receivedAt: new Date('2026-10-04T12:00:00Z') }],
+            },
+          ],
+        }),
+      ]);
+
+      const rows = await service.getPayablesReport(
+        new Date('2026-10-13T12:00:00Z'),
+      );
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toEqual(
+        expect.objectContaining({
+          supplierId: 'supplier-a',
+          purchaseOrderCount: 2,
+          daysPending: 10,
+        }),
+      );
+      expect(rows[0].totalReceived.toNumber()).toBe(3200);
+      expect(rows[0].totalPaid.toNumber()).toBe(1000);
+      expect(rows[0].balance.toNumber()).toBe(2200);
+      expect(prisma.purchaseOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tracksPayment: true, status: { not: 'CANCELADA' } },
+        }),
+      );
+    });
+
+    it('sorts suppliers by what is owed, and dates a debt with no receipt from the purchase', async () => {
+      prisma.purchaseOrder.findMany.mockResolvedValue([
+        order(supplierB, {
+          items: [{ quantityReceived: d(1), unitCost: d(100), receipts: [] }],
+        }),
+        order(supplierA, {
+          items: [{ quantityReceived: d(1), unitCost: d(900), receipts: [] }],
+        }),
+      ]);
+
+      const rows = await service.getPayablesReport(
+        new Date('2026-10-02T12:00:00Z'),
+      );
+
+      expect(rows.map((row) => row.supplierId)).toEqual([
+        'supplier-a',
+        'supplier-b',
+      ]);
+      expect(rows[0].daysPending).toBe(1);
+    });
+
+    it('exports the same rows to Excel', async () => {
+      prisma.purchaseOrder.findMany.mockResolvedValue([
+        order(supplierA, {
+          items: [{ quantityReceived: d(2), unitCost: d(500), receipts: [] }],
+        }),
+      ]);
+
+      const buffer = await service.getPayablesExcel();
+
+      const sheet = await readSheet(buffer, 'Por pagar');
+      expect(sheet.getRow(2).getCell(1).value).toBe('Aceros S.A.');
+      expect(sheet.getRow(2).getCell(5).value).toBe(1000);
     });
   });
 

@@ -73,13 +73,13 @@ describe('Dashboard (e2e)', () => {
     });
     productId = product.id;
 
-    const purchase = await prisma.supplierPurchase.create({
+    const purchase = await prisma.purchaseOrder.create({
       data: {
         supplierId,
-        productId,
-        quantity: 10,
-        unitCost: 5,
+        warehouseId,
+        total: 50,
         userId: adminUserId,
+        items: { create: [{ productId, quantity: 10, unitCost: 5 }] },
       },
     });
     purchaseId = purchase.id;
@@ -99,7 +99,7 @@ describe('Dashboard (e2e)', () => {
   afterAll(async () => {
     await prisma.orderItem.deleteMany({ where: { orderId } });
     await prisma.order.deleteMany({ where: { id: orderId } });
-    await prisma.supplierPurchase.deleteMany({ where: { id: purchaseId } });
+    await prisma.purchaseOrder.deleteMany({ where: { id: purchaseId } });
     await prisma.customer.delete({ where: { id: customerId } });
     await prisma.supplier.delete({ where: { id: supplierId } });
     await prisma.product.delete({ where: { id: productId } });
@@ -119,8 +119,10 @@ describe('Dashboard (e2e)', () => {
       recentPurchases: {
         id: string;
         supplierName: string;
-        productName: string;
+        itemCount: number;
+        total: string;
       }[];
+      payables: { total: string; purchaseOrderCount: number };
       recentSales: { id: string; customerName: string; total: string }[];
       recentActivity: { entity: string; entityId: string; action: string }[];
     };
@@ -129,11 +131,11 @@ describe('Dashboard (e2e)', () => {
 
     const purchaseRow = body.recentPurchases.find((p) => p.id === purchaseId);
     expect(purchaseRow).toEqual(
-      expect.objectContaining({
-        supplierName,
-        productName: 'Producto de prueba de dashboard',
-      }),
+      expect.objectContaining({ supplierName, itemCount: 1, total: '50' }),
     );
+
+    // Sin nada recibido todavía, esa compra no es deuda.
+    expect(typeof body.payables.total).toBe('string');
 
     const saleRow = body.recentSales.find((s) => s.id === orderId);
     expect(saleRow).toEqual(

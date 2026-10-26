@@ -99,14 +99,15 @@ async function teardown() {
     fs.readFileSync(STATE_FILE, 'utf-8'),
   ) as FixtureState;
 
-  // El Supplier/SupplierProduct/SupplierPurchase los crea el propio test a
+  // El Supplier/SupplierProduct/PurchaseOrder los crea el propio test a
   // través de la UI, no este script — se identifican y se borran por
   // referenciar el productId de este fixture: solo el proveedor creado por
-  // el test referencia ese producto específico. Orden FK-safe: compra ->
+  // el test referencia ese producto específico. Orden FK-safe: compra (y en
+  // cascada sus líneas, recepciones y pagos) -> ENTRADAs de la recepción ->
   // precio -> proveedor -> producto -> categoría/unidad -> auditLog -> user.
-  const supplierPurchases = await prisma.supplierPurchase.findMany({
-    where: { productId: state.productId },
-    select: { supplierId: true },
+  const purchaseOrders = await prisma.purchaseOrder.findMany({
+    where: { items: { some: { productId: state.productId } } },
+    select: { id: true, supplierId: true },
   });
   const supplierProducts = await prisma.supplierProduct.findMany({
     where: { productId: state.productId },
@@ -114,11 +115,14 @@ async function teardown() {
   });
   const supplierIds = Array.from(
     new Set(
-      [...supplierPurchases, ...supplierProducts].map((row) => row.supplierId),
+      [...purchaseOrders, ...supplierProducts].map((row) => row.supplierId),
     ),
   );
 
-  await prisma.supplierPurchase.deleteMany({
+  await prisma.purchaseOrder.deleteMany({
+    where: { id: { in: purchaseOrders.map((order) => order.id) } },
+  });
+  await prisma.stockMovement.deleteMany({
     where: { productId: state.productId },
   });
   await prisma.supplierProduct.deleteMany({

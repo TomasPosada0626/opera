@@ -107,10 +107,26 @@ const receivables: ReceivablesRow[] = [
   },
 ];
 
+const payables = [
+  {
+    supplierId: 'supplier-1',
+    supplierName: 'Aceros de Colombia S.A.',
+    purchaseOrderCount: 2,
+    totalReceived: '7500',
+    totalPaid: '5000',
+    balance: '2500',
+    oldestPendingAt: '2026-10-10T00:00:00.000Z',
+    daysPending: 15,
+  },
+];
+
 function mockReportEndpoints() {
   mockedApiFetch.mockImplementation((path: string) => {
     if (path.startsWith('/reports/cartera')) {
       return Promise.resolve(receivables);
+    }
+    if (path.startsWith('/reports/por-pagar')) {
+      return Promise.resolve(payables);
     }
     if (path.startsWith('/reports/inventario')) {
       return Promise.resolve(inventoryRows);
@@ -175,6 +191,40 @@ describe('ReportsPage', () => {
         '/reports/cartera/excel',
         'cartera.xlsx',
       );
+    });
+  });
+
+  describe('Por pagar', () => {
+    it('lists what is owed to each supplier and exports it', async () => {
+      const user = userEvent.setup();
+      renderAt('/reportes?vista=por-pagar');
+
+      expect(
+        await screen.findByText('Aceros de Colombia S.A.'),
+      ).toHaveAttribute('href', '/proveedores/supplier-1');
+      expect(screen.getByText('Proveedores con saldo')).toBeInTheDocument();
+      expect(screen.getAllByText('15 días')).toHaveLength(2);
+
+      await user.click(
+        screen.getByRole('button', { name: /Exportar a Excel/ }),
+      );
+      expect(mockedDownloadFile).toHaveBeenCalledWith(
+        '/reports/por-pagar/excel',
+        'cuentas-por-pagar.xlsx',
+      );
+    });
+
+    it('says when nothing is owed', async () => {
+      mockedApiFetch.mockImplementation((path: string) =>
+        path.startsWith('/reports/por-pagar')
+          ? Promise.resolve([])
+          : Promise.reject(new Error(`unexpected path: ${path}`)),
+      );
+      renderAt('/reportes?vista=por-pagar');
+
+      expect(
+        await screen.findByText('No se le debe nada a ningún proveedor.'),
+      ).toBeInTheDocument();
     });
   });
 

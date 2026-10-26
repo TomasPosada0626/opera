@@ -56,6 +56,16 @@ export class SuppliersController {
     return this.suppliersService.findOne(id);
   }
 
+  @Get(':id/balance')
+  @ApiOperation({
+    summary:
+      'Saldo con el proveedor: comprado, recibido, pagado y lo que se le debe',
+  })
+  @ApiResponse({ status: 404, description: 'Proveedor no encontrado.' })
+  getBalance(@Param('id') id: string) {
+    return this.suppliersService.getBalance(id);
+  }
+
   // @Res() de Express directo, mismo patrón que ReportsController — el
   // .xlsx es contenido binario con sus propios headers.
   @Get(':id/export')

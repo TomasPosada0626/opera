@@ -36,7 +36,7 @@ test.afterAll(() => {
   execSync('pnpm run e2e:fixtures:suppliers:teardown', { cwd: BACKEND_DIR });
 });
 
-test('crear un proveedor, agregarle un precio y registrar una compra por la UI real', async ({
+test('crear un proveedor, agregarle un precio, comprarle, recibir una parte y pagarle por la UI real', async ({
   page,
 }) => {
   // 1. Login real por la UI.
@@ -80,11 +80,8 @@ test('crear un proveedor, agregarle un precio y registrar una compra por la UI r
   await priceDialog.getByRole('button', { name: 'Guardar precio' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
-  // 5. Verificar que el precio aparece en la lista de precios del proveedor.
-  // Se busca dentro de la primera tabla (Precios por producto) porque una
-  // vez exista también la compra, la segunda tabla (Bitácora de compras)
-  // tendrá una fila con el mismo SKU y un `getByRole('row', ...)` sin
-  // acotar sería ambiguo.
+  // 5. Verificar que el precio aparece en la lista de precios del proveedor
+  // (primera tabla de la página; la segunda es la de compras).
   const priceTable = page.locator('table').first();
   const priceRow = priceTable.getByRole('row', {
     name: new RegExp(fixtures.productSku),
@@ -92,29 +89,47 @@ test('crear un proveedor, agregarle un precio y registrar una compra por la UI r
   await expect(priceRow).toBeVisible();
   await expect(priceRow).toContainText('150,50'); // formato es-CO, coma decimal
 
-  // 6. Registrar una compra de ese producto. El botón que abre el modal y
-  // el botón de submit dentro del formulario comparten el mismo texto
-  // ("Registrar compra"), así que el submit se busca acotado al diálogo.
-  await page.getByRole('button', { name: 'Registrar compra' }).click();
+  // 6. Registrar una compra de ese producto desde la ficha del proveedor.
+  // El costo se llena solo con el precio cargado; se cambia por el de esta
+  // compra. Al registrarla, la app abre el detalle de la compra.
+  await page.getByRole('button', { name: 'Nueva compra' }).click();
   const purchaseDialog = page.getByRole('dialog');
-  await purchaseDialog.getByLabel('Buscar producto').fill(fixtures.productSku);
+  await purchaseDialog.getByLabel('Producto línea 1').fill(fixtures.productSku);
   await purchaseDialog
     .getByRole('button', { name: new RegExp(fixtures.productSku) })
     .click();
-  await purchaseDialog.getByLabel('Cantidad').fill('8');
-  await purchaseDialog.getByLabel('Costo unitario').fill('42.25');
+  await expect(purchaseDialog.getByLabel('Costo unitario línea 1')).toHaveValue(
+    '150.5',
+  );
+  await purchaseDialog.getByLabel('Cantidad línea 1').fill('8');
+  await purchaseDialog.getByLabel('Costo unitario línea 1').fill('42.25');
   await purchaseDialog
     .getByRole('button', { name: 'Registrar compra' })
     .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/#\/compras\/[0-9a-f-]+$/);
+  await expect(page.getByRole('link', { name: supplierName })).toBeVisible();
 
-  // 7. Verificar que la compra aparece en la bitácora con la cantidad y el
-  // costo correctos. Segunda tabla de la página (Bitácora de compras).
-  const purchaseTable = page.locator('table').nth(1);
-  const purchaseRow = purchaseTable.getByRole('row', {
-    name: new RegExp(fixtures.productSku),
-  });
-  await expect(purchaseRow).toBeVisible();
-  await expect(purchaseRow).toContainText('8');
-  await expect(purchaseRow).toContainText('42,25'); // formato es-CO, coma decimal
+  // 7. Llega solo una parte: 5 de 8. Entra al inventario y la compra queda
+  // "Llegó una parte".
+  await page.getByRole('button', { name: 'Recibir mercancía' }).click();
+  const receiveDialog = page.getByRole('dialog');
+  await receiveDialog
+    .getByLabel(`Cantidad recibida de ${fixtures.productName}`)
+    .fill('5');
+  await receiveDialog
+    .getByRole('button', { name: 'Recibir y sumar al inventario' })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText('Llegó una parte').first()).toBeVisible();
+  await expect(page.getByText(/^\+5/)).toBeVisible();
+
+  // 8. Pagarle una parte de lo recibido. Recibido: 5 x 42,25 = 211,25;
+  // pagado 100 -> por pagar 111,25.
+  await page.getByRole('button', { name: 'Registrar pago' }).click();
+  const paymentDialog = page.getByRole('dialog');
+  await paymentDialog.getByLabel('Monto').fill('100');
+  await paymentDialog.getByRole('button', { name: 'Registrar pago' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByText(/111,25/).first()).toBeVisible();
 });

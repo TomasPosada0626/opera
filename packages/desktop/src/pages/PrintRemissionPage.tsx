@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { ArrowLeft, Printer, Search } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useRemission } from '../hooks/useRemission';
+import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 import { apiFetch, ApiError } from '../lib/api-client';
 import type { PaginatedResult } from '../types/product';
 import type { RemissionDetail } from '../types/order';
@@ -135,6 +136,7 @@ function PrintRemissionPage() {
 }
 
 function RemissionPrintView({ remission }: { remission: RemissionDetail }) {
+  const showWarehouses = useHasSeveralWarehouses();
   return (
     <div>
       <div data-print="hide" className="mb-6 flex justify-end print:hidden">
@@ -179,7 +181,9 @@ function RemissionPrintView({ remission }: { remission: RemissionDetail }) {
             ['Cliente', remission.order.customer.name],
             ['Fecha', formatDate(remission.createdAt)],
             ['Pedido', `No. ${remission.order.number}`],
-            ['Bodega', remission.order.warehouse.name],
+            ...(showWarehouses
+              ? [['Bodega', remission.order.warehouse.name]]
+              : []),
             ['Entregado por', remission.user.name],
           ].map(([label, value]) => (
             <div key={label} className="flex flex-col gap-0.5">

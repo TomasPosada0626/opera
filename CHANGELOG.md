@@ -9,6 +9,16 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Compras con varias líneas (`/purchase-orders`, pantalla Compras):
+  consecutivo, fecha esperada, número de factura del proveedor, anticipo
+  opcional. Recepción parcial: cada llegada de mercancía es una ENTRADA del
+  Kardex con el costo de la compra. Cerrar con lo recibido cuando el
+  proveedor no manda el resto, y cancelar si no llegó nada. Ver
+  [ADR 0010](docs/adr/0010-compras-con-varias-lineas-y-cuentas-por-pagar.md).
+- Cuentas por pagar: pagos al proveedor con medio, fecha y referencia
+  (anulables con motivo), saldo por proveedor en su ficha
+  (`GET /suppliers/:id/balance`), reporte "Por pagar" con antigüedad
+  (`GET /reports/por-pagar`, + Excel) y el total por pagar en el dashboard.
 - Seguimiento de pedidos: consecutivo legible (`Pedido No. 45`), fecha de
   envío estimada y notas editables (`PATCH /orders/:id`), estado
   `DESPACHADO` automático cuando lo remisionado cubre todo lo pedido, y
@@ -130,6 +140,11 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Una sola fábrica: con una sola bodega, la app ya no muestra la columna
+  "Bodega" (Kardex, Producción), el filtro por bodega del Kardex, la bodega
+  en el detalle de pedidos/compras y en la remisión impresa, ni el menú
+  Bodegas. El selector de bodega ignora las desactivadas al decidir si hay
+  una sola (antes las contaba y hasta las ofrecía).
 - Cantidades decimales mostradas tal como llegaban de la base: "10.000"
   por diez unidades (en Colombia se lee diez mil) o "1171.2 kg"; costos sin
   formato de pesos en Kardex, Producción y compras a proveedores. Ahora todo

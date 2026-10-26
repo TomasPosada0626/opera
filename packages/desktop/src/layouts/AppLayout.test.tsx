@@ -1,13 +1,36 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+} from 'vitest';
 import AppLayout from './AppLayout';
+import { apiFetch } from '../lib/api-client';
 import { clearAuthToken, setAuthToken } from '../lib/auth-token';
 
 vi.mock('../lib/api-client', () => ({
   apiFetch: vi.fn(),
 }));
+
+const mockedApiFetch = apiFetch as unknown as Mock;
+
+function warehouses(count: number) {
+  return {
+    data: Array.from({ length: count }, (_, i) => ({
+      id: `w${i}`,
+      name: `Bodega ${i}`,
+      location: null,
+      isActive: true,
+    })),
+    meta: { page: 1, pageSize: 100, total: count, totalPages: 1 },
+  };
+}
 
 function fakeJwt(roles: string[]): string {
   const payload = {
@@ -81,5 +104,25 @@ describe('AppLayout sidebar', () => {
       'true',
     );
     expect(screen.getByRole('link', { name: /Productos/ })).toBeInTheDocument();
+  });
+
+  // Una sola fábrica: nada que administrar en Bodegas.
+  it('hides Bodegas while there is a single warehouse', async () => {
+    mockedApiFetch.mockResolvedValue(warehouses(1));
+    renderAt('/productos');
+
+    await screen.findByRole('link', { name: /Productos/ });
+    expect(
+      screen.queryByRole('link', { name: /Bodegas/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows Bodegas when there are several warehouses', async () => {
+    mockedApiFetch.mockResolvedValue(warehouses(2));
+    renderAt('/productos');
+
+    expect(
+      await screen.findByRole('link', { name: /Bodegas/ }),
+    ).toBeInTheDocument();
   });
 });

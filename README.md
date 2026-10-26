@@ -429,7 +429,7 @@ Las entidades centrales y las invariantes reales que el sistema hace cumplir por
 
 **Cobro.** Cada pago del cliente es un `RemissionPayment` (monto, medio, fecha, referencia), append-only como el Kardex: un abono mal registrado se anula con motivo, no se borra. El estado de pago de la remisión (`PAGADO`/`ABONADO`/`CARTERA`) y lo abonado son el resumen de esos abonos, calculado por el sistema — nunca se eligen a mano. No se puede abonar más que el saldo ni anular una remisión con abonos vigentes. El cobro nunca aparece en el PDF/impresión que ve el cliente.
 
-**Compras.** `Supplier`, `SupplierProduct` (precio vigente por par proveedor/producto) y `SupplierPurchase` (bitácora de qué se pidió, cuándo y a qué costo, con bodega de destino). Registrar la compra no mueve stock por sí solo — es solo la bitácora. Un `POST /supplier-purchases/:id/receive` explícito concilia "lo pedido" contra "lo que de verdad entró": dentro de una transacción con guard atómico contra doble-recepción, escribe una `ENTRADA` real por la cantidad completa y enlaza la compra a ese movimiento (`stockMovementId`). No admite recepciones parciales — el mismo criterio de scope que el resto del dominio (ver `Order`/`Remission`).
+**Compras.** `Supplier`, `SupplierProduct` (precio vigente por par proveedor/producto) y `PurchaseOrder` (compra con consecutivo, varias líneas, fecha esperada y número de factura del proveedor). Registrar la compra no mueve stock: cada llegada de mercancía, total o parcial, es un `PurchaseReceipt` atado a una `ENTRADA` real del Kardex con el costo de la compra, en una transacción Serializable que impide recibir de más. Si el proveedor no manda el resto, la compra se cierra con lo recibido. Los pagos al proveedor (`SupplierPayment`) siguen el mismo diseño append-only que los abonos de clientes, y **por pagar** es lo recibido menos lo pagado: lo pedido y no recibido todavía no es deuda ([ADR 0010](docs/adr/0010-compras-con-varias-lineas-y-cuentas-por-pagar.md)).
 
 **Clientes.** `Customer` con saldo pendiente calculado a partir de sus remisiones no anuladas (total despachado menos lo abonado) — nunca un campo de saldo que se actualiza a mano — y su historial de abonos.
 
@@ -443,9 +443,9 @@ Las entidades centrales y las invariantes reales que el sistema hace cumplir por
 | **Producción**      | Lista de materiales por producto, órdenes de producción, costeo por promedio ponderado, cierre atómico que mueve el Kardex.                                                                                         |
 | **Ventas**          | Pedidos con consecutivo, fecha de envío y tiempo por estación (pendiente → producción → almacén → despachado), atrasados, remisiones con consecutivo, PDF e impresión con firma de recibido, anulación con reverso. |
 | **Cobro**           | Abonos por remisión con fecha, medio y referencia; anulación con motivo; saldo por cliente y reporte de cartera con antigüedad.                                                                                     |
-| **Compras**         | Proveedores, precio por producto, bitácora de compras, recepción que concilia lo pedido contra el Kardex real.                                                                                                      |
+| **Compras**         | Proveedores con precio por producto, compras con varias líneas, recepción parcial que mueve el Kardex, pagos al proveedor, saldo por proveedor y cuentas por pagar con antigüedad.                                  |
 | **Clientes**        | CRUD, detalle con pedidos, último pedido, saldo pendiente e historial de abonos.                                                                                                                                    |
-| **Reportes**        | Cartera por cliente, ventas por rango de fecha, productos más vendidos e inventario valorizado — cada uno exportable a Excel.                                                                                       |
+| **Reportes**        | Cartera por cliente, cuentas por pagar por proveedor, ventas por rango de fecha, productos más vendidos e inventario valorizado — cada uno exportable a Excel.                                                      |
 | **Dashboard**       | Lo que necesita atención: por cobrar, pedidos atrasados, pedidos por estación, stock crítico y actividad reciente.                                                                                                  |
 | **Auditoría**       | Registro de solo lectura de cada cambio relevante: quién, cuándo y qué campos cambiaron.                                                                                                                            |
 | **Búsqueda global** | Salto rápido por término a través de productos, clientes, proveedores, pedidos, remisiones y órdenes de producción.                                                                                                 |
@@ -465,6 +465,7 @@ Las decisiones de arquitectura significativas se documentan como ADRs en [`docs/
 - [0007 — Sin TLS en HTTP local ni SSL en la conexión a Postgres](docs/adr/0007-sin-tls-lan-de-confianza.md)
 - [0008 — Instalador autocontenido con Docker Desktop embebido](docs/adr/0008-instalador-autocontenido-docker-desktop.md)
 - [0009 — Lista de materiales opcional y cobro por abonos](docs/adr/0009-lista-de-materiales-opcional-y-cobro-por-abonos.md)
+- [0010 — Compras con varias líneas, recepción parcial y cuentas por pagar](docs/adr/0010-compras-con-varias-lineas-y-cuentas-por-pagar.md)
 
 ## Changelog
 

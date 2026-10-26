@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Boxes,
   FileSpreadsheet,
+  HandCoins,
   TrendingUp,
   Trophy,
   Wallet,
@@ -14,6 +15,8 @@ import { KPICard } from '../components/ui/KPICard';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { useInventoryReport } from '../hooks/useInventoryReport';
+import { usePayablesReport } from '../hooks/usePurchaseOrders';
+import type { PayablesRow } from '../types/purchase-order';
 import { useReceivablesReport } from '../hooks/useReceivablesReport';
 import { dateRangeSearchParams, useSalesReport } from '../hooks/useSalesReport';
 import { useTopProducts } from '../hooks/useTopProducts';
@@ -44,9 +47,16 @@ interface RankedProductRow extends TopProductRow {
   rank: number;
 }
 
-type ReportView = 'cartera' | 'ventas' | 'productos' | 'inventario';
+type ReportView =
+  'cartera' | 'por-pagar' | 'ventas' | 'productos' | 'inventario';
 
-const VIEWS: ReportView[] = ['cartera', 'ventas', 'productos', 'inventario'];
+const VIEWS: ReportView[] = [
+  'cartera',
+  'por-pagar',
+  'ventas',
+  'productos',
+  'inventario',
+];
 
 // Antigüedad del cobro más viejo: a los 30 días empieza a preocupar, a los
 // 60 ya es cartera vencida en la práctica comercial.
@@ -176,6 +186,120 @@ function ReceivablesView() {
         isLoading={receivablesQuery.isLoading}
         emptyMessage="Nadie debe nada."
         emptyHint="Todas las remisiones despachadas están pagadas."
+        rowTone={(row) => (row.daysPending >= 60 ? 'danger' : undefined)}
+      />
+    </div>
+  );
+}
+
+// Cuentas por pagar: el espejo de Cartera, del lado de los proveedores.
+function PayablesView() {
+  const payablesQuery = usePayablesReport();
+  const rows = payablesQuery.data ?? [];
+  const total = rows.reduce((sum, row) => sum + Number(row.balance), 0);
+  const oldest = rows.reduce((max, row) => Math.max(max, row.daysPending), 0);
+
+  const columns: DataTableColumn<PayablesRow>[] = [
+    {
+      key: 'supplier',
+      header: 'Proveedor',
+      render: (row) => (
+        <Link
+          to={`/proveedores/${row.supplierId}`}
+          className="text-ink hover:text-accent font-medium transition-colors"
+        >
+          {row.supplierName}
+        </Link>
+      ),
+    },
+    {
+      key: 'purchases',
+      header: 'Compras',
+      className: 'text-right figures',
+      render: (row) => row.purchaseOrderCount,
+    },
+    {
+      key: 'received',
+      header: 'Recibido',
+      className: 'text-right figures',
+      render: (row) => formatMoney(row.totalReceived),
+    },
+    {
+      key: 'paid',
+      header: 'Pagado',
+      className: 'text-right figures text-ink-secondary',
+      render: (row) => formatMoney(row.totalPaid),
+    },
+    {
+      key: 'balance',
+      header: 'Por pagar',
+      className: 'text-right',
+      render: (row) => (
+        <span className="figures text-danger font-semibold">
+          {formatMoney(row.balance)}
+        </span>
+      ),
+    },
+    {
+      key: 'aging',
+      header: 'Más antigua',
+      className: 'text-right',
+      render: (row) => (
+        <div className="flex flex-col items-end gap-0.5">
+          {agingBadge(row.daysPending)}
+          <span className="text-ink-faint text-[11px]">
+            desde {formatDate(row.oldestPendingAt)}
+          </span>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <KPICard
+          icon={Wallet}
+          label="Total por pagar"
+          value={formatMoneyCompact(total)}
+          title={formatMoney(total)}
+          variant={total > 0 ? 'danger' : 'success'}
+        />
+        <KPICard
+          icon={Boxes}
+          label="Proveedores con saldo"
+          value={rows.length}
+          variant="neutral"
+        />
+        <KPICard
+          icon={TrendingUp}
+          label="Deuda más antigua"
+          value={rows.length > 0 ? `${oldest} días` : '—'}
+          variant={
+            oldest >= 60 ? 'danger' : oldest >= 30 ? 'warning' : 'neutral'
+          }
+        />
+      </div>
+      <div className="flex items-center justify-between">
+        <p className="text-ink-muted text-[13px]">
+          Lo que ya llegó de cada proveedor y todavía no se le ha pagado.
+        </p>
+        <ExportButton
+          onClick={() =>
+            void downloadFile(
+              '/reports/por-pagar/excel',
+              'cuentas-por-pagar.xlsx',
+            )
+          }
+        />
+      </div>
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(row) => row.supplierId}
+        isLoading={payablesQuery.isLoading}
+        emptyMessage="No se le debe nada a ningún proveedor."
+        emptyHint="Todo lo recibido está pagado."
         rowTone={(row) => (row.daysPending >= 60 ? 'danger' : undefined)}
       />
     </div>
@@ -327,7 +451,7 @@ function ReportsPage() {
       <PageHeader
         eyebrow="General"
         title="Reportes"
-        description="Cartera, ventas, ranking de productos e inventario valorizado — cada uno exportable a Excel con los mismos filtros que ves en pantalla."
+        description="Cartera, cuentas por pagar, ventas, ranking de productos e inventario valorizado — cada uno exportable a Excel con los mismos filtros que ves en pantalla."
       />
 
       <Tabs<ReportView>
@@ -336,6 +460,7 @@ function ReportsPage() {
         onChange={(next) => setSearchParams({ vista: next }, { replace: true })}
         options={[
           { value: 'cartera', label: 'Cartera', icon: Wallet },
+          { value: 'por-pagar', label: 'Por pagar', icon: HandCoins },
           { value: 'ventas', label: 'Ventas', icon: TrendingUp },
           { value: 'productos', label: 'Más vendidos', icon: Trophy },
           { value: 'inventario', label: 'Inventario', icon: Boxes },
@@ -343,6 +468,8 @@ function ReportsPage() {
       />
 
       {view === 'cartera' && <ReceivablesView />}
+
+      {view === 'por-pagar' && <PayablesView />}
 
       {view === 'ventas' && (
         <section className="flex flex-col gap-5">

@@ -100,6 +100,26 @@ describe('WarehouseSelect', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('warehouse-1'));
   });
 
+  // Una bodega desactivada no cuenta: la fábrica sigue teniendo una sola.
+  it('ignores deactivated warehouses when deciding there is only one', async () => {
+    mockedApiFetch.mockResolvedValue(
+      warehousesResponse([
+        buildWarehouse(),
+        buildWarehouse({ id: 'warehouse-old', name: 'Vieja', isActive: false }),
+      ]),
+    );
+    const onSubmit = vi.fn();
+    renderHarness(onSubmit);
+
+    await waitFor(() =>
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument(),
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Enviar' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('warehouse-1'));
+  });
+
   it('shows a real select when there are two or more warehouses', async () => {
     mockedApiFetch.mockResolvedValue(
       warehousesResponse([

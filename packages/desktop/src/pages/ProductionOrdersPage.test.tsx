@@ -88,6 +88,37 @@ describe('ProductionOrdersPage', () => {
 
     expect(await screen.findByText('Silla de madera')).toBeInTheDocument();
     expect(screen.getByText('Pendiente')).toBeInTheDocument();
+    // Una sola bodega (la respuesta trae una sola fila): sin columna.
+    expect(
+      screen.queryByRole('columnheader', { name: 'Bodega' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the warehouse column when there are several warehouses', async () => {
+    mockedApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('/warehouses')
+          ? {
+              data: [
+                {
+                  id: 'w1',
+                  name: 'Bodega principal',
+                  location: null,
+                  isActive: true,
+                },
+                { id: 'w2', name: 'Bodega 2', location: null, isActive: true },
+              ],
+              meta: { page: 1, pageSize: 100, total: 2, totalPages: 1 },
+            }
+          : ordersResponse([buildOrder()]),
+      ),
+    );
+
+    renderWithClient(<ProductionOrdersPage />);
+
+    expect(
+      await screen.findByRole('columnheader', { name: 'Bodega' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Bodega principal')).toBeInTheDocument();
   });
 
@@ -179,7 +210,24 @@ describe('ProductionOrdersPage', () => {
 
   it('opens the creation modal when "Nueva orden" is clicked', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
-    mockedApiFetch.mockResolvedValue(ordersResponse([]));
+    // La fábrica tiene su única bodega: el formulario la elige solo.
+    mockedApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('/warehouses')
+          ? {
+              data: [
+                {
+                  id: 'w1',
+                  name: 'Bodega principal',
+                  location: null,
+                  isActive: true,
+                },
+              ],
+              meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
+            }
+          : ordersResponse([]),
+      ),
+    );
 
     renderWithClient(<ProductionOrdersPage />);
 

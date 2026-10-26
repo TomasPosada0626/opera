@@ -23,17 +23,3 @@ export interface SupplierProduct {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface SupplierPurchase {
-  id: string;
-  quantity: string;
-  unitCost: string;
-  purchasedAt: string;
-  product: SupplierProductRef;
-  user: { id: string; name: string };
-  // null = pendiente de recibir. Registros de antes de este campo (#104-
-  // purchases) tienen warehouse: null y nunca se pueden recibir.
-  warehouse: { id: string; name: string } | null;
-  receivedAt: string | null;
-  stockMovementId: string | null;
-}
