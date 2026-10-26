@@ -11,11 +11,12 @@ import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
+import { loginIdentifierSchema } from '../lib/login-identifier';
 
 const setupSchema = z
   .object({
     name: z.string().min(1, 'Ingresa tu nombre'),
-    email: z.string().min(1, 'Ingresa tu correo').email('Correo inválido'),
+    email: loginIdentifierSchema('Elige un usuario'),
     password: z.string().min(8, 'Mínimo 8 caracteres'),
     confirmPassword: z.string().min(1, 'Confirma la contraseña'),
   })
@@ -116,8 +117,9 @@ function SetupPage() {
           error={errors.name}
         />
         <TextField
-          label="Correo"
-          type="email"
+          label="Usuario o correo"
+          autoComplete="username"
+          placeholder="Ej. herrajestoro"
           registration={register('email')}
           error={errors.email}
         />

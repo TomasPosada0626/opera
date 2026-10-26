@@ -48,7 +48,10 @@ function renderWithRouter(ui: ReactElement) {
 
 async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Nombre'), 'Admin Local');
-  await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+  await user.type(
+    screen.getByLabelText('Usuario o correo'),
+    'admin@opera.local',
+  );
   await user.type(screen.getByLabelText('Contraseña'), 'password123');
   await user.type(screen.getByLabelText('Confirmar contraseña'), 'password123');
 }
@@ -73,7 +76,7 @@ describe('SetupPage', () => {
     await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));
 
     expect(await screen.findByText('Ingresa tu nombre')).toBeInTheDocument();
-    expect(screen.getByText('Ingresa tu correo')).toBeInTheDocument();
+    expect(screen.getByText('Elige un usuario')).toBeInTheDocument();
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
@@ -82,7 +85,10 @@ describe('SetupPage', () => {
     renderWithRouter(<SetupPage />);
 
     await user.type(screen.getByLabelText('Nombre'), 'Admin Local');
-    await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      'admin@opera.local',
+    );
     await user.type(screen.getByLabelText('Contraseña'), 'password123');
     await user.type(screen.getByLabelText('Confirmar contraseña'), 'otra-cosa');
     await user.click(screen.getByRole('button', { name: 'Crear cuenta' }));

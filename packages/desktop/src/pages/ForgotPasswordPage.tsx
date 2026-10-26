@@ -9,6 +9,7 @@ import { RecoveryCodeDisplay } from '../components/auth/RecoveryCodeDisplay';
 import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
 import { ApiError } from '../lib/api-client';
+import { loginIdentifierSchema } from '../lib/login-identifier';
 import { useForgotPassword } from '../hooks/useForgotPassword';
 import {
   useRecoveryOptions,
@@ -43,7 +44,7 @@ type VerifyFormValues = z.infer<typeof verifySchema>;
 
 const recoverySchema = z
   .object({
-    email: z.string().min(1, 'Ingresa tu correo').email('Correo inválido'),
+    email: loginIdentifierSchema(),
     recoveryCode: z
       .string()
       .min(1, 'Ingresa el código de recuperación')
@@ -204,8 +205,8 @@ function ForgotPasswordPage() {
           className="flex flex-col gap-4"
         >
           <TextField
-            label="Correo"
-            type="email"
+            label="Usuario o correo"
+            autoComplete="username"
             registration={recoveryForm.register('email')}
             error={recoveryForm.formState.errors.email}
           />

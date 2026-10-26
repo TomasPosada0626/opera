@@ -8,6 +8,7 @@ import { useCreateUser } from '../../hooks/useCreateUser';
 import { useUpdateUser } from '../../hooks/useUpdateUser';
 import { useRoles } from '../../hooks/useRoles';
 import { ApiError } from '../../lib/api-client';
+import { loginIdentifierSchema } from '../../lib/login-identifier';
 import type { User } from '../../types/user';
 
 // password solo se pide al crear — editar contraseña es un flujo aparte
@@ -18,7 +19,7 @@ import type { User } from '../../types/user';
 // terminan divergiendo.
 function buildSchema(isEditing: boolean) {
   return z.object({
-    email: z.string().email('Correo inválido'),
+    email: loginIdentifierSchema('Elige un usuario'),
     name: z.string().min(2, 'Ingresa un nombre'),
     password: isEditing ? z.string() : z.string().min(8, 'Mínimo 8 caracteres'),
     roleIds: z.array(z.string()),
@@ -103,8 +104,9 @@ export function UserForm({ user, onSuccess }: UserFormProps) {
         error={errors.name}
       />
       <TextField
-        label="Correo"
-        type="email"
+        label="Usuario o correo"
+        autoComplete="off"
+        placeholder="Ej. herrajestoro2"
         registration={register('email')}
         error={errors.email}
       />

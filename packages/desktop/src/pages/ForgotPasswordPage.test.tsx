@@ -239,7 +239,10 @@ describe('ForgotPasswordPage', () => {
       user: ReturnType<typeof userEvent.setup>,
       code = '7k2m qx9d 4hpa t3vr',
     ) {
-      await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+      await user.type(
+        screen.getByLabelText('Usuario o correo'),
+        'admin@opera.local',
+      );
       await user.type(screen.getByLabelText('Código de recuperación'), code);
       await user.type(screen.getByLabelText('Nueva contraseña'), 'password123');
       await user.type(

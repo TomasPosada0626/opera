@@ -1,15 +1,19 @@
 import {
   IsArray,
-  IsEmail,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
 } from 'class-validator';
+import {
+  IsLoginIdentifier,
+  NormalizeLoginIdentifier,
+} from '../../auth/login-identifier';
 
 export class UpdateUserDto {
   @IsOptional()
-  @IsEmail()
+  @NormalizeLoginIdentifier()
+  @IsLoginIdentifier()
   @MaxLength(254)
   email?: string;
 

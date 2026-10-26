@@ -9,9 +9,10 @@ import { TextField } from '../components/form/TextField';
 import { Button } from '../components/ui/Button';
 import { apiFetch, ApiError } from '../lib/api-client';
 import { setAuthToken } from '../lib/auth-token';
+import { loginIdentifierSchema } from '../lib/login-identifier';
 
 const loginSchema = z.object({
-  email: z.string().min(1, 'Ingresa tu correo').email('Correo inválido'),
+  email: loginIdentifierSchema(),
   password: z.string().min(1, 'Ingresa tu contraseña'),
 });
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -63,8 +64,8 @@ function LoginPage() {
         className="flex flex-col gap-4"
       >
         <TextField
-          label="Correo"
-          type="email"
+          label="Usuario o correo"
+          autoComplete="username"
           registration={register('email')}
           error={errors.email}
         />
@@ -82,7 +83,7 @@ function LoginPage() {
           >
             {loginMutation.error instanceof ApiError &&
             loginMutation.error.statusCode === 401
-              ? 'Correo o contraseña incorrectos.'
+              ? 'Usuario o contraseña incorrectos.'
               : 'No se pudo iniciar sesión. Intenta de nuevo.'}
           </p>
         )}
