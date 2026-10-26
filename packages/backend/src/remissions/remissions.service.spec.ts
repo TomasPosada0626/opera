@@ -15,13 +15,21 @@ describe('RemissionsService', () => {
     productId: 'product-1',
     quantity: new Prisma.Decimal(10),
     unitPrice: new Prisma.Decimal(25),
-    product: { id: 'product-1', name: 'Silla de madera' },
+    product: {
+      id: 'product-1',
+      sku: 'SKU-1',
+      name: 'Silla de madera',
+      material: 'Roble',
+      finish: 'Natural',
+      unit: { name: 'Unidad' },
+    },
   };
   const order = {
     id: 'order-1',
     number: 12,
     warehouseId: 'warehouse-1',
     status: 'EN_ALMACEN',
+    vatRate: new Prisma.Decimal(0),
     items: [orderItem],
   };
   const baseRemission = {
@@ -29,6 +37,8 @@ describe('RemissionsService', () => {
     number: 1,
     orderId: order.id,
     userId: 'acting-user',
+    subtotal: new Prisma.Decimal(100),
+    vatAmount: new Prisma.Decimal(0),
     total: new Prisma.Decimal(100),
     paymentStatus: 'CARTERA',
     amountPaid: new Prisma.Decimal(0),
@@ -36,7 +46,20 @@ describe('RemissionsService', () => {
     order: {
       number: order.number,
       warehouseId: order.warehouseId,
-      customer: { name: 'Cliente de prueba' },
+      vatRate: new Prisma.Decimal(0),
+      estimatedDeliveryDate: null,
+      customer: {
+        name: 'Cliente de prueba',
+        taxId: null,
+        address: null,
+        phone: null,
+        city: 'Medellín',
+        country: 'Colombia',
+        mobile: null,
+        zone: null,
+        salesRep: null,
+        paymentTerms: 'Contado',
+      },
       warehouse: { name: 'Bodega principal' },
     },
     user: { id: 'acting-user', name: 'Admin' },
@@ -50,6 +73,7 @@ describe('RemissionsService', () => {
         quantity: new Prisma.Decimal(4),
         orderItem: {
           productId: orderItem.productId,
+          unitPrice: orderItem.unitPrice,
           product: orderItem.product,
         },
       },
@@ -329,7 +353,7 @@ describe('RemissionsService', () => {
           productId: orderItem.productId,
           warehouseId: order.warehouseId,
           type: 'SALIDA',
-          reason: 'Despacho, remisión No. 9 del pedido No. 12',
+          reason: 'Despacho, remisión HT 9 del pedido No. 12',
         }),
       ]);
       expect(movementCalls[0][0].data[0].quantity.toString()).toBe('-4');
@@ -342,6 +366,48 @@ describe('RemissionsService', () => {
           userId: 'acting-user',
         }),
       );
+    });
+
+    // Lo que el cliente debe (cartera, abonos) es el total con IVA: un
+    // pago de 100 sobre una remisión de 100 + 19 % no la deja saldada.
+    it('adds the order VAT to the total the customer owes, keeping subtotal and VAT apart', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...order,
+        vatRate: new Prisma.Decimal(19),
+      });
+      const tx = createTxStub({ alreadyDelivered: new Prisma.Decimal(0) });
+      runCreateTx(tx);
+
+      await service.create(
+        {
+          orderId: order.id,
+          items: [{ orderItemId: orderItem.id, quantity: 4 }],
+          initialPayment: {
+            amount: 100,
+            method: 'EFECTIVO',
+            paidAt: '2026-10-26T12:00:00.000Z',
+          },
+        },
+        'acting-user',
+      );
+
+      const createCalls = tx.remission.create.mock.calls as [
+        [
+          {
+            data: {
+              subtotal: Prisma.Decimal;
+              vatAmount: Prisma.Decimal;
+              total: Prisma.Decimal;
+              paymentStatus: string;
+            };
+          },
+        ],
+      ];
+      const { data } = createCalls[0][0];
+      expect(data.subtotal.toString()).toBe('100');
+      expect(data.vatAmount.toString()).toBe('19');
+      expect(data.total.toString()).toBe('119');
+      expect(data.paymentStatus).toBe('ABONADO');
     });
 
     it.each([
@@ -755,6 +821,17 @@ describe('RemissionsService', () => {
       });
     });
 
+    it('also finds a remission by its printed number ("HT 3285")', async () => {
+      prisma.remission.findMany.mockResolvedValue([baseRemission]);
+      prisma.remission.count.mockResolvedValue(1);
+
+      await service.findAll({ search: 'HT 3285' });
+
+      expect(prisma.remission.count).toHaveBeenCalledWith({
+        where: { number: 3285 },
+      });
+    });
+
     it('returns an empty page instead of ignoring a non-numeric search', async () => {
       prisma.remission.findMany.mockResolvedValue([]);
       prisma.remission.count.mockResolvedValue(0);
@@ -792,6 +869,14 @@ describe('RemissionsService', () => {
       );
     });
 
+    // Los objetos /Page del PDF no van comprimidos (el contenido de cada
+    // página sí): contarlos dice en cuántas hojas salió.
+    function pageCount(buffer: Buffer): number {
+      return (
+        buffer.toString('latin1').match(/\/Type \/Page\b(?!s)/g)?.length ?? 0
+      );
+    }
+
     it('generates a PDF buffer with the remission number', async () => {
       prisma.remission.findUnique.mockResolvedValue(baseRemission);
 
@@ -799,6 +884,44 @@ describe('RemissionsService', () => {
 
       expect(number).toBe(1);
       expect(buffer.subarray(0, 4).toString()).toBe('%PDF');
+    });
+
+    // Herrajes Toro imprime una hoja por remisión y la corta por la mitad:
+    // copia del cliente arriba, de la empresa abajo.
+    it('puts both copies on a single letter page when the lines fit in half', async () => {
+      prisma.remission.findUnique.mockResolvedValue(baseRemission);
+
+      const { buffer } = await service.generatePdf('remission-1');
+
+      expect(pageCount(buffer)).toBe(1);
+    });
+
+    it('gives each copy its own page when the lines do not fit in half a page', async () => {
+      prisma.remission.findUnique.mockResolvedValue({
+        ...baseRemission,
+        items: Array.from({ length: 30 }, (_, index) => ({
+          ...baseRemission.items[0],
+          id: `remission-item-${index}`,
+        })),
+      });
+
+      const { buffer } = await service.generatePdf('remission-1');
+
+      expect(pageCount(buffer)).toBe(2);
+    });
+
+    it('continues a copy on another page instead of cutting lines off', async () => {
+      prisma.remission.findUnique.mockResolvedValue({
+        ...baseRemission,
+        items: Array.from({ length: 90 }, (_, index) => ({
+          ...baseRemission.items[0],
+          id: `remission-item-${index}`,
+        })),
+      });
+
+      const { buffer } = await service.generatePdf('remission-1');
+
+      expect(pageCount(buffer)).toBeGreaterThanOrEqual(4);
     });
   });
 

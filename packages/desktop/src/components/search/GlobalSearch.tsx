@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { useGlobalSearch } from '../../hooks/useGlobalSearch';
 import { ORDER_STATUS_LABEL } from '../../lib/order-status';
+import { formatRemissionNumber } from '../../lib/remission-number';
 import type { GlobalSearchResult } from '../../types/search';
 
 const productionStatusLabel: Record<
@@ -68,7 +69,7 @@ function buildGroups(data: GlobalSearchResult | undefined): ResultGroup[] {
       label: 'Remisiones',
       items: data.remissions.map((remission) => ({
         key: remission.id,
-        label: `Remisión No. ${remission.number}`,
+        label: `Remisión ${formatRemissionNumber(remission.number)}`,
         path: `/pedidos/${remission.orderId}`,
       })),
     },

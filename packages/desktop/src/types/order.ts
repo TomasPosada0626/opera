@@ -52,7 +52,10 @@ export interface Remission {
   user: { id: string; name: string };
   items: RemissionItem[];
   // total/amountPaid/paymentStatus los calcula el backend a partir de los
-  // abonos — el cliente nunca los elige.
+  // abonos — el cliente nunca los elige. total = subtotal + vatAmount (el
+  // IVA del pedido al remisionar): lo que el cliente debe.
+  subtotal: string;
+  vatAmount: string;
   total: string;
   amountPaid: string;
   paymentStatus: RemissionPaymentStatus;
@@ -71,7 +74,15 @@ export interface RemissionDetailItem {
   quantity: string;
   orderItem: {
     id: string;
-    product: { id: string; sku: string; name: string };
+    unitPrice: string;
+    product: {
+      id: string;
+      sku: string;
+      name: string;
+      material: string | null;
+      finish: string | null;
+      unit: { name: string; abbreviation: string };
+    };
   };
 }
 
@@ -81,6 +92,8 @@ export interface RemissionDetail {
   createdAt: string;
   user: { id: string; name: string };
   items: RemissionDetailItem[];
+  subtotal: string;
+  vatAmount: string;
   total: string;
   amountPaid: string;
   paymentStatus: RemissionPaymentStatus;
@@ -89,7 +102,9 @@ export interface RemissionDetail {
   order: {
     id: string;
     number: number;
-    customer: { id: string; name: string };
+    vatRate: string;
+    estimatedDeliveryDate: string | null;
+    customer: Customer;
     warehouse: { id: string; name: string };
   };
 }
@@ -106,6 +121,8 @@ export interface Order {
   // (parseDateOnly) antes de mostrarla.
   estimatedDeliveryDate: string | null;
   notes: string | null;
+  // IVA del pedido en porcentaje: "0" (sin IVA) o "19".
+  vatRate: string;
   createdAt: string;
   productionStartedAt: string | null;
   warehousedAt: string | null;

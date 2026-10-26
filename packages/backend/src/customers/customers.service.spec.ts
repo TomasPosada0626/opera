@@ -244,6 +244,7 @@ describe('CustomersService', () => {
           email: null,
           phone: null,
           address: null,
+          mobile: null,
           isActive: false,
         },
       }),

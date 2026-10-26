@@ -9,6 +9,20 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Remisión impresa con el formato en papel de Herrajes Toro
+  ([ADR 0011](docs/adr/0011-iva-por-pedido-y-remision-con-el-formato-en-papel.md)):
+  dos copias en una hoja carta vertical (cliente arriba, empresa abajo, con
+  línea de corte), datos del cliente, tabla con material, acabado, unidad de
+  empaque, cantidad, precio y total, y subtotal, IVA, total, nota de
+  reclamos, firma, zona y asesor. El PDF de la remisión usa el mismo
+  formato.
+- Consecutivo de remisiones `HT`: arranca en la HT 3286, continuando el
+  talonario en papel. La búsqueda acepta "HT 3286" o solo el número.
+- IVA por pedido (sin IVA o 19 %), editable mientras el pedido no tenga
+  remisiones. Cada remisión guarda subtotal, IVA y total, y la cartera usa el
+  total con IVA.
+- Ficha del cliente con ciudad, país, celular, zona, asesor y condiciones de
+  pago, que salen solos en la remisión impresa.
 - Compras con varias líneas (`/purchase-orders`, pantalla Compras):
   consecutivo, fecha esperada, número de factura del proveedor, anticipo
   opcional. Recepción parcial: cada llegada de mercancía es una ENTRADA del

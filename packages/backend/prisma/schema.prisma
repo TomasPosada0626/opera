@@ -364,16 +364,26 @@ model ProductionOrder {
 // la nota de visión de M5) no vive aquí como campo — se deriva de Order
 // (#50) cuando exista, igual que el stock se deriva de StockMovement.
 model Customer {
-  id        String   @id @default(uuid())
-  name      String
-  taxId     String?  @unique
-  email     String?
-  phone     String?
-  address   String?
-  isActive  Boolean  @default(true)
-  orders    Order[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  taxId        String?  @unique
+  email        String?
+  phone        String?
+  address      String?
+  // Datos que pide la remisión impresa de Herrajes Toro (su formato en
+  // papel): se llenan una vez en la ficha del cliente y salen solos en cada
+  // remisión. Texto libre, sin catálogos: zona y asesor son nombres que
+  // usa el negocio, no usuarios de Opera.
+  city         String?
+  country      String?
+  mobile       String?
+  zone         String?
+  salesRep     String?
+  paymentTerms String?
+  isActive     Boolean  @default(true)
+  orders       Order[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Ver el mismo comentario en Product — búsqueda ILIKE por nombre en
   // customers.service.ts y search.service.ts.
@@ -577,6 +587,13 @@ model Order {
   // huso; un DateTime completo se correría un día al mostrarse en Colombia.
   estimatedDeliveryDate DateTime?   @db.Date
   notes                 String?
+  // IVA del pedido en porcentaje (0 = sin IVA, 19 = IVA general): no
+  // todas las ventas lo llevan. Se fija por pedido, no por producto ni por
+  // cliente, y cada remisión guarda el IVA que calculó con él (ver
+  // Remission.vatAmount), así que cambiar la tarifa algún día no reescribe
+  // remisiones viejas. Solo se puede cambiar mientras el pedido no tenga
+  // remisiones vigentes.
+  vatRate               Decimal     @default(0) @db.Decimal(5, 2)
   items                 OrderItem[]
   remissions            Remission[]
   createdAt             DateTime    @default(now())
@@ -651,6 +668,12 @@ model Remission {
   // líneas del pedido se editan), así que guardarlo no puede
   // desincronizarse y evita recalcularlo en saldo, cartera y dashboard.
   total         Decimal                @db.Decimal(14, 4)
+  // total = subtotal + vatAmount. subtotal es lo despachado a precio del
+  // pedido; vatAmount, el IVA con la tarifa del pedido al remisionar. Lo
+  // que el cliente debe (cartera, abonos) es el total, con IVA incluido.
+  // Las remisiones anteriores a esto quedaron con subtotal = total e IVA 0.
+  subtotal      Decimal                @default(0) @db.Decimal(14, 4)
+  vatAmount     Decimal                @default(0) @db.Decimal(14, 4)
   paymentStatus RemissionPaymentStatus @default(CARTERA)
   amountPaid    Decimal                @default(0) @db.Decimal(14, 4)
   payments      RemissionPayment[]

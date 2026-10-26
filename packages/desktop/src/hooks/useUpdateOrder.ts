@@ -7,6 +7,8 @@ export interface UpdateOrderInput {
   // null borra el valor; omitirlo lo deja como está (ver UpdateOrderDto).
   estimatedDeliveryDate?: string | null;
   notes?: string | null;
+  // Porcentaje: 0 o 19. Solo mientras el pedido no tenga remisiones vigentes.
+  vatRate?: number;
 }
 
 export function useUpdateOrder() {

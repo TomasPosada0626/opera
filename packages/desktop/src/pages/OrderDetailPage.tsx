@@ -32,6 +32,10 @@ import { RemissionForm } from '../components/orders/RemissionForm';
 import { VoidRemissionForm } from '../components/orders/VoidRemissionForm';
 import { useOrder } from '../hooks/useOrder';
 import { downloadFile } from '../lib/download-file';
+import {
+  formatRemissionNumber,
+  REMISSION_PREFIX,
+} from '../lib/remission-number';
 import { getCurrentUser } from '../lib/current-user';
 import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 import {
@@ -43,7 +47,9 @@ import {
 import {
   deliveredFor,
   orderCollection,
+  orderSubtotal,
   orderTotal,
+  orderVat,
   PAYMENT_METHOD_LABEL,
 } from '../lib/order-status';
 import type { Order, Remission, RemissionPayment } from '../types/order';
@@ -51,7 +57,7 @@ import type { Order, Remission, RemissionPayment } from '../types/order';
 async function downloadRemissionPdf(remissionId: string, number: number) {
   await downloadFile(
     `/remissions/${remissionId}/pdf`,
-    `remision-${number}.pdf`,
+    `remision-${REMISSION_PREFIX}-${number}.pdf`,
   );
 }
 
@@ -148,7 +154,10 @@ function RemissionCard({
         <div>
           <div className="flex items-center gap-2">
             <p className="text-ink text-sm font-semibold">
-              Remisión No. <span className="figures">{remission.number}</span>
+              Remisión{' '}
+              <span className="figures">
+                {formatRemissionNumber(remission.number)}
+              </span>
             </p>
             {isVoided ? (
               <Badge variant="danger">Anulada</Badge>
@@ -439,12 +448,44 @@ function OrderDetailPage() {
                 })}
               </tbody>
               <tfoot>
-                <tr className="border-line bg-chrome/60 border-t">
+                {Number(order.vatRate) > 0 && (
+                  <>
+                    <tr className="border-line bg-chrome/60 border-t">
+                      <td
+                        colSpan={3}
+                        className="text-ink-muted px-5 pt-3 pb-1 text-right text-[13px]"
+                      >
+                        Subtotal
+                      </td>
+                      <td className="figures text-ink-secondary px-5 pt-3 pb-1 text-right text-[13px]">
+                        {formatMoney(orderSubtotal(order))}
+                      </td>
+                    </tr>
+                    <tr className="bg-chrome/60">
+                      <td
+                        colSpan={3}
+                        className="text-ink-muted px-5 py-1 text-right text-[13px]"
+                      >
+                        IVA {Number(order.vatRate)} %
+                      </td>
+                      <td className="figures text-ink-secondary px-5 py-1 text-right text-[13px]">
+                        {formatMoney(orderVat(order))}
+                      </td>
+                    </tr>
+                  </>
+                )}
+                <tr
+                  className={`border-line bg-chrome/60 ${
+                    Number(order.vatRate) > 0 ? '' : 'border-t'
+                  }`}
+                >
                   <td
                     colSpan={3}
                     className="text-ink-muted px-5 py-3 text-right text-[13px] font-medium"
                   >
-                    Total del pedido
+                    {Number(order.vatRate) > 0
+                      ? 'Total del pedido'
+                      : 'Total del pedido (sin IVA)'}
                   </td>
                   <td className="figures text-ink px-5 py-3 text-right text-base font-semibold">
                     {formatMoney(orderTotal(order))}
@@ -572,7 +613,7 @@ function OrderDetailPage() {
       {payingRemission && (
         <Modal
           title="Registrar abono"
-          description={`Remisión No. ${payingRemission.number} · ${order.customer.name}`}
+          description={`Remisión ${formatRemissionNumber(payingRemission.number)} · ${order.customer.name}`}
           onClose={() => setPayingRemission(null)}
         >
           <AddPaymentForm
@@ -586,7 +627,7 @@ function OrderDetailPage() {
       {voidingPayment && (
         <Modal
           title="Anular abono"
-          description={`Remisión No. ${voidingPayment.remission.number}`}
+          description={`Remisión ${formatRemissionNumber(voidingPayment.remission.number)}`}
           onClose={() => setVoidingPayment(null)}
         >
           <VoidPaymentForm
@@ -600,7 +641,7 @@ function OrderDetailPage() {
 
       {voidingRemission && (
         <Modal
-          title={`Anular remisión No. ${voidingRemission.number}`}
+          title={`Anular remisión ${formatRemissionNumber(voidingRemission.number)}`}
           onClose={() => setVoidingRemission(null)}
         >
           <VoidRemissionForm

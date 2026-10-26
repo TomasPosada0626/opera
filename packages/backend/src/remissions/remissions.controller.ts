@@ -24,6 +24,7 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ListRemissionsDto } from './dto/list-remissions.dto';
 import { VoidPaymentDto } from './dto/void-payment.dto';
 import { VoidRemissionDto } from './dto/void-remission.dto';
+import { REMISSION_PREFIX } from './remission-number';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -160,7 +161,7 @@ export class RemissionsController {
     const { buffer, number } = await this.remissionsService.generatePdf(id);
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="remision-${number}.pdf"`,
+      'Content-Disposition': `inline; filename="remision-${REMISSION_PREFIX}-${number}.pdf"`,
     });
     res.send(buffer);
   }

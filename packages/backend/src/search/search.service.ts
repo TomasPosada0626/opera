@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchQueryDto } from './dto/search-query.dto';
+import { parseRemissionNumber } from '../remissions/remission-number';
 
 @Injectable()
 export class SearchService {
@@ -14,10 +15,12 @@ export class SearchService {
   // es un Int (Prisma no hace substring match sobre columnas numéricas),
   // así que solo matchea si el término completo es un entero — coincide
   // con cómo alguien de verdad busca un consecutivo (lo escribe completo,
-  // no un prefijo).
+  // no un prefijo). Una remisión también se encuentra tal como sale
+  // impresa ("HT 3285").
   async search(query: SearchQueryDto) {
     const { q, limit = 5 } = query;
     const parsedNumber = Number.isInteger(Number(q)) ? Number(q) : undefined;
+    const remissionNumber = parseRemissionNumber(q) ?? undefined;
 
     const [
       products,
@@ -48,10 +51,10 @@ export class SearchService {
         select: { id: true, name: true },
         take: limit,
       }),
-      parsedNumber === undefined
+      remissionNumber === undefined
         ? Promise.resolve([])
         : this.prisma.remission.findMany({
-            where: { number: parsedNumber },
+            where: { number: remissionNumber },
             select: { id: true, number: true, orderId: true },
             take: limit,
           }),

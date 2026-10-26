@@ -125,6 +125,16 @@ describe('OrderDetailPage', () => {
     // 2 + 1 entregados de 3.
     expect(within(row).getByText('3')).toBeInTheDocument();
     expect(within(row).getByText(/\/ 3/)).toBeInTheDocument();
+    expect(screen.getByText('Total del pedido (sin IVA)')).toBeInTheDocument();
+  });
+
+  it('breaks the total into subtotal and VAT when the order has VAT', async () => {
+    // 3 × 25 = 75; IVA 19 % = 14,25; total 89,25.
+    renderOrder(buildOrder({ vatRate: '19' }));
+
+    expect(await screen.findByText('IVA 19 %')).toBeInTheDocument();
+    expect(screen.getByText('$ 14,25')).toBeInTheDocument();
+    expect(screen.getAllByText('$ 89,25').length).toBeGreaterThan(0);
     expect(screen.getByText('Total del pedido')).toBeInTheDocument();
   });
 
@@ -205,7 +215,7 @@ describe('OrderDetailPage', () => {
 
     expect(mockedDownloadFile).toHaveBeenCalledWith(
       '/remissions/remission-1/pdf',
-      'remision-7.pdf',
+      'remision-HT-7.pdf',
     );
   });
 
@@ -215,7 +225,7 @@ describe('OrderDetailPage', () => {
       buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
     );
 
-    await screen.findByText('Remisión No.');
+    await screen.findByText('HT 7');
     expect(
       screen.queryByRole('button', { name: /Nueva remisión/ }),
     ).not.toBeInTheDocument();
@@ -326,7 +336,7 @@ describe('OrderDetailPage', () => {
 
       await user.click(await screen.findByRole('button', { name: /^Anular$/ }));
       const dialog = screen.getByRole('dialog', {
-        name: 'Anular remisión No. 7',
+        name: 'Anular remisión HT 7',
       });
       await user.click(within(dialog).getByRole('button', { name: 'Cerrar' }));
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -353,7 +363,7 @@ describe('OrderDetailPage', () => {
         buildOrder({ status: 'EN_ALMACEN', remissions: [buildRemission()] }),
       );
 
-      await screen.findByText('Remisión No.');
+      await screen.findByText('HT 7');
       expect(
         screen.queryByRole('button', { name: /Cancelar pedido/ }),
       ).not.toBeInTheDocument();

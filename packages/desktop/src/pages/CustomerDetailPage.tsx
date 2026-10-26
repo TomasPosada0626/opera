@@ -7,6 +7,7 @@ import {
   Phone,
   Receipt,
   ShoppingBag,
+  Smartphone,
   Wallet,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router';
@@ -26,6 +27,7 @@ import { useCustomerPayments } from '../hooks/useCustomerPayments';
 import { useOrders } from '../hooks/useOrders';
 import { downloadFile } from '../lib/download-file';
 import { formatDate, formatMoney } from '../lib/format';
+import { formatRemissionNumber } from '../lib/remission-number';
 import {
   deliveryState,
   orderTotal,
@@ -129,11 +131,24 @@ function CustomerDetailPage() {
                   {customer.email}
                 </span>
               )}
-              {customer.address && (
+              {customer.mobile && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Smartphone className="h-3.5 w-3.5" />
+                  {customer.mobile}
+                </span>
+              )}
+              {(customer.address || customer.city || customer.country) && (
                 <span className="inline-flex items-center gap-1.5">
                   <MapPin className="h-3.5 w-3.5" />
-                  {customer.address}
+                  {[customer.address, customer.city, customer.country]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
+              )}
+              {customer.zone && <span>Zona {customer.zone}</span>}
+              {customer.salesRep && <span>Asesor: {customer.salesRep}</span>}
+              {customer.paymentTerms && (
+                <span>Pago: {customer.paymentTerms}</span>
               )}
             </>
           )
@@ -240,7 +255,7 @@ function CustomerDetailPage() {
                           {PAYMENT_METHOD_LABEL[payment.method]}
                           <span className="text-ink-faint font-normal">
                             {' '}
-                            · Rem. {payment.remission.number}
+                            · {formatRemissionNumber(payment.remission.number)}
                           </span>
                         </p>
                         <p className="text-ink-muted truncate text-xs">

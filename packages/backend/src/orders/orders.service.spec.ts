@@ -244,6 +244,8 @@ describe('OrdersService', () => {
           customerId: customer.id,
           warehouseId: warehouse.id,
           userId: 'acting-user',
+          // Sin vatRate en la petición: sin IVA.
+          vatRate: 0,
         }),
       );
       // Este negocio fabrica sobre pedido — crear el pedido no debe tocar
@@ -254,6 +256,28 @@ describe('OrdersService', () => {
           action: 'CREATE',
           entity: 'Order',
           userId: 'acting-user',
+        }),
+      );
+    });
+  });
+
+  describe('create (IVA)', () => {
+    it('stores the VAT rate chosen for the order', async () => {
+      prisma.order.create.mockResolvedValue(baseOrder);
+
+      await service.create(
+        {
+          customerId: customer.id,
+          warehouseId: warehouse.id,
+          items: [{ productId: product.id, quantity: 2, unitPrice: 50 }],
+          vatRate: 19,
+        },
+        'acting-user',
+      );
+
+      expect(prisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ vatRate: 19 }) as unknown,
         }),
       );
     });
@@ -348,6 +372,53 @@ describe('OrdersService', () => {
           before: { estimatedDeliveryDate: null, notes: 'vieja' },
         }),
       );
+    });
+
+    // No todas las ventas llevan IVA: se elige por pedido y se puede
+    // corregir mientras no haya remisiones que ya lo usaron.
+    it('changes the VAT while the order has no active remissions', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        vatRate: new Prisma.Decimal(0),
+        remissions: [{ id: 'remission-1', voidedAt: new Date() }],
+      });
+      prisma.order.update.mockResolvedValue(baseOrder);
+
+      await service.update('order-1', { vatRate: 19 }, 'acting-user');
+
+      expect(prisma.order.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { vatRate: 19 } }),
+      );
+    });
+
+    it('refuses to change the VAT once an active remission used it', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        vatRate: new Prisma.Decimal(0),
+        remissions: [{ id: 'remission-1', voidedAt: null }],
+      });
+
+      await expect(
+        service.update('order-1', { vatRate: 19 }, 'acting-user'),
+      ).rejects.toThrow('El IVA no se puede cambiar');
+      expect(prisma.order.update).not.toHaveBeenCalled();
+    });
+
+    it('lets the same VAT through even with remissions (nothing changes)', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        ...baseOrder,
+        vatRate: new Prisma.Decimal(19),
+        remissions: [{ id: 'remission-1', voidedAt: null }],
+      });
+      prisma.order.update.mockResolvedValue(baseOrder);
+
+      await service.update(
+        'order-1',
+        { vatRate: 19, notes: 'llamar antes' },
+        'acting-user',
+      );
+
+      expect(prisma.order.update).toHaveBeenCalled();
     });
 
     it('clears the date with null and leaves untouched fields out of the update', async () => {

@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsDateString,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -10,6 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { OrderItemDto } from './order-item.dto';
+import { VAT_RATES } from '../vat';
 
 // Solo "AAAA-MM-DD", sin hora: la fecha de envío se guarda como DATE (ver
 // Order.estimatedDeliveryDate en schema.prisma) y una hora con zona podría
@@ -41,4 +43,10 @@ export class CreateOrderDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  // Porcentaje: 0 (sin IVA) o 19. Opcional en la API (sin IVA si se
+  // omite); el formulario de escritorio siempre lo manda.
+  @IsOptional()
+  @IsIn(VAT_RATES, { message: 'El IVA debe ser 0 (sin IVA) o 19' })
+  vatRate?: number;
 }

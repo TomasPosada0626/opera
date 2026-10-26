@@ -17,7 +17,24 @@ const customerSchema = z.object({
   email: z.literal('').or(z.string().email('Correo inválido')),
   phone: z.string().optional(),
   address: z.string().optional(),
+  city: z.string().optional(),
+  country: z.string().optional(),
+  mobile: z.string().optional(),
+  zone: z.string().optional(),
+  salesRep: z.string().optional(),
+  paymentTerms: z.string().optional(),
 });
+
+// Lo que pide la remisión impresa además de lo básico (formato en papel de
+// Herrajes Toro): se llena una vez acá y sale solo en cada remisión.
+const REMISSION_FIELDS = [
+  { name: 'city', label: 'Ciudad' },
+  { name: 'country', label: 'País' },
+  { name: 'mobile', label: 'Celular' },
+  { name: 'zone', label: 'Zona' },
+  { name: 'salesRep', label: 'Asesor' },
+  { name: 'paymentTerms', label: 'Condiciones de pago' },
+] as const;
 
 type CustomerFormValues = z.infer<typeof customerSchema>;
 
@@ -40,6 +57,12 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
       email: customer?.email ?? '',
       phone: customer?.phone ?? '',
       address: customer?.address ?? '',
+      city: customer?.city ?? '',
+      country: customer?.country ?? '',
+      mobile: customer?.mobile ?? '',
+      zone: customer?.zone ?? '',
+      salesRep: customer?.salesRep ?? '',
+      paymentTerms: customer?.paymentTerms ?? '',
     },
   });
 
@@ -57,6 +80,12 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
       email: values.email || undefined,
       phone: values.phone || undefined,
       address: values.address || undefined,
+      city: values.city || undefined,
+      country: values.country || undefined,
+      mobile: values.mobile || undefined,
+      zone: values.zone || undefined,
+      salesRep: values.salesRep || undefined,
+      paymentTerms: values.paymentTerms || undefined,
     };
 
     if (customer) {
@@ -98,6 +127,22 @@ export function CustomerForm({ customer, onSuccess }: CustomerFormProps) {
         registration={register('address')}
         error={errors.address}
       />
+
+      <fieldset className="border-line mt-1 flex flex-col gap-3 border-t pt-4">
+        <legend className="text-ink-faint pr-2 text-[11px] font-semibold tracking-[0.12em] uppercase">
+          Para la remisión (opcional)
+        </legend>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {REMISSION_FIELDS.map(({ name, label }) => (
+            <TextField
+              key={name}
+              label={label}
+              registration={register(name)}
+              error={errors[name]}
+            />
+          ))}
+        </div>
+      </fieldset>
 
       {mutation.isError && (
         <p

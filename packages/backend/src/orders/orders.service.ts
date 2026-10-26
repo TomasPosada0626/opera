@@ -199,6 +199,7 @@ export class OrdersService {
           ? new Date(dto.estimatedDeliveryDate)
           : undefined,
         notes: dto.notes?.trim() || undefined,
+        vatRate: dto.vatRate ?? 0,
         items: {
           create: dto.items.map((item) => ({
             productId: item.productId,
@@ -229,10 +230,23 @@ export class OrdersService {
     if (before.status === 'CANCELADO') {
       throw new BadRequestException('No se puede editar un pedido cancelado');
     }
+    // Cada remisión guardó el IVA con el que se emitió (y el cliente ya
+    // puede haber abonado contra ese total): cambiar la tarifa después
+    // dejaría el pedido diciendo una cosa y sus remisiones otra.
+    if (
+      dto.vatRate !== undefined &&
+      !before.vatRate.equals(dto.vatRate) &&
+      before.remissions.some((remission) => remission.voidedAt === null)
+    ) {
+      throw new BadRequestException(
+        'El IVA no se puede cambiar porque el pedido ya tiene remisiones. Anúlalas primero si el IVA quedó mal.',
+      );
+    }
 
     const order = await this.prisma.order.update({
       where: { id },
       data: {
+        ...(dto.vatRate !== undefined ? { vatRate: dto.vatRate } : {}),
         ...(dto.estimatedDeliveryDate !== undefined
           ? {
               estimatedDeliveryDate: dto.estimatedDeliveryDate
@@ -255,10 +269,12 @@ export class OrdersService {
       before: {
         estimatedDeliveryDate: before.estimatedDeliveryDate,
         notes: before.notes,
+        vatRate: before.vatRate,
       },
       after: {
         estimatedDeliveryDate: order.estimatedDeliveryDate,
         notes: order.notes,
+        vatRate: order.vatRate,
       },
     });
 

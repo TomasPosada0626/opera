@@ -1,10 +1,11 @@
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import PrintRemissionPage from './PrintRemissionPage';
+import { RETURNS_NOTICE } from '../components/orders/RemissionSheet';
 import { apiFetch } from '../lib/api-client';
 import type { RemissionDetail } from '../types/order';
 import type { PaginatedResult } from '../types/product';
@@ -53,11 +54,21 @@ function buildRemission(
         quantity: '4',
         orderItem: {
           id: 'order-item-1',
-          product: { id: 'product-1', sku: 'SKU-1', name: 'Silla de madera' },
+          unitPrice: '25',
+          product: {
+            id: 'product-1',
+            sku: 'SKU-1',
+            name: 'Silla de madera',
+            material: 'Roble',
+            finish: 'Natural',
+            unit: { name: 'Unidad', abbreviation: 'und' },
+          },
         },
       },
     ],
-    total: '100',
+    subtotal: '100',
+    vatAmount: '19',
+    total: '119',
     amountPaid: '0',
     paymentStatus: 'CARTERA',
     voidedAt: null,
@@ -65,7 +76,23 @@ function buildRemission(
     order: {
       id: 'order-1',
       number: 9,
-      customer: { id: 'customer-1', name: 'Muebles del Valle' },
+      vatRate: '19',
+      estimatedDeliveryDate: '2026-08-05T00:00:00.000Z',
+      customer: {
+        id: 'customer-1',
+        name: 'Muebles del Valle',
+        taxId: '900.123.456-7',
+        email: null,
+        phone: '604 444 5566',
+        address: 'Cra 52 # 14-30',
+        city: 'Medellín',
+        country: 'Colombia',
+        mobile: '310 555 1234',
+        zone: 'Antioquia',
+        salesRep: 'Carlos Pérez',
+        paymentTerms: 'Crédito 30 días',
+        isActive: true,
+      },
       warehouse: { id: 'warehouse-1', name: 'Bodega principal' },
     },
     ...overrides,
@@ -82,14 +109,59 @@ describe('PrintRemissionPage', () => {
 
     renderAt('/imprimir-remision?id=remission-1');
 
-    expect(
-      await screen.findByText('SKU-1 — Silla de madera'),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Muebles del Valle')).toBeInTheDocument();
+    expect(await screen.findAllByText('SKU-1 — Silla de madera')).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByText('Muebles del Valle')).toHaveLength(2);
     expect(
       screen.getByRole('button', { name: 'Imprimir' }),
     ).toBeInTheDocument();
     expect(mockedApiFetch).toHaveBeenCalledWith('/remissions/remission-1');
+  });
+
+  // Herrajes Toro imprime una hoja carta y la corta por la mitad: la copia
+  // del cliente arriba y la de la empresa abajo, con su formato en papel.
+  it('prints both copies on one sheet with the paper format fields', async () => {
+    mockedApiFetch.mockResolvedValue(buildRemission({ number: 3286 }));
+
+    renderAt('/imprimir-remision?id=remission-1');
+
+    const clientCopy = await screen.findByRole('region', {
+      name: 'Copia del cliente',
+    });
+    const companyCopy = screen.getByRole('region', {
+      name: 'Copia de la empresa',
+    });
+    for (const copy of [clientCopy, companyCopy]) {
+      const view = within(copy);
+      expect(view.getByText(/HT 3286/)).toBeInTheDocument();
+      expect(view.getByText('Medellín')).toBeInTheDocument();
+      expect(view.getByText('Crédito 30 días')).toBeInTheDocument();
+      expect(view.getByText('Carlos Pérez')).toBeInTheDocument();
+      expect(view.getByText('Unidad')).toBeInTheDocument();
+      expect(view.getByText('IVA 19%')).toBeInTheDocument();
+      expect(view.getByText(RETURNS_NOTICE)).toBeInTheDocument();
+      // 16 filas en media hoja: la que tiene producto y 15 vacías.
+      expect(copy.querySelectorAll('[data-empty-row]')).toHaveLength(15);
+    }
+  });
+
+  it('leaves the VAT cell empty for an order without VAT', async () => {
+    mockedApiFetch.mockResolvedValue(
+      buildRemission({
+        vatAmount: '0',
+        total: '100',
+        order: { ...buildRemission().order, vatRate: '0' },
+      }),
+    );
+
+    renderAt('/imprimir-remision?id=remission-1');
+
+    const clientCopy = await screen.findByRole('region', {
+      name: 'Copia del cliente',
+    });
+    expect(within(clientCopy).getByText('IVA')).toBeInTheDocument();
+    expect(within(clientCopy).queryByText(/IVA d/)).not.toBeInTheDocument();
   });
 
   it('shows nothing to print until a remission is chosen', () => {
@@ -128,9 +200,9 @@ describe('PrintRemissionPage', () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith('/remissions/remission-2'),
     );
-    expect(
-      await screen.findByText('SKU-1 — Silla de madera'),
-    ).toBeInTheDocument();
+    expect(await screen.findAllByText('SKU-1 — Silla de madera')).toHaveLength(
+      2,
+    );
   });
 
   it('shows a not-found message when the search has no match', async () => {
@@ -145,7 +217,7 @@ describe('PrintRemissionPage', () => {
     await user.click(screen.getByRole('button', { name: 'Buscar' }));
 
     expect(
-      await screen.findByText('No existe la remisión No. 999'),
+      await screen.findByText('No existe la remisión 999'),
     ).toBeInTheDocument();
   });
 

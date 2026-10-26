@@ -34,6 +34,7 @@ export class CustomersService extends CatalogService<
         email: null,
         phone: null,
         address: null,
+        mobile: null,
       },
     });
   }
@@ -98,6 +99,12 @@ export class CustomersService extends CatalogService<
       { field: 'Correo', value: customer.email ?? '' },
       { field: 'Teléfono', value: customer.phone ?? '' },
       { field: 'Dirección', value: customer.address ?? '' },
+      { field: 'Ciudad', value: customer.city ?? '' },
+      { field: 'País', value: customer.country ?? '' },
+      { field: 'Celular', value: customer.mobile ?? '' },
+      { field: 'Zona', value: customer.zone ?? '' },
+      { field: 'Asesor', value: customer.salesRep ?? '' },
+      { field: 'Condiciones de pago', value: customer.paymentTerms ?? '' },
       { field: 'Activo', value: customer.isActive ? 'Sí' : 'No' },
       { field: 'Creado', value: customer.createdAt.toISOString() },
     ]);

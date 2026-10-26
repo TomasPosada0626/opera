@@ -30,6 +30,8 @@ function buildRemission(overrides: Partial<Remission> = {}): Remission {
     createdAt: '2026-01-16T10:00:00.000Z',
     user: { id: 'user-1', name: 'Admin' },
     items: [],
+    subtotal: '0',
+    vatAmount: '0',
     total: '0',
     amountPaid: '0',
     paymentStatus: 'CARTERA',
