@@ -147,6 +147,23 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Instalador y primer arranque, a partir de las dos primeras PCs reales
+  (versión 1.0.1, adenda en
+  [ADR 0008](docs/adr/0008-instalador-autocontenido-docker-desktop.md)):
+  - el backend empaquetado ya trae el cliente de Prisma generado (antes se
+    caía al arrancar);
+  - el instalador activa WSL con el `dism`/`wsl` de 64 bits e instala el
+    paquete de WSL;
+  - la reanudación tras el reinicio ya no pierde el consentimiento de
+    Docker (las marcas viven en `%ProgramData%\Opera\setup`);
+  - las migraciones ya no fallan con EPERM en `C:\Program Files`;
+  - Opera encuentra Docker Desktop fuera de Program Files y espera si su
+    instalación sigue en curso;
+  - el backend tiene 2 minutos para responder en el primer arranque;
+  - una instalación nueva abre "crear la primera cuenta" en vez del login;
+  - los datos van a `%APPDATA%\Opera` (se copian solos desde
+    `%APPDATA%\desktop`);
+  - el primer respaldo automático corre a los 5 minutos de abrir Opera.
 - Una sola fábrica: con una sola bodega, la app ya no muestra la columna
   "Bodega" (Kardex, Producción), el filtro por bodega del Kardex, la bodega
   en el detalle de pedidos/compras y en la remisión impresa, ni el menú
