@@ -14,6 +14,7 @@ import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { KPICard } from '../components/ui/KPICard';
 import { PageHeader } from '../components/ui/PageHeader';
 import { OrderStatusBadge } from '../components/orders/OrderBadges';
+import { PurchaseStatusBadge } from '../components/purchases/PurchaseBadges';
 import { useDashboardSummary } from '../hooks/useDashboardSummary';
 import { auditActionLabel, auditEntityLabel } from '../lib/audit-labels';
 import {
@@ -34,20 +35,26 @@ const purchaseColumns: DataTableColumn<RecentPurchase>[] = [
   {
     key: 'supplier',
     header: 'Proveedor',
-    render: (row) => <span className="font-medium">{row.supplierName}</span>,
+    render: (row) => (
+      <Link
+        to={`/compras/${row.id}`}
+        className="hover:text-accent font-medium transition-colors"
+      >
+        <span className="figures text-ink-faint mr-1.5">#{row.number}</span>
+        {row.supplierName}
+      </Link>
+    ),
   },
-  { key: 'product', header: 'Producto', render: (row) => row.productName },
   {
-    key: 'quantity',
-    header: 'Cantidad',
-    className: 'text-right figures',
-    render: (row) => formatQuantity(row.quantity),
+    key: 'status',
+    header: 'Estado',
+    render: (row) => <PurchaseStatusBadge status={row.status} />,
   },
   {
-    key: 'unitCost',
-    header: 'Costo unit.',
+    key: 'total',
+    header: 'Total',
     className: 'text-right figures',
-    render: (row) => formatMoney(row.unitCost),
+    render: (row) => formatMoney(row.total),
   },
   {
     key: 'purchasedAt',
@@ -399,9 +406,22 @@ function DashboardPage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-ink text-[15px] font-semibold tracking-tight">
-            Compras recientes
-          </h2>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-ink text-[15px] font-semibold tracking-tight">
+              Compras recientes
+            </h2>
+            {data && Number(data.payables.total) > 0 && (
+              <Link
+                to="/reportes?vista=por-pagar"
+                className="text-ink-muted hover:text-accent text-[13px] transition-colors"
+              >
+                Por pagar a proveedores:{' '}
+                <span className="figures text-danger font-semibold">
+                  {formatMoney(data.payables.total)}
+                </span>
+              </Link>
+            )}
+          </div>
           <DataTable
             columns={purchaseColumns}
             rows={data?.recentPurchases ?? []}

@@ -6,7 +6,7 @@ import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
 import { Pagination } from '../components/ui/Pagination';
 import { useKardex } from '../hooks/useKardex';
 import { useProduct } from '../hooks/useProduct';
-import { useWarehouses } from '../hooks/useWarehouses';
+import { useHasSeveralWarehouses, useWarehouses } from '../hooks/useWarehouses';
 import { formatMoney, formatQuantity } from '../lib/format';
 import type { MovementType, StockMovementEntry } from '../types/inventory';
 
@@ -43,6 +43,7 @@ function KardexPage() {
 
   const productQuery = useProduct(productId ?? '');
   const warehousesQuery = useWarehouses();
+  const showWarehouses = useHasSeveralWarehouses();
   const kardexQuery = useKardex({
     productId: productId ?? '',
     page,
@@ -101,11 +102,15 @@ function KardexPage() {
           formatMoney(entry.unitCost)
         ),
     },
-    {
-      key: 'warehouse',
-      header: 'Bodega',
-      render: (entry) => entry.warehouse.name,
-    },
+    ...(showWarehouses
+      ? [
+          {
+            key: 'warehouse',
+            header: 'Bodega',
+            render: (entry: StockMovementEntry) => entry.warehouse.name,
+          },
+        ]
+      : []),
     {
       key: 'user',
       header: 'Usuario',
@@ -131,19 +136,21 @@ function KardexPage() {
         }
       />
 
-      <select
-        value={warehouseId}
-        onChange={(event) => handleWarehouseChange(event.target.value)}
-        aria-label="Filtrar por bodega"
-        className="field h-9 w-full max-w-xs px-3"
-      >
-        <option value="">Todas las bodegas</option>
-        {warehousesQuery.data?.data.map((warehouse) => (
-          <option key={warehouse.id} value={warehouse.id}>
-            {warehouse.name}
-          </option>
-        ))}
-      </select>
+      {showWarehouses && (
+        <select
+          value={warehouseId}
+          onChange={(event) => handleWarehouseChange(event.target.value)}
+          aria-label="Filtrar por bodega"
+          className="field h-9 w-full max-w-xs px-3"
+        >
+          <option value="">Todas las bodegas</option>
+          {warehousesQuery.data?.data.map((warehouse) => (
+            <option key={warehouse.id} value={warehouse.id}>
+              {warehouse.name}
+            </option>
+          ))}
+        </select>
+      )}
 
       <DataTable
         columns={columns}

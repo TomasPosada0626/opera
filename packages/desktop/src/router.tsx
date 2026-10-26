@@ -24,6 +24,8 @@ import {
   ReportsPage,
   SetupPage,
   SupplierDetailPage,
+  PurchaseOrdersPage,
+  PurchaseOrderDetailPage,
   SuppliersPage,
   UnitsPage,
   UsersPage,
@@ -156,6 +158,11 @@ export const router = createHashRouter([
           {
             path: '/proveedores/:supplierId',
             element: <SupplierDetailPage />,
+          },
+          { path: '/compras', element: <PurchaseOrdersPage /> },
+          {
+            path: '/compras/:purchaseOrderId',
+            element: <PurchaseOrderDetailPage />,
           },
           { path: '/reportes', element: <ReportsPage /> },
           {

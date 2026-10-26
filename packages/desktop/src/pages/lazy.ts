@@ -26,6 +26,10 @@ export const CustomersPage = lazy(() => import('./CustomersPage'));
 export const CustomerDetailPage = lazy(() => import('./CustomerDetailPage'));
 export const SuppliersPage = lazy(() => import('./SuppliersPage'));
 export const SupplierDetailPage = lazy(() => import('./SupplierDetailPage'));
+export const PurchaseOrdersPage = lazy(() => import('./PurchaseOrdersPage'));
+export const PurchaseOrderDetailPage = lazy(
+  () => import('./PurchaseOrderDetailPage'),
+);
 export const PrintRemissionPage = lazy(() => import('./PrintRemissionPage'));
 export const ReportsPage = lazy(() => import('./ReportsPage'));
 export const UsersPage = lazy(() => import('./UsersPage'));

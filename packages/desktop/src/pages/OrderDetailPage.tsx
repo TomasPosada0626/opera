@@ -33,6 +33,7 @@ import { VoidRemissionForm } from '../components/orders/VoidRemissionForm';
 import { useOrder } from '../hooks/useOrder';
 import { downloadFile } from '../lib/download-file';
 import { getCurrentUser } from '../lib/current-user';
+import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 import {
   formatDate,
   formatDateTime,
@@ -311,6 +312,7 @@ function OrderDetailPage() {
 
   const orderQuery = useOrder(orderId ?? '');
   const order = orderQuery.data;
+  const showWarehouses = useHasSeveralWarehouses();
 
   if (orderQuery.isLoading || !order) {
     return (
@@ -337,10 +339,12 @@ function OrderDetailPage() {
         meta={
           <>
             <OrderStatusBadge status={order.status} />
-            <span className="inline-flex items-center gap-1.5">
-              <Warehouse className="h-3.5 w-3.5" />
-              {order.warehouse.name}
-            </span>
+            {showWarehouses && (
+              <span className="inline-flex items-center gap-1.5">
+                <Warehouse className="h-3.5 w-3.5" />
+                {order.warehouse.name}
+              </span>
+            )}
             <span>Creado el {formatDate(order.createdAt)}</span>
           </>
         }

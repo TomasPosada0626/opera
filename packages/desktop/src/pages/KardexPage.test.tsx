@@ -88,13 +88,22 @@ function warehousesResponse(data: Warehouse[]): PaginatedResult<Warehouse> {
   };
 }
 
-function mockRoutes(movements: StockMovementEntry[]) {
+const secondWarehouse: Warehouse = {
+  ...warehouse,
+  id: 'warehouse-2',
+  name: 'Bodega 2',
+};
+
+function mockRoutes(
+  movements: StockMovementEntry[],
+  warehouses: Warehouse[] = [warehouse],
+) {
   mockedApiFetch.mockImplementation((path: string) => {
     if (path.startsWith('/products/')) return Promise.resolve(product);
     if (path.startsWith('/inventory/product-1/kardex'))
       return Promise.resolve(kardexResponse(movements));
     if (path.startsWith('/warehouses'))
-      return Promise.resolve(warehousesResponse([warehouse]));
+      return Promise.resolve(warehousesResponse(warehouses));
     return Promise.reject(new Error(`Unexpected: ${path}`));
   });
 }
@@ -120,8 +129,21 @@ describe('KardexPage', () => {
 
     expect(await screen.findByText('+10 un')).toBeInTheDocument();
     expect(screen.getByText('Entrada')).toBeInTheDocument();
-    expect(screen.getAllByText('Bodega principal').length).toBeGreaterThan(0);
     expect(screen.getByText('Admin')).toBeInTheDocument();
+  });
+
+  // Una sola fábrica (Herrajes Toro): sin filtro ni columna de bodega.
+  it('does not talk about warehouses when there is only one', async () => {
+    mockRoutes([buildMovement()]);
+    renderWithClient(<KardexPage />);
+
+    await screen.findByText('+10 un');
+    expect(
+      screen.queryByLabelText('Filtrar por bodega'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: 'Bodega' }),
+    ).not.toBeInTheDocument();
   });
 
   it('shows a dash for unitCost and reason when absent', async () => {
@@ -144,13 +166,16 @@ describe('KardexPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('sends the selected warehouseId as a query param and resets to page 1', async () => {
-    mockRoutes([buildMovement()]);
+  it('with several warehouses, filters by the selected one and shows its column', async () => {
+    mockRoutes([buildMovement()], [warehouse, secondWarehouse]);
     const user = userEvent.setup();
     renderWithClient(<KardexPage />);
 
     await screen.findByText('+10 un');
     const select = await screen.findByLabelText('Filtrar por bodega');
+    expect(
+      screen.getByRole('columnheader', { name: 'Bodega' }),
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.getByRole('option', { name: 'Bodega principal' }),

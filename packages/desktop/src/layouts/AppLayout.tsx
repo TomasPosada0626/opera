@@ -9,6 +9,7 @@ import {
   Ruler,
   Warehouse,
   Contact,
+  PackagePlus,
   Truck,
   BarChart3,
   Users,
@@ -25,6 +26,7 @@ import { ThemeToggle } from '../components/ui/ThemeToggle';
 import { UserMenu } from '../components/ui/UserMenu';
 import { clearAuthToken } from '../lib/auth-token';
 import { getCurrentUser } from '../lib/current-user';
+import { useHasSeveralWarehouses } from '../hooks/useWarehouses';
 
 interface NavItem {
   to: string;
@@ -36,6 +38,9 @@ interface NavItem {
   // lista fija — hoy solo ADMIN existe, así que "Usuarios" es el único
   // ítem que de verdad demuestra el filtro funcionando.
   requiresRole?: string;
+  // Solo con más de una bodega: en una sola fábrica (Herrajes Toro) no hay
+  // nada que administrar ahí.
+  requiresSeveralWarehouses?: boolean;
 }
 
 // Submenú plegable — reversa deliberada de la decisión de #95 ("4 ítems
@@ -84,6 +89,7 @@ const navSections: NavSection[] = [
     entries: [
       { to: '/clientes', label: 'Clientes', icon: Contact },
       { to: '/proveedores', label: 'Proveedores', icon: Truck },
+      { to: '/compras', label: 'Compras', icon: PackagePlus },
     ],
   },
   {
@@ -96,7 +102,12 @@ const navSections: NavSection[] = [
           { to: '/productos', label: 'Productos', icon: Boxes },
           { to: '/categorias', label: 'Categorías', icon: Tag },
           { to: '/unidades', label: 'Unidades', icon: Ruler },
-          { to: '/bodegas', label: 'Bodegas', icon: Warehouse },
+          {
+            to: '/bodegas',
+            label: 'Bodegas',
+            icon: Warehouse,
+            requiresSeveralWarehouses: true,
+          },
         ],
       },
       {
@@ -127,7 +138,14 @@ function navLinkClassName(isActive: boolean): string {
     : `${base} text-ink-muted hover:text-ink hover:bg-chrome-strong`;
 }
 
-function isVisible(item: NavItem, user: { roles: string[] } | null): boolean {
+function isVisible(
+  item: NavItem,
+  user: { roles: string[] } | null,
+  hasSeveralWarehouses: boolean,
+): boolean {
+  if (item.requiresSeveralWarehouses && !hasSeveralWarehouses) {
+    return false;
+  }
   return (
     !item.requiresRole || (user?.roles.includes(item.requiresRole) ?? false)
   );
@@ -142,6 +160,7 @@ function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const user = getCurrentUser();
+  const hasSeveralWarehouses = useHasSeveralWarehouses();
   const visibleSections = navSections
     .map((section) => ({
       ...section,
@@ -151,7 +170,7 @@ function AppLayout() {
             ? {
                 ...entry,
                 children: entry.children.filter((child) =>
-                  isVisible(child, user),
+                  isVisible(child, user, hasSeveralWarehouses),
                 ),
               }
             : entry,
@@ -159,7 +178,7 @@ function AppLayout() {
         .filter((entry) =>
           isNavGroup(entry)
             ? entry.children.length > 0
-            : isVisible(entry, user),
+            : isVisible(entry, user, hasSeveralWarehouses),
         ),
     }))
     .filter((section) => section.entries.length > 0);

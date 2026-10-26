@@ -137,10 +137,11 @@ describe('DashboardPage', () => {
         recentPurchases: [
           {
             id: 'purchase-1',
+            number: 3,
             supplierName: 'Maderas del Sur',
-            productName: 'Tabla de pino',
-            quantity: '10',
-            unitCost: '5',
+            status: 'PARCIAL',
+            itemCount: 2,
+            total: '50',
             purchasedAt: '2026-01-14T10:00:00.000Z',
           },
         ],
@@ -151,7 +152,7 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Muebles del Valle')).toBeInTheDocument();
     expect(screen.getByText('Maderas del Sur')).toBeInTheDocument();
-    expect(screen.getByText('Tabla de pino')).toBeInTheDocument();
+    expect(screen.getByText('Llegó una parte')).toBeInTheDocument();
   });
 
   it('renders recent activity in plain language', async () => {

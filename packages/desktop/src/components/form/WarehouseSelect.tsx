@@ -32,7 +32,11 @@ export function WarehouseSelect({
   onAutoSelect,
 }: WarehouseSelectProps) {
   const warehousesQuery = useWarehouses();
-  const warehouses = warehousesQuery.data?.data ?? [];
+  // La API lista también las desactivadas (la pantalla de Bodegas las
+  // necesita para reactivarlas); acá solo cuentan las que se pueden usar.
+  const warehouses = (warehousesQuery.data?.data ?? []).filter(
+    (warehouse) => warehouse.isActive,
+  );
   const onlyWarehouse = warehouses.length === 1 ? warehouses[0] : undefined;
 
   useEffect(() => {

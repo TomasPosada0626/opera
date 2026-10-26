@@ -39,7 +39,8 @@ describe('SuppliersService', () => {
       update: jest.Mock;
     };
     supplierProduct: { findMany: jest.Mock };
-    supplierPurchase: { findMany: jest.Mock };
+    purchaseOrderItem: { findMany: jest.Mock };
+    purchaseOrder: { findMany: jest.Mock };
   };
   let audit: { log: jest.Mock };
   let service: SuppliersService;
@@ -54,7 +55,8 @@ describe('SuppliersService', () => {
         update: jest.fn(),
       },
       supplierProduct: { findMany: jest.fn() },
-      supplierPurchase: { findMany: jest.fn() },
+      purchaseOrderItem: { findMany: jest.fn() },
+      purchaseOrder: { findMany: jest.fn() },
     };
     audit = { log: jest.fn() };
     service = new SuppliersService(
@@ -266,6 +268,62 @@ describe('SuppliersService', () => {
     expect(prisma.supplier.update).not.toHaveBeenCalled();
   });
 
+  describe('getBalance', () => {
+    it('adds what was bought, received, paid and is still owed', async () => {
+      prisma.supplier.findUnique.mockResolvedValue(baseSupplier);
+      prisma.purchaseOrder.findMany.mockResolvedValue([
+        {
+          status: 'PARCIAL',
+          tracksPayment: true,
+          total: new Prisma.Decimal(5000),
+          amountPaid: new Prisma.Decimal(1000),
+          items: [
+            {
+              quantityReceived: new Prisma.Decimal(6),
+              unitCost: new Prisma.Decimal(500),
+            },
+          ],
+        },
+        {
+          status: 'PENDIENTE',
+          tracksPayment: true,
+          total: new Prisma.Decimal(800),
+          amountPaid: new Prisma.Decimal(800),
+          items: [
+            {
+              quantityReceived: new Prisma.Decimal(0),
+              unitCost: new Prisma.Decimal(80),
+            },
+          ],
+        },
+      ]);
+
+      const balance = await service.getBalance('supplier-1');
+
+      expect(balance.totalPurchased.toNumber()).toBe(5800);
+      expect(balance.totalReceived.toNumber()).toBe(3000);
+      expect(balance.totalPaid.toNumber()).toBe(1800);
+      // El anticipo de la segunda compra no resta deuda de la primera.
+      expect(balance.payable.toNumber()).toBe(2000);
+      expect(prisma.purchaseOrder.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            supplierId: 'supplier-1',
+            tracksPayment: true,
+            status: { not: 'CANCELADA' },
+          },
+        }),
+      );
+    });
+
+    it('404s for a supplier that does not exist', async () => {
+      prisma.supplier.findUnique.mockResolvedValue(null);
+      await expect(service.getBalance('missing')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('exportExcel', () => {
     it('writes the profile, price list and purchase history to their own sheets', async () => {
       prisma.supplier.findUnique.mockResolvedValue(baseSupplier);
@@ -275,13 +333,17 @@ describe('SuppliersService', () => {
           product: { sku: 'SKU-1', name: 'Tabla de pino' },
         },
       ]);
-      prisma.supplierPurchase.findMany.mockResolvedValue([
+      prisma.purchaseOrderItem.findMany.mockResolvedValue([
         {
-          purchasedAt: new Date('2026-02-01'),
           quantity: new Prisma.Decimal(10),
+          quantityReceived: new Prisma.Decimal(10),
           unitCost: new Prisma.Decimal(12),
-          receivedAt: new Date('2026-02-03'),
           product: { sku: 'SKU-1', name: 'Tabla de pino' },
+          purchaseOrder: {
+            number: 3,
+            purchasedAt: new Date('2026-02-01'),
+            status: 'RECIBIDA',
+          },
         },
       ]);
 
@@ -295,18 +357,22 @@ describe('SuppliersService', () => {
       expect(pricesSheet.getRow(2).getCell(3).value).toBe(125.5);
 
       const purchasesSheet = await readSheet(buffer, 'Compras');
-      expect(purchasesSheet.getRow(2).getCell(4).value).toBe(10);
-      expect(purchasesSheet.getRow(2).getCell(6).value).toBe('Sí');
+      expect(purchasesSheet.getRow(2).getCell(1).value).toBe(3);
+      expect(purchasesSheet.getRow(2).getCell(3).value).toBe('RECIBIDA');
+      expect(purchasesSheet.getRow(2).getCell(6).value).toBe(10);
+      expect(purchasesSheet.getRow(2).getCell(8).value).toBe(12);
 
       expect(prisma.supplierProduct.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { supplierId: 'supplier-1' } }),
       );
-      expect(prisma.supplierPurchase.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { supplierId: 'supplier-1' } }),
+      expect(prisma.purchaseOrderItem.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { purchaseOrder: { supplierId: 'supplier-1' } },
+        }),
       );
     });
 
-    it('marks an unreceived purchase as "No" and writes empty strings for null optional fields', async () => {
+    it('writes what is still pending to arrive and empty strings for null optional fields', async () => {
       prisma.supplier.findUnique.mockResolvedValue({
         ...baseSupplier,
         taxId: null,
@@ -315,13 +381,17 @@ describe('SuppliersService', () => {
         address: null,
       });
       prisma.supplierProduct.findMany.mockResolvedValue([]);
-      prisma.supplierPurchase.findMany.mockResolvedValue([
+      prisma.purchaseOrderItem.findMany.mockResolvedValue([
         {
-          purchasedAt: new Date('2026-02-01'),
           quantity: new Prisma.Decimal(5),
+          quantityReceived: new Prisma.Decimal(0),
           unitCost: new Prisma.Decimal(8),
-          receivedAt: null,
           product: { sku: 'SKU-2', name: 'Tornillos' },
+          purchaseOrder: {
+            number: 4,
+            purchasedAt: new Date('2026-02-01'),
+            status: 'PENDIENTE',
+          },
         },
       ]);
 
@@ -333,7 +403,7 @@ describe('SuppliersService', () => {
       expect(taxIdRow?.getCell(2).value).toBe('');
 
       const purchasesSheet = await readSheet(buffer, 'Compras');
-      expect(purchasesSheet.getRow(2).getCell(6).value).toBe('No');
+      expect(purchasesSheet.getRow(2).getCell(7).value).toBe(0);
     });
 
     it('throws NotFoundException when exporting a supplier that does not exist', async () => {

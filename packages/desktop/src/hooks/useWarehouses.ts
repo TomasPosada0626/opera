@@ -36,3 +36,15 @@ export function useWarehouses({
     placeholderData: (previousData) => previousData,
   });
 }
+
+// Herrajes Toro (como la mayoría de quienes usan Opera) trabaja desde una
+// sola fábrica: mientras exista una sola bodega, la interfaz no habla de
+// bodegas (sin columnas, filtros ni menú). El modelo sigue soportando
+// varias para el día que haga falta; esto es solo presentación, igual que
+// el autoselect de WarehouseSelect.
+export function useHasSeveralWarehouses(): boolean {
+  const { data } = useWarehouses();
+  return (
+    (data?.data ?? []).filter((warehouse) => warehouse.isActive).length > 1
+  );
+}

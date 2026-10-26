@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Supplier } from '@prisma/client';
+import { Prisma, Supplier } from '@prisma/client';
 import { Workbook } from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -7,6 +7,7 @@ import {
   asCatalogDelegate,
   CatalogService,
 } from '../common/catalog/catalog.service';
+import { payableOf, receivedValueOf } from '../purchase-orders/payables';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 
@@ -49,10 +50,18 @@ export class SuppliersService extends CatalogService<
         include: { product: { select: { sku: true, name: true } } },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.supplierPurchase.findMany({
-        where: { supplierId: id },
-        include: { product: { select: { sku: true, name: true } } },
-        orderBy: { purchasedAt: 'desc' },
+      this.prisma.purchaseOrderItem.findMany({
+        where: { purchaseOrder: { supplierId: id } },
+        include: {
+          product: { select: { sku: true, name: true } },
+          purchaseOrder: {
+            select: { number: true, purchasedAt: true, status: true },
+          },
+        },
+        orderBy: [
+          { purchaseOrder: { purchasedAt: 'desc' } },
+          { position: 'asc' },
+        ],
       }),
     ]);
 
@@ -88,24 +97,65 @@ export class SuppliersService extends CatalogService<
 
     const purchasesSheet = workbook.addWorksheet('Compras');
     purchasesSheet.columns = [
+      { header: 'Compra No.', key: 'number', width: 12 },
       { header: 'Fecha', key: 'purchasedAt', width: 14 },
+      { header: 'Estado', key: 'status', width: 12 },
       { header: 'SKU', key: 'sku', width: 15 },
       { header: 'Producto', key: 'name', width: 30 },
       { header: 'Cantidad', key: 'quantity', width: 12 },
+      { header: 'Recibido', key: 'quantityReceived', width: 12 },
       { header: 'Costo unitario', key: 'unitCost', width: 16 },
-      { header: 'Recibida', key: 'received', width: 10 },
     ];
     purchasesSheet.addRows(
-      purchases.map((purchase) => ({
-        purchasedAt: purchase.purchasedAt.toISOString().slice(0, 10),
-        sku: purchase.product.sku,
-        name: purchase.product.name,
-        quantity: purchase.quantity.toNumber(),
-        unitCost: purchase.unitCost.toNumber(),
-        received: purchase.receivedAt ? 'Sí' : 'No',
+      purchases.map((line) => ({
+        number: line.purchaseOrder.number,
+        purchasedAt: line.purchaseOrder.purchasedAt.toISOString().slice(0, 10),
+        status: line.purchaseOrder.status,
+        sku: line.product.sku,
+        name: line.product.name,
+        quantity: line.quantity.toNumber(),
+        quantityReceived: line.quantityReceived.toNumber(),
+        unitCost: line.unitCost.toNumber(),
       })),
     );
 
     return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  // Lo que se le compró, recibió y pagó a este proveedor, y lo que se le
+  // debe hoy (mismas reglas que el reporte de cuentas por pagar). Las
+  // compras migradas sin control de pago y las canceladas no cuentan.
+  async getBalance(id: string) {
+    await this.findOne(id);
+    const orders = await this.prisma.purchaseOrder.findMany({
+      where: {
+        supplierId: id,
+        tracksPayment: true,
+        status: { not: 'CANCELADA' },
+      },
+      select: {
+        status: true,
+        tracksPayment: true,
+        total: true,
+        amountPaid: true,
+        items: { select: { quantityReceived: true, unitCost: true } },
+      },
+    });
+
+    const zero = new Prisma.Decimal(0);
+    return orders.reduce(
+      (balance, order) => ({
+        totalPurchased: balance.totalPurchased.plus(order.total),
+        totalReceived: balance.totalReceived.plus(receivedValueOf(order.items)),
+        totalPaid: balance.totalPaid.plus(order.amountPaid),
+        payable: balance.payable.plus(payableOf(order)),
+      }),
+      {
+        totalPurchased: zero,
+        totalReceived: zero,
+        totalPaid: zero,
+        payable: zero,
+      },
+    );
   }
 }

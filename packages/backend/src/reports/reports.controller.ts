@@ -63,6 +63,16 @@ export class ReportsController {
     return this.reportsService.getReceivablesReport();
   }
 
+  @Get('por-pagar')
+  @ApiOperation({
+    summary: 'Cuentas por pagar: saldo pendiente por proveedor',
+    description:
+      'Lo recibido de compras vigentes que todavía no se ha pagado, agrupado por proveedor, de mayor a menor saldo, con los días de la deuda más vieja.',
+  })
+  getPayablesReport() {
+    return this.reportsService.getPayablesReport();
+  }
+
   // @Res() de Express directo (no el flujo normal de retorno de Nest) — el
   // .xlsx es contenido binario con sus propios headers, mismo patrón que el
   // PDF de remisiones (RemissionsController.getPdf).
@@ -118,6 +128,18 @@ export class ReportsController {
     res.set({
       'Content-Type': XLSX_CONTENT_TYPE,
       'Content-Disposition': 'attachment; filename="cartera.xlsx"',
+    });
+    res.send(buffer);
+  }
+
+  @Get('por-pagar/excel')
+  @ApiOperation({ summary: 'Cuentas por pagar por proveedor, como .xlsx' })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx.' })
+  async getPayablesExcel(@Res() res: Response) {
+    const buffer = await this.reportsService.getPayablesExcel();
+    res.set({
+      'Content-Type': XLSX_CONTENT_TYPE,
+      'Content-Disposition': 'attachment; filename="cuentas-por-pagar.xlsx"',
     });
     res.send(buffer);
   }

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { Workbook } from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { payableOf, receivedValueOf } from '../purchase-orders/payables';
 import { DateRangeQueryDto } from '../common/dto/date-range-query.dto';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 
@@ -230,6 +231,92 @@ export class ReportsService {
       .sort((a, b) => b.balance.comparedTo(a.balance));
   }
 
+  // Cuentas por pagar: por proveedor, lo recibido de sus compras que todavía
+  // no se le ha pagado (mismo criterio que payableOf() en
+  // PurchaseOrdersService: lo pedido y no recibido no es deuda), con la
+  // antigüedad desde la primera recepción de la compra impaga más vieja.
+  async getPayablesReport(now: Date = new Date()) {
+    const orders = await this.prisma.purchaseOrder.findMany({
+      where: { tracksPayment: true, status: { not: 'CANCELADA' } },
+      select: {
+        status: true,
+        tracksPayment: true,
+        amountPaid: true,
+        purchasedAt: true,
+        supplier: { select: { id: true, name: true } },
+        items: {
+          select: {
+            quantityReceived: true,
+            unitCost: true,
+            receipts: {
+              select: { receivedAt: true },
+              orderBy: { receivedAt: 'asc' },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    const bySupplier = new Map<
+      string,
+      {
+        supplierId: string;
+        supplierName: string;
+        purchaseOrderCount: number;
+        totalReceived: Prisma.Decimal;
+        totalPaid: Prisma.Decimal;
+        balance: Prisma.Decimal;
+        oldestPendingAt: Date;
+      }
+    >();
+    for (const order of orders) {
+      const payable = payableOf(order);
+      if (payable.lessThanOrEqualTo(0)) {
+        continue;
+      }
+      // La deuda nace cuando llega la mercancía; sin recepciones
+      // registradas (compras migradas), desde la fecha de la compra.
+      const receiptDates = order.items.flatMap((item) =>
+        item.receipts.map((receipt) => receipt.receivedAt),
+      );
+      const firstReceipt =
+        receiptDates.length > 0
+          ? receiptDates.reduce((oldest, date) =>
+              date < oldest ? date : oldest,
+            )
+          : order.purchasedAt;
+      const existing = bySupplier.get(order.supplier.id) ?? {
+        supplierId: order.supplier.id,
+        supplierName: order.supplier.name,
+        purchaseOrderCount: 0,
+        totalReceived: new Prisma.Decimal(0),
+        totalPaid: new Prisma.Decimal(0),
+        balance: new Prisma.Decimal(0),
+        oldestPendingAt: firstReceipt,
+      };
+      existing.purchaseOrderCount += 1;
+      existing.totalReceived = existing.totalReceived.plus(
+        receivedValueOf(order.items),
+      );
+      existing.totalPaid = existing.totalPaid.plus(order.amountPaid);
+      existing.balance = existing.balance.plus(payable);
+      if (firstReceipt < existing.oldestPendingAt) {
+        existing.oldestPendingAt = firstReceipt;
+      }
+      bySupplier.set(order.supplier.id, existing);
+    }
+
+    return Array.from(bySupplier.values())
+      .map((row) => ({
+        ...row,
+        daysPending: Math.floor(
+          (now.getTime() - row.oldestPendingAt.getTime()) / 86_400_000,
+        ),
+      }))
+      .sort((a, b) => b.balance.comparedTo(a.balance));
+  }
+
   // Los exports reusan el mismo cálculo que su reporte en JSON (nunca
   // reimplementan la consulta) — la hoja de Excel es solo otra
   // presentación de los mismos números, no una fuente de verdad aparte.
@@ -326,6 +413,33 @@ export class ReportsService {
         customerName: row.customerName,
         remissionCount: row.remissionCount,
         totalBilled: row.totalBilled.toNumber(),
+        totalPaid: row.totalPaid.toNumber(),
+        balance: row.balance.toNumber(),
+        daysPending: row.daysPending,
+      })),
+    );
+
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+  }
+
+  async getPayablesExcel(): Promise<Buffer> {
+    const rows = await this.getPayablesReport();
+
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet('Por pagar');
+    sheet.columns = [
+      { header: 'Proveedor', key: 'supplierName', width: 30 },
+      { header: 'Compras con saldo', key: 'purchaseOrderCount', width: 18 },
+      { header: 'Recibido', key: 'totalReceived', width: 16 },
+      { header: 'Pagado', key: 'totalPaid', width: 16 },
+      { header: 'Por pagar', key: 'balance', width: 16 },
+      { header: 'Días de la más vieja', key: 'daysPending', width: 20 },
+    ];
+    sheet.addRows(
+      rows.map((row) => ({
+        supplierName: row.supplierName,
+        purchaseOrderCount: row.purchaseOrderCount,
+        totalReceived: row.totalReceived.toNumber(),
         totalPaid: row.totalPaid.toNumber(),
         balance: row.balance.toNumber(),
         daysPending: row.daysPending,

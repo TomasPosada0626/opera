@@ -37,6 +37,7 @@ export class DashboardService {
       overdueCount,
       overdueOrders,
       receivables,
+      payables,
     ] = await Promise.all([
       this.reports.getInventoryReport(),
       this.inventory.getLowStockProducts(),
@@ -48,12 +49,12 @@ export class DashboardService {
         by: ['status'],
         _count: true,
       }),
-      this.prisma.supplierPurchase.findMany({
+      this.prisma.purchaseOrder.findMany({
         take: RECENT_LIMIT,
         orderBy: { purchasedAt: 'desc' },
         include: {
           supplier: { select: { id: true, name: true } },
-          product: { select: { id: true, sku: true, name: true } },
+          _count: { select: { items: true } },
         },
       }),
       this.prisma.order.findMany({
@@ -80,6 +81,9 @@ export class DashboardService {
         _sum: { total: true, amountPaid: true },
         _count: true,
       }),
+      // Por pagar a proveedores: el mismo cálculo que el reporte de cuentas
+      // por pagar, para que los dos números nunca difieran.
+      this.reports.getPayablesReport(),
     ]);
 
     return {
@@ -128,12 +132,23 @@ export class DashboardService {
         ),
         remissionCount: receivables._count,
       },
+      payables: {
+        total: payables.reduce(
+          (sum, row) => sum.plus(row.balance),
+          new Prisma.Decimal(0),
+        ),
+        purchaseOrderCount: payables.reduce(
+          (count, row) => count + row.purchaseOrderCount,
+          0,
+        ),
+      },
       recentPurchases: recentPurchases.map((purchase) => ({
         id: purchase.id,
+        number: purchase.number,
         supplierName: purchase.supplier.name,
-        productName: purchase.product.name,
-        quantity: purchase.quantity,
-        unitCost: purchase.unitCost,
+        status: purchase.status,
+        itemCount: purchase._count.items,
+        total: purchase.total,
         purchasedAt: purchase.purchasedAt,
       })),
       recentSales: recentSales.map((order) => ({

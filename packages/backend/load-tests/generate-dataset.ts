@@ -10,7 +10,8 @@
 // Todas las entidades de nivel superior llevan el prefijo LOADTEST- (o SKU
 // LT-###) para que teardown-dataset.ts pueda encontrarlas y borrarlas sin
 // necesidad de un archivo de estado con miles de ids.
-import { PrismaClient, ProductType, OrderStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { Prisma, PrismaClient, ProductType, OrderStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -237,17 +238,27 @@ async function main() {
     prisma.orderItem.createMany({ data: batch }),
   );
 
-  const purchases = Array.from({ length: PURCHASE_COUNT }, (_, i) => ({
-    supplierId: suppliers[i % suppliers.length].id,
+  // Una línea por compra: suficiente volumen para las consultas de
+  // compras y cuentas por pagar sin complicar el generador.
+  const purchaseLines = Array.from({ length: PURCHASE_COUNT }, (_, i) => ({
+    purchaseOrderId: randomUUID(),
     productId: products[i % products.length].id,
-    warehouseId: warehouses[i % warehouses.length].id,
-    userId: admin.id,
     quantity: randomDecimal(10, 200, 3),
     unitCost: randomDecimal(500, 40000, 4),
+  }));
+  const purchaseOrders = purchaseLines.map((line, i) => ({
+    id: line.purchaseOrderId,
+    supplierId: suppliers[i % suppliers.length].id,
+    warehouseId: warehouses[i % warehouses.length].id,
+    userId: admin.id,
+    total: new Prisma.Decimal(line.quantity).times(line.unitCost),
     purchasedAt: randomDateWithinHistory(),
   }));
-  await insertInBatches('Compras a proveedor', purchases, (batch) =>
-    prisma.supplierPurchase.createMany({ data: batch }),
+  await insertInBatches('Compras a proveedor', purchaseOrders, (batch) =>
+    prisma.purchaseOrder.createMany({ data: batch }),
+  );
+  await insertInBatches('Líneas de compra', purchaseLines, (batch) =>
+    prisma.purchaseOrderItem.createMany({ data: batch }),
   );
 
   const sampleProductIds = products.slice(0, 20).map((p) => p.id);
@@ -267,7 +278,7 @@ async function main() {
           suppliers: suppliers.length,
           orders: orders.length,
           orderItems: orderItems.length,
-          purchases: purchases.length,
+          purchases: purchaseOrders.length,
         },
       },
       null,

@@ -45,8 +45,8 @@ async function main() {
   await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
 
   console.log('Borrando compras a proveedor...');
-  await prisma.supplierPurchase.deleteMany({
-    where: { productId: { in: productIds } },
+  await prisma.purchaseOrder.deleteMany({
+    where: { items: { some: { productId: { in: productIds } } } },
   });
 
   console.log('Borrando movimientos de stock...');
