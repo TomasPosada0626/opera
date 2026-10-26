@@ -68,6 +68,7 @@ Muchas pequeñas y medianas empresas manufactureras manejan su inventario y prod
 ### Lo que Opera no hace, a propósito
 
 - **Factura electrónica (DIAN).** Opera maneja pedidos, remisiones y su cobro, pero no emite facturas ni liquida IVA. La factura electrónica exige un proveedor tecnológico autorizado por la DIAN; en Herrajes Toro se hace en el programa de facturación que ya usan, y Opera lleva la operación (qué se pidió, qué se despachó, qué se cobró).
+- **Varias bodegas en la interfaz.** Herrajes Toro es una sola fábrica: mientras exista una sola bodega, Opera no muestra selectores, columnas, filtros ni el menú de bodegas. El modelo sigue soportando varias si algún día hacen falta.
 - **Roles distintos al administrador.** Hoy todas las cuentas son de administrador: lo usan la dueña y una cuenta de respaldo. El modelo de permisos ya soporta más roles sin migración si algún día entra más gente.
 
 ## ¿Por qué este proyecto?
