@@ -5,6 +5,8 @@ interface TextFieldProps {
   type?: string;
   registration: UseFormRegisterReturn;
   error?: FieldError;
+  autoComplete?: string;
+  placeholder?: string;
 }
 
 // Building block compartido para "validación de formularios consistente en
@@ -17,6 +19,8 @@ export function TextField({
   type = 'text',
   registration,
   error,
+  autoComplete,
+  placeholder,
 }: TextFieldProps) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -29,6 +33,8 @@ export function TextField({
       <input
         id={registration.name}
         type={type}
+        autoComplete={autoComplete}
+        placeholder={placeholder}
         aria-invalid={!!error}
         aria-describedby={error ? `${registration.name}-error` : undefined}
         className="field h-9 px-3"

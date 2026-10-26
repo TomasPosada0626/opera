@@ -51,7 +51,7 @@ function UsersPage() {
 
   const columns: DataTableColumn<User>[] = [
     { key: 'name', header: 'Nombre', render: (user) => user.name },
-    { key: 'email', header: 'Correo', render: (user) => user.email },
+    { key: 'email', header: 'Usuario', render: (user) => user.email },
     {
       key: 'roles',
       header: 'Roles',

@@ -65,7 +65,7 @@ describe('LoginPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 
-    expect(await screen.findByText('Ingresa tu correo')).toBeInTheDocument();
+    expect(await screen.findByText('Ingresa tu usuario')).toBeInTheDocument();
     expect(screen.getByText('Ingresa tu contraseña')).toBeInTheDocument();
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
@@ -75,7 +75,10 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     renderWithRouter(<LoginPage />);
 
-    await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      'admin@opera.local',
+    );
     await user.type(screen.getByLabelText('Contraseña'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 
@@ -92,18 +95,58 @@ describe('LoginPage', () => {
     expect(navigateMock).toHaveBeenCalledWith('/', { replace: true });
   });
 
+  it('logs in with a username, sent in lowercase and without spaces', async () => {
+    mockedApiFetch.mockResolvedValue({ accessToken: 'fake.jwt.token' });
+    const user = userEvent.setup();
+    renderWithRouter(<LoginPage />);
+
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      ' HerrajesToro ',
+    );
+    await user.type(screen.getByLabelText('Contraseña'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }));
+
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: 'herrajestoro',
+          password: 'password123',
+        }),
+      });
+    });
+  });
+
+  it('rejects an identifier with spaces before calling the API', async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<LoginPage />);
+
+    await user.type(screen.getByLabelText('Usuario o correo'), 'herrajes toro');
+    await user.type(screen.getByLabelText('Contraseña'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Ingresar' }));
+
+    expect(
+      await screen.findByText(/Usa un correo o un usuario/),
+    ).toBeInTheDocument();
+    expect(mockedApiFetch).not.toHaveBeenCalled();
+  });
+
   it('shows a specific message on 401 (wrong credentials)', async () => {
     const { ApiError } = await import('../lib/api-client');
     mockedApiFetch.mockRejectedValue(new ApiError(401, 'Unauthorized'));
     const user = userEvent.setup();
     renderWithRouter(<LoginPage />);
 
-    await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      'admin@opera.local',
+    );
     await user.type(screen.getByLabelText('Contraseña'), 'wrong-password');
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 
     expect(
-      await screen.findByText('Correo o contraseña incorrectos.'),
+      await screen.findByText('Usuario o contraseña incorrectos.'),
     ).toBeInTheDocument();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(getAuthToken()).toBeNull();
@@ -114,7 +157,10 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     renderWithRouter(<LoginPage />);
 
-    await user.type(screen.getByLabelText('Correo'), 'admin@opera.local');
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      'admin@opera.local',
+    );
     await user.type(screen.getByLabelText('Contraseña'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Ingresar' }));
 

@@ -54,7 +54,7 @@ test('rechaza credenciales inválidas y luego inicia sesión con las reales', as
   await page.getByLabel('Contraseña').fill('contraseña-equivocada');
   await page.getByRole('button', { name: 'Ingresar' }).click();
   await expect(page.getByRole('alert')).toHaveText(
-    'Correo o contraseña incorrectos.',
+    'Usuario o contraseña incorrectos.',
   );
   await expect(
     page.getByRole('heading', {

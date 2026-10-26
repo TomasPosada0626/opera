@@ -203,7 +203,10 @@ describe('UsersPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Nuevo usuario' }));
     await user.type(screen.getByLabelText('Nombre'), 'Carla Nueva');
-    await user.type(screen.getByLabelText('Correo'), 'carla@opera.local');
+    await user.type(
+      screen.getByLabelText('Usuario o correo'),
+      'carla@opera.local',
+    );
     await user.type(screen.getByLabelText('Contraseña'), 'clave-larga-123');
     await user.click(await screen.findByRole('checkbox', { name: 'ADMIN' }));
     await user.click(screen.getByRole('button', { name: 'Crear usuario' }));

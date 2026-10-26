@@ -1,7 +1,13 @@
-import { IsEmail, MaxLength, MinLength } from 'class-validator';
+import { MaxLength, MinLength } from 'class-validator';
+import {
+  IsLoginIdentifier,
+  NormalizeLoginIdentifier,
+} from '../login-identifier';
 
 export class LoginDto {
-  @IsEmail()
+  // Correo o nombre de usuario (ver login-identifier.ts).
+  @NormalizeLoginIdentifier()
+  @IsLoginIdentifier()
   @MaxLength(254)
   email: string;
 

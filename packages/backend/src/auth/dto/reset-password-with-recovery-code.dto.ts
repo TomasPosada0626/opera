@@ -1,7 +1,12 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsLoginIdentifier,
+  NormalizeLoginIdentifier,
+} from '../login-identifier';
 
 export class ResetPasswordWithRecoveryCodeDto {
-  @IsEmail()
+  @NormalizeLoginIdentifier()
+  @IsLoginIdentifier()
   @MaxLength(254)
   email: string;
 

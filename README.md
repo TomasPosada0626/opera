@@ -65,6 +65,11 @@ Es un proyecto de portafolio, pero se desarrolla con las prácticas de un sistem
 
 Muchas pequeñas y medianas empresas manufactureras manejan su inventario y producción en hojas de cálculo, sin trazabilidad real de por qué cambió el stock, sin control de quién hizo qué, y sin una vista confiable del costo de producción. Opera busca resolver ese problema con un ERP de escritorio simple, auditable y correcto por diseño: cada movimiento de inventario queda registrado de forma permanente, cada acción queda asociada a un usuario y un rol, y el stock nunca se edita a mano — se calcula a partir de su historia.
 
+### Lo que Opera no hace, a propósito
+
+- **Factura electrónica (DIAN).** Opera maneja pedidos, remisiones y su cobro, pero no emite facturas ni liquida IVA. La factura electrónica exige un proveedor tecnológico autorizado por la DIAN; en Herrajes Toro se hace en el programa de facturación que ya usan, y Opera lleva la operación (qué se pidió, qué se despachó, qué se cobró).
+- **Roles distintos al administrador.** Hoy todas las cuentas son de administrador: lo usan la dueña y una cuenta de respaldo. El modelo de permisos ya soporta más roles sin migración si algún día entra más gente.
+
 ## ¿Por qué este proyecto?
 
 Opera es mi proyecto de portafolio para demostrar diseño de sistemas backend con reglas de negocio reales (no solo CRUDs), y las decisiones detrás de esas reglas quedan documentadas explícitamente como ADRs en vez de perderse en el código. La meta es un ERP completo y usable en producción real — inventario, producción, compras, ventas, clientes, proveedores, reportes y dashboard —, construido con la misma disciplina de ingeniería que un producto comercial: consistencia transaccional, control de acceso, auditoría y pruebas automatizadas en cada pieza que se agrega, no solo al final.
@@ -227,7 +232,10 @@ Con el backend y el desktop corriendo, entra a la app y usa las credenciales que
 
 > **"¿Olvidaste tu contraseña?"** tiene dos vías:
 >
-> - **Código de recuperación** (siempre disponible, no necesita internet): 16 caracteres que Opera muestra una sola vez al crear la cuenta en la configuración inicial, para anotar en papel. Se puede generar uno nuevo desde el menú de usuario → **Código de recuperación** (el anterior deja de servir). Al usarlo para cambiar la contraseña se consume y la pantalla muestra el siguiente. Se acepta escrito en minúsculas, con espacios o con guiones. Una cuenta sin código (por ejemplo la que crea `pnpm db:seed` en dev) ve un aviso arriba de cada pantalla hasta que genere uno.
+> - **Se entra con un usuario o un correo.** El campo de acceso acepta un correo o un nombre de usuario simple (`herrajestoro`: letras, números, punto o guion, de 3 a 50 caracteres), sin distinguir mayúsculas. La app de escritorio no tiene correo configurado, así que lo normal es un usuario.
+
+- **Código de recuperación** (siempre disponible, no necesita internet): 16 caracteres que Opera muestra una sola vez al crear la cuenta en la configuración inicial, para anotar en papel. Se puede generar uno nuevo desde el menú de usuario → **Código de recuperación** (el anterior deja de servir). Al usarlo para cambiar la contraseña se consume y la pantalla muestra el siguiente. Se acepta escrito en minúsculas, con espacios o con guiones. Una cuenta sin código (por ejemplo la que crea `pnpm db:seed` en dev) ve un aviso arriba de cada pantalla hasta que genere uno.
+
 > - **Código por correo**: 6 dígitos, vence en 15 minutos, un solo uso, se invalida tras 5 intentos fallidos. Solo aparece si las variables `SMTP_*` están configuradas en `.env` (ver `.env.example`); sin ellas la pantalla ofrece directamente el código de recuperación en vez de prometer un correo que nunca llega.
 
 ## Respaldo y restauración
@@ -394,8 +402,9 @@ Pasos:
 3. **Asistente.** Elige la carpeta y, en la página de Docker Desktop, deja marcadas las dos casillas (instalar Docker y crear el acceso directo). Si aparece el aviso de virtualización desactivada, sigue igual y actívala en el BIOS antes de abrir Opera.
 4. **Reinicios.** Si Windows necesita activar sus componentes de virtualización, la PC se reinicia sola a mitad de la instalación y, al volver a encender, la termina por su cuenta en unos minutos. Al terminar de instalar Docker Desktop, el instalador pide reiniciar: acepta (así la cuenta de Windows recibe el permiso para usar Docker).
 5. **Primer arranque.** Abre Opera desde el acceso directo. La primera vez abre Docker Desktop por su cuenta, descarga y crea la base de datos y la prepara; la pantalla de arranque muestra en qué paso va. Puede tardar unos minutos solo esta vez. Docker Desktop puede mostrar su propia ventana de bienvenida: se puede cerrar (sigue funcionando en la bandeja) y no hace falta crear una cuenta de Docker.
-6. **Crear la cuenta.** Opera pide crear la cuenta de administrador y después muestra el **código de recuperación**: anótalo en papel y guárdalo fuera del computador. Es la única forma de recuperar la contraseña si se olvida.
-7. **Listo.** Opera se abre sola cada vez que se hace doble clic en el acceso directo, aunque Docker Desktop esté cerrado. Los respaldos se hacen solos (uno por día, mientras Opera esté abierta) en `%APPDATA%\Opera\backups`; conviene copiar esa carpeta a una memoria USB o a la nube de vez en cuando.
+6. **Crear la cuenta.** Opera pide crear la cuenta de administrador (con un usuario como `herrajestoro`, no hace falta un correo) y después muestra el **código de recuperación**: anótalo en papel y guárdalo fuera del computador.
+7. **Cuenta de respaldo.** En **Usuarios → Nuevo usuario**, crea una segunda cuenta con rol ADMIN (por ejemplo `herrajestoro2`) con una contraseña distinta, guardada aparte. Si se pierden la contraseña y el código de la cuenta principal, desde la de respaldo se le pone una contraseña nueva con **Resetear contraseña**.
+8. **Listo.** Opera se abre sola cada vez que se hace doble clic en el acceso directo, aunque Docker Desktop esté cerrado. Los respaldos se hacen solos (uno por día, mientras Opera esté abierta) en `%APPDATA%\Opera\backups`; conviene copiar esa carpeta a una memoria USB o a la nube de vez en cuando.
 
 **Si ya había datos en otra PC**: en la PC anterior, copia el respaldo más reciente (`opera-<fecha>.sql.gz`) de `%APPDATA%\Opera\backups`. En la nueva, después de crear la cuenta, pégalo en esa misma carpeta y restáuralo desde el menú de usuario → **Respaldos**. Las cuentas y contraseñas pasan a ser las del respaldo.
 

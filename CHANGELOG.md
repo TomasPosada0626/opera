@@ -53,6 +53,13 @@ hacia atrás; este changelog arranca desde que se creó.
   tras el reinicio de WSL, que corre como SYSTEM), pedido de reinicio al
   terminar de instalar Docker Desktop, y asistente solo en español.
 - Guía "Instalar Opera en otra PC" en el README.
+- Se entra con un nombre de usuario (`herrajestoro`) o con un correo, sin
+  distinguir mayúsculas: en el login, la configuración inicial, Usuarios y
+  la recuperación con código. Antes todo exigía un correo, que en la app de
+  escritorio (sin SMTP) no se usa para nada. Una migración pasa a
+  minúsculas los identificadores existentes.
+- README: lo que Opera no hace a propósito (factura electrónica DIAN, roles
+  distintos al administrador).
 - Rediseño completo de la app de escritorio: Dashboard alrededor de lo que
   necesita atención, detalle de pedido con línea de tiempo de estaciones y
   panel de cobro, Reportes por pestañas, tipografía Geist, sistema de
