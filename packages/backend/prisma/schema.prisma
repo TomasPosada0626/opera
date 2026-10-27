@@ -327,29 +327,44 @@ enum ProductionOrderStatus {
 // StockMovement (solo lo valida como informativo), así que solo hay un
 // campo de estado que cambiar, y únicamente mientras siga PENDIENTE.
 model ProductionOrder {
-  id          String                @id @default(uuid())
-  productId   String
-  product     Product               @relation(fields: [productId], references: [id])
-  warehouseId String
-  warehouse   Warehouse             @relation(fields: [warehouseId], references: [id])
-  quantity    Decimal               @db.Decimal(12, 3)
-  status      ProductionOrderStatus @default(PENDIENTE)
-  userId      String
-  user        User                  @relation(fields: [userId], references: [id])
-  completedAt DateTime?
+  id               String                @id @default(uuid())
+  productId        String
+  product          Product               @relation(fields: [productId], references: [id])
+  warehouseId      String
+  warehouse        Warehouse             @relation(fields: [warehouseId], references: [id])
+  // Lo que se planeó fabricar (en una orden de pedido, lo pedido en la
+  // línea)...
+  quantity         Decimal               @db.Decimal(12, 3)
+  // ...y lo que de verdad salió bueno, que se pide al completar: puede ser
+  // menos por piezas dañadas, y es lo único que entra al inventario. null
+  // mientras la orden sigue PENDIENTE.
+  producedQuantity Decimal?              @db.Decimal(12, 3)
+  status           ProductionOrderStatus @default(PENDIENTE)
+  userId           String
+  user             User                  @relation(fields: [userId], references: [id])
+  completedAt      DateTime?
   // Calculados una sola vez al completar (#34, ver ADR 0002) y nunca
   // recalculados después — null mientras la orden sigue PENDIENTE.
   // totalCost = suma del costo consumido de cada componente (promedio
   // ponderado vigente al completar × cantidad consumida); unitCost =
-  // totalCost / quantity, el costo del producto terminado producido.
-  totalCost   Decimal?              @db.Decimal(14, 4)
-  unitCost    Decimal?              @db.Decimal(14, 4)
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  // totalCost / producedQuantity, el costo del terminado producido. Sin
+  // lista de materiales quedan en null: no hay consumo que costear.
+  totalCost        Decimal?              @db.Decimal(14, 4)
+  unitCost         Decimal?              @db.Decimal(14, 4)
+  // El pedido y la línea que esta orden fabrica (ADR 0012): "Enviar a
+  // producción" en Pedidos crea una orden por línea, y completarlas todas
+  // pasa el pedido a almacén solo. null = orden para stock, sin pedido.
+  orderId          String?
+  order            Order?                @relation(fields: [orderId], references: [id])
+  orderItemId      String?               @unique
+  orderItem        OrderItem?            @relation(fields: [orderItemId], references: [id])
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([productId])
   @@index([warehouseId])
   @@index([status])
+  @@index([orderId])
 }
 
 // Empieza M5. Customer y Supplier son modelos separados, no un Party
@@ -561,17 +576,17 @@ enum OrderStatus {
 // warehouseId sigue siendo una sola bodega por pedido, mismo patrón que
 // ProductionOrder.
 model Order {
-  id                    String      @id @default(uuid())
+  id                    String            @id @default(uuid())
   // Consecutivo legible ("Pedido No. 45") para hablar del pedido por
   // teléfono o en el Kardex — mismo motivo que Remission.number.
-  number                Int         @unique @default(autoincrement())
+  number                Int               @unique @default(autoincrement())
   customerId            String
-  customer              Customer    @relation(fields: [customerId], references: [id])
+  customer              Customer          @relation(fields: [customerId], references: [id])
   warehouseId           String
-  warehouse             Warehouse   @relation(fields: [warehouseId], references: [id])
+  warehouse             Warehouse         @relation(fields: [warehouseId], references: [id])
   userId                String
-  user                  User        @relation(fields: [userId], references: [id])
-  status                OrderStatus @default(PENDIENTE)
+  user                  User              @relation(fields: [userId], references: [id])
+  status                OrderStatus       @default(PENDIENTE)
   // Se fijan al transicionar (mark-production / mark-warehoused), nunca se
   // recalculan — mismo espíritu que ProductionOrder.completedAt: son la
   // marca de cuándo ocurrió el hito, no un valor derivable de otra parte.
@@ -585,7 +600,7 @@ model Order {
   // Fecha de envío comprometida con el cliente. Solo fecha (sin hora ni
   // zona) a propósito: "el 15 de noviembre" es el mismo día en cualquier
   // huso; un DateTime completo se correría un día al mostrarse en Colombia.
-  estimatedDeliveryDate DateTime?   @db.Date
+  estimatedDeliveryDate DateTime?         @db.Date
   notes                 String?
   // IVA del pedido en porcentaje (0 = sin IVA, 19 = IVA general): no
   // todas las ventas lo llevan. Se fija por pedido, no por producto ni por
@@ -593,11 +608,12 @@ model Order {
   // Remission.vatAmount), así que cambiar la tarifa algún día no reescribe
   // remisiones viejas. Solo se puede cambiar mientras el pedido no tenga
   // remisiones vigentes.
-  vatRate               Decimal     @default(0) @db.Decimal(5, 2)
+  vatRate               Decimal           @default(0) @db.Decimal(5, 2)
   items                 OrderItem[]
   remissions            Remission[]
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  productionOrders      ProductionOrder[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
 
   @@index([customerId])
   @@index([warehouseId])
@@ -619,15 +635,16 @@ model Order {
 // espíritu que el stock derivándose de StockMovement en vez de un número
 // que alguien pueda desincronizar.
 model OrderItem {
-  id             String          @id @default(uuid())
-  orderId        String
-  order          Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId      String
-  product        Product         @relation(fields: [productId], references: [id])
-  quantity       Decimal         @db.Decimal(12, 3)
-  unitPrice      Decimal         @db.Decimal(14, 4)
-  remissionItems RemissionItem[]
-  createdAt      DateTime        @default(now())
+  id              String           @id @default(uuid())
+  orderId         String
+  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product          @relation(fields: [productId], references: [id])
+  quantity        Decimal          @db.Decimal(12, 3)
+  unitPrice       Decimal          @db.Decimal(14, 4)
+  remissionItems  RemissionItem[]
+  productionOrder ProductionOrder?
+  createdAt       DateTime         @default(now())
 
   @@index([orderId])
   @@index([productId])

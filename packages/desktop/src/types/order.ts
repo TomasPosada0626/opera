@@ -117,6 +117,15 @@ export interface Order {
   warehouse: Warehouse;
   items: OrderItem[];
   remissions: Remission[];
+  // Las órdenes de producción del pedido (una por línea, ADR 0012); vacío
+  // hasta que se envía a producción.
+  productionOrders?: {
+    id: string;
+    orderItemId: string | null;
+    status: 'PENDIENTE' | 'COMPLETADA' | 'CANCELADA';
+    quantity: string;
+    producedQuantity: string | null;
+  }[];
   // "AAAA-MM-DDT00:00:00.000Z" — fecha sin hora, ver lib/format.ts
   // (parseDateOnly) antes de mostrarla.
   estimatedDeliveryDate: string | null;

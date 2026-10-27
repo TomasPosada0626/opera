@@ -9,6 +9,12 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Pedidos ligados a producción ([ADR 0012](docs/adr/0012-pedidos-ligados-a-produccion-y-despacho-con-stock-negativo.md)):
+  "Enviar a producción" crea una orden por línea en la pestaña Producción. Al
+  completarla se indica cuántas salieron buenas (eso entra al inventario), y
+  completadas todas, el pedido pasa solo a almacén. Producción ya no exige
+  lista de materiales. La remisión descuenta lo despachado aunque el
+  inventario quede en negativo (versión 1.0.4).
 - Remisión impresa con el formato en papel de Herrajes Toro
   ([ADR 0011](docs/adr/0011-iva-por-pedido-y-remision-con-el-formato-en-papel.md)):
   dos copias en una hoja carta vertical (cliente arriba, empresa abajo, con

@@ -1,9 +1,9 @@
-import { Ban, Factory, PackageCheck } from 'lucide-react';
+import { Ban, Factory } from 'lucide-react';
+import { Link } from 'react-router';
 import { FormError } from '../form/Field';
 import { Button } from '../ui/Button';
 import { useCancelOrder } from '../../hooks/useCancelOrder';
 import { useMarkOrderProduction } from '../../hooks/useMarkOrderProduction';
-import { useMarkOrderWarehoused } from '../../hooks/useMarkOrderWarehoused';
 import { currentStationSince } from '../../lib/order-status';
 import { formatDuration } from '../../lib/format';
 import type { Order } from '../../types/order';
@@ -19,14 +19,14 @@ interface OrderStatusActionsProps {
 // necesita su propio estado de mutación/error — mismo motivo que
 // CompleteOrderAction.tsx. Se usa tanto en la fila de OrdersPage como en el
 // detalle de OrderDetailPage, así que el estado decide qué mostrar en un
-// solo lugar. EN_ALMACEN -> DESPACHADO no es un botón: lo hace la remisión
-// que completa el pedido.
+// solo lugar. Ni EN_PRODUCCION -> EN_ALMACEN ni EN_ALMACEN -> DESPACHADO son
+// botones: lo primero pasa solo al completar su producción en la pestaña
+// Producción (ADR 0012), lo segundo con la remisión que completa el pedido.
 export function OrderStatusActions({
   order,
   compact = false,
 }: OrderStatusActionsProps) {
   const markProduction = useMarkOrderProduction();
-  const markWarehoused = useMarkOrderWarehoused();
   const cancelOrder = useCancelOrder();
 
   // "Cancelar" se oculta si hay alguna remisión activa (#97) — una
@@ -39,8 +39,14 @@ export function OrderStatusActions({
     order.status !== 'DESPACHADO' &&
     order.remissions.every((remission) => remission.voidedAt);
 
-  const error =
-    markProduction.error ?? markWarehoused.error ?? cancelOrder.error;
+  const error = markProduction.error ?? cancelOrder.error;
+
+  const productionOrders = (order.productionOrders ?? []).filter(
+    (production) => production.status !== 'CANCELADA',
+  );
+  const productionDone = productionOrders.filter(
+    (production) => production.status === 'COMPLETADA',
+  ).length;
 
   return (
     <div
@@ -70,33 +76,28 @@ export function OrderStatusActions({
             size="sm"
             onClick={() => markProduction.mutate(order.id)}
             disabled={markProduction.isPending}
-            aria-label={compact ? 'Marcar en producción' : undefined}
-            title={compact ? 'Marcar en producción' : undefined}
+            aria-label={compact ? 'Enviar a producción' : undefined}
+            title={compact ? 'Enviar a producción' : undefined}
           >
             <Factory />
             {markProduction.isPending
-              ? 'Marcando…'
+              ? 'Enviando…'
               : compact
                 ? 'A producción'
-                : 'Marcar en producción'}
+                : 'Enviar a producción'}
           </Button>
         )}
         {order.status === 'EN_PRODUCCION' && (
-          <Button
-            variant={compact ? 'secondary' : 'primary'}
-            size="sm"
-            onClick={() => markWarehoused.mutate(order.id)}
-            disabled={markWarehoused.isPending}
-            aria-label={compact ? 'Marcar enviado a almacén' : undefined}
-            title={compact ? 'Marcar enviado a almacén' : undefined}
+          <Link
+            to="/produccion"
+            className="text-accent hover:bg-chrome-strong focus-visible:ring-accent inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors outline-none focus-visible:ring-2"
+            title="Se completa en la pestaña Producción"
           >
-            <PackageCheck />
-            {markWarehoused.isPending
-              ? 'Marcando…'
-              : compact
-                ? 'A almacén'
-                : 'Marcar enviado a almacén'}
-          </Button>
+            <Factory className="h-4 w-4" />
+            {productionOrders.length > 0
+              ? `Producción ${productionDone}/${productionOrders.length}`
+              : 'Ver en Producción'}
+          </Link>
         )}
       </div>
       {error && (

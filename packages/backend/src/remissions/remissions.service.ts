@@ -47,13 +47,6 @@ interface Overage {
   remaining: string;
 }
 
-interface Shortage {
-  productId: string;
-  productName: string;
-  required: string;
-  available: string;
-}
-
 // La única regla de estado de pago del sistema: se deriva de lo abonado
 // contra el total, nunca se elige a mano. Exportada para que los tests y
 // cualquier otro módulo usen exactamente la misma.
@@ -276,34 +269,9 @@ export class RemissionsService {
             );
           }
 
-          const shortages: Shortage[] = [];
-          for (const [productId, requested] of quantityByProduct) {
-            const available = await this.inventory.getStock(
-              productId,
-              order.warehouseId,
-              tx,
-            );
-            if (available.lessThan(requested)) {
-              const orderItem = order.items.find(
-                (item) => item.productId === productId,
-              )!;
-              shortages.push({
-                productId,
-                productName: orderItem.product.name,
-                required: requested.toString(),
-                available: available.toString(),
-              });
-            }
-          }
-          if (shortages.length > 0) {
-            this.logger.warn(
-              `Remisión del pedido ${order.id} rechazada por stock insuficiente: ${shortages.length} producto(s) en falta`,
-            );
-            throw new BadRequestException({
-              message: 'Stock insuficiente para despachar esta remisión',
-              shortages,
-            });
-          }
+          // Sin chequeo de stock a propósito (ADR 0012): lo despachado se
+          // descuenta siempre, y si no alcanzaba el inventario queda en
+          // negativo con esa diferencia.
 
           const amountPaid = new Prisma.Decimal(initialPayment?.amount ?? 0);
           const created = await tx.remission.create({

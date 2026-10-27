@@ -22,6 +22,7 @@ import { JwtPayload } from '../auth/interfaces/jwt-payload.interface';
 import { ListQueryDto } from '../common/dto/list-query.dto';
 import { ProductionOrdersService } from './production-orders.service';
 import { CreateProductionOrderDto } from './dto/create-production-order.dto';
+import { CompleteProductionOrderDto } from './dto/complete-production-order.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -57,7 +58,7 @@ export class ProductionOrdersController {
   @ApiResponse({
     status: 400,
     description:
-      'Producto no es FINISHED_GOOD, sin lista de materiales, o sin stock suficiente de algún componente.',
+      'Producto no es FINISHED_GOOD, o (si tiene lista de materiales) sin stock suficiente de algún componente.',
   })
   @ApiResponse({ status: 403, description: 'No es ADMIN.' })
   create(
@@ -72,7 +73,7 @@ export class ProductionOrdersController {
   @ApiOperation({
     summary: 'Completar orden de producción (ADMIN)',
     description:
-      'Consume la lista de materiales vigente, genera los StockMovement de componentes/terminado y calcula el costo — todo atómico bajo Serializable.',
+      'Entra al inventario lo que salió bueno (producedQuantity; si se omite, lo planeado). Si el producto tiene lista de materiales, la consume y calcula el costo. Si la orden es de un pedido y era la última pendiente, el pedido pasa a almacén. Todo atómico bajo Serializable.',
   })
   @ApiResponse({ status: 400, description: 'Stock insuficiente al revalidar.' })
   @ApiResponse({ status: 404, description: 'Orden no encontrada.' })
@@ -80,8 +81,12 @@ export class ProductionOrdersController {
     status: 409,
     description: 'Conflicto de concurrencia — otra request ganó la carrera.',
   })
-  complete(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
-    return this.productionOrdersService.complete(id, req.user.sub);
+  complete(
+    @Param('id') id: string,
+    @Body() dto: CompleteProductionOrderDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.productionOrdersService.complete(id, dto, req.user.sub);
   }
 
   @Patch(':id/cancel')
@@ -89,7 +94,7 @@ export class ProductionOrdersController {
   @ApiOperation({
     summary: 'Cancelar orden de producción (ADMIN)',
     description:
-      'No revierte stock — crear la orden nunca lo movió. Solo mientras siga PENDIENTE.',
+      'No revierte stock — crear la orden nunca lo movió. Solo mientras siga PENDIENTE y no sea de un pedido (esas se cancelan cancelando el pedido).',
   })
   @ApiResponse({ status: 400, description: 'La orden ya no está PENDIENTE.' })
   @ApiResponse({ status: 404, description: 'Orden no encontrada.' })

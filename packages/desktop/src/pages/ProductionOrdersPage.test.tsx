@@ -54,6 +54,8 @@ function buildOrder(overrides: Partial<ProductionOrder> = {}): ProductionOrder {
       isActive: true,
     },
     quantity: '10.000',
+    producedQuantity: null,
+    order: null,
     status: 'PENDIENTE',
     completedAt: null,
     totalCost: null,

@@ -13,15 +13,12 @@ import { paginate, resolveOrderBy } from '../common/pagination/paginate';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import {
+  completeProductionOrderInTx,
+  warehouseOrderWhenProductionDone,
+} from '../production/production-completion';
 
 type TransactionClient = Prisma.TransactionClient;
-
-interface MaterialShortage {
-  componentId: string;
-  componentName: string;
-  required: string;
-  available: string;
-}
 
 // Medianoche UTC del día de HOY en la hora local del servidor — así se
 // compara contra estimatedDeliveryDate (DATE, guardado como medianoche
@@ -43,6 +40,16 @@ const orderInclude = {
   customer: true,
   warehouse: true,
   items: { include: { product: true } },
+  // Cuánto va de la producción del pedido (ADR 0012).
+  productionOrders: {
+    select: {
+      id: true,
+      orderItemId: true,
+      status: true,
+      quantity: true,
+      producedQuantity: true,
+    },
+  },
   // La vista de detalle (#54) necesita mostrar cuánto se ha entregado por
   // línea sin una segunda llamada a /remissions?orderId=... — se deriva en
   // el cliente de estos items, mismo espíritu que el resto de "no guardar
@@ -281,17 +288,12 @@ export class OrdersService {
     return order;
   }
 
-  // Bandera manual + timestamp, sin movimiento de stock — el consumo de
-  // materia prima (si el producto tiene lista de materiales) ocurre al
-  // pasar a almacén, cuando el terminado de verdad existe (ver
-  // markWarehoused). `updateMany` con `status: 'PENDIENTE'` en el where (no un
-  // findUnique + update separado) hace la transición atómica: Postgres ya
-  // garantiza que un UPDATE individual es atómico a nivel de fila en
-  // cualquier nivel de aislamiento, así que dos llamadas concurrentes nunca
-  // la disparan dos veces — la que pierde simplemente no encuentra filas
-  // que actualizar (count 0) y recibe un 409, sin necesitar una transacción
-  // Serializable de por medio (a diferencia de markWarehoused, que sí
-  // escribe StockMovement y necesita esa protección más fuerte).
+  // "Enviar a producción" (ADR 0012): el pedido pasa a EN_PRODUCCION y en
+  // la misma transacción se crea una orden de producción por línea, que
+  // aparece en la pestaña Producción. Ninguna mueve stock todavía: lo
+  // producido entra al completarlas. El `updateMany` con `status:
+  // 'PENDIENTE'` en el where es el guard atómico contra enviarlo dos veces
+  // (la que pierde no encuentra filas y recibe un 409).
   async markProduction(id: string, actingUserId: string) {
     const before = await this.findOne(id);
     if (before.status !== 'PENDIENTE') {
@@ -300,18 +302,30 @@ export class OrdersService {
       );
     }
 
-    const result = await this.prisma.order.updateMany({
-      where: { id, status: 'PENDIENTE' },
-      data: { status: 'EN_PRODUCCION', productionStartedAt: new Date() },
+    await this.prisma.$transaction(async (tx: TransactionClient) => {
+      const result = await tx.order.updateMany({
+        where: { id, status: 'PENDIENTE' },
+        data: { status: 'EN_PRODUCCION', productionStartedAt: new Date() },
+      });
+      if (result.count === 0) {
+        this.logger.warn(
+          `Guard atómico: el pedido ${id} ya cambió de estado antes de marcarlo en producción`,
+        );
+        throw new ConflictException(
+          'El pedido cambió de estado antes de poder marcarlo en producción, intenta de nuevo',
+        );
+      }
+      await tx.productionOrder.createMany({
+        data: before.items.map((item) => ({
+          productId: item.productId,
+          warehouseId: before.warehouseId,
+          quantity: item.quantity,
+          userId: actingUserId,
+          orderId: before.id,
+          orderItemId: item.id,
+        })),
+      });
     });
-    if (result.count === 0) {
-      this.logger.warn(
-        `Guard atómico: el pedido ${id} ya cambió de estado antes de marcarlo en producción`,
-      );
-      throw new ConflictException(
-        'El pedido cambió de estado antes de poder marcarlo en producción, intenta de nuevo',
-      );
-    }
 
     const order = await this.findOne(id);
     await this.audit.log({
@@ -329,29 +343,17 @@ export class OrdersService {
     return order;
   }
 
-  // El terminado entra al stock de verdad acá (ENTRADA por línea, cantidad
-  // completa pedida) — antes de esto no existía físicamente. Si el producto
-  // tiene lista de materiales, en la MISMA transacción se descuentan sus
-  // materias primas (SALIDA por componente, al costo promedio vigente) y el
-  // terminado entra con ese costo — mismo cálculo que
-  // ProductionOrdersService.complete() (ADR 0002/0009). Sin lista de
-  // materiales entra sin consumir nada y sin costo propio, como antes del
-  // ADR 0009: la lista es opcional por producto a propósito. Falta de
-  // material = 400 con el detalle, nunca stock negativo.
-  // Serializable (ADR 0001) + el mismo manejo de P2034/P2028 que el resto
-  // de transacciones del proyecto. El e2e de concurrencia real (#91) probó
-  // que Serializable solo NO basta: un `update` incondicional deja pasar
-  // más de una llamada cuando las transacciones no llegan a solaparse de
-  // verdad en Postgres (p.ej. bajo contención del pool de conexiones en
-  // CI), porque nunca releen el estado dentro de la transacción. El
-  // `updateMany` con `status: 'EN_PRODUCCION'` en el where es el guard
-  // atómico real — mismo patrón que markProduction/cancel — y Serializable
-  // queda como red adicional para conflictos genuinos de lectura
-  // concurrente (getStock, etc.).
+  // Atajo para completar de una vez toda la producción de un pedido, cada
+  // orden con lo planeado (el día a día va por la pestaña Producción, donde
+  // se pide cuánto salió bueno). Usa el mismo completar que esa pestaña
+  // (completeProductionOrderInTx) y, terminadas todas, el pedido pasa a
+  // almacén. Un pedido en producción sin órdenes (no debería existir: la
+  // migración de ADR 0012 se las creó a los que ya estaban) recibe las
+  // suyas acá mismo. Serializable + P2034/P2028 (ADR 0001, #91).
   async markWarehoused(id: string, actingUserId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, productionOrders: true },
     });
     if (!order) {
       throw new NotFoundException('Pedido no encontrado');
@@ -365,33 +367,37 @@ export class OrdersService {
     try {
       const updated = await this.prisma.$transaction(
         async (tx: TransactionClient) => {
-          const unitCostByProduct = await this.consumeBillsOfMaterials(
-            tx,
-            order,
-            actingUserId,
+          const withOrder = new Set(
+            order.productionOrders.map((production) => production.orderItemId),
           );
-
-          // Un solo createMany para todas las líneas del pedido en vez de
-          // un create por línea dentro del for — menos tiempo con locks
-          // abiertos dentro de la transacción Serializable (señalado en la
-          // re-auditoría de escalabilidad).
-          await tx.stockMovement.createMany({
-            data: order.items.map((item) => ({
-              productId: item.productId,
-              warehouseId: order.warehouseId,
-              type: 'ENTRADA' as const,
-              quantity: item.quantity,
-              unitCost: unitCostByProduct.get(item.productId),
-              reason: `Producción terminada, pedido No. ${order.number}`,
-              userId: actingUserId,
-            })),
+          const missing = order.items.filter((item) => !withOrder.has(item.id));
+          if (missing.length > 0) {
+            await tx.productionOrder.createMany({
+              data: missing.map((item) => ({
+                productId: item.productId,
+                warehouseId: order.warehouseId,
+                quantity: item.quantity,
+                userId: actingUserId,
+                orderId: order.id,
+                orderItemId: item.id,
+              })),
+            });
+          }
+          const pending = await tx.productionOrder.findMany({
+            where: { orderId: order.id, status: 'PENDIENTE' },
           });
+          for (const production of pending) {
+            await completeProductionOrderInTx(
+              tx,
+              this.inventory,
+              production,
+              production.quantity,
+              `Producción terminada, pedido No. ${order.number}`,
+              actingUserId,
+            );
+          }
 
-          const result = await tx.order.updateMany({
-            where: { id: order.id, status: 'EN_PRODUCCION' },
-            data: { status: 'EN_ALMACEN', warehousedAt: new Date() },
-          });
-          if (result.count === 0) {
+          if (!(await warehouseOrderWhenProductionDone(tx, order.id))) {
             this.logger.warn(
               `Guard atómico: el pedido ${order.id} ya cambió de estado antes de marcarlo enviado a almacén`,
             );
@@ -434,122 +440,6 @@ export class OrdersService {
     }
   }
 
-  // Descuenta, dentro de la transacción del llamador, las materias primas
-  // de las líneas cuyo producto tiene lista de materiales activa, y
-  // devuelve el costo unitario resultante de cada uno de esos productos
-  // (los que no tienen lista no aparecen en el Map). Lecturas agrupadas
-  // para todos los componentes del pedido a la vez, mismo batching que
-  // ProductionOrdersService.complete(): un mismo componente puede
-  // necesitarse en varias líneas, y el faltante se calcula sobre el total.
-  private async consumeBillsOfMaterials(
-    tx: TransactionClient,
-    order: {
-      id: string;
-      number: number;
-      warehouseId: string;
-      items: { productId: string; quantity: Prisma.Decimal }[];
-    },
-    actingUserId: string,
-  ): Promise<Map<string, Prisma.Decimal>> {
-    const productIds = [...new Set(order.items.map((item) => item.productId))];
-    const boms = await tx.billOfMaterials.findMany({
-      where: { productId: { in: productIds }, isActive: true },
-      include: { items: { include: { component: true } } },
-    });
-    const bomByProduct = new Map(
-      boms
-        .filter((bom) => bom.items.length > 0)
-        .map((bom) => [bom.productId, bom]),
-    );
-    if (bomByProduct.size === 0) {
-      return new Map();
-    }
-
-    const required = new Map<
-      string,
-      { name: string; quantity: Prisma.Decimal }
-    >();
-    for (const item of order.items) {
-      const bom = bomByProduct.get(item.productId);
-      for (const bomItem of bom?.items ?? []) {
-        const current = required.get(bomItem.componentId) ?? {
-          name: bomItem.component.name,
-          quantity: new Prisma.Decimal(0),
-        };
-        current.quantity = current.quantity.plus(
-          bomItem.quantity.times(item.quantity),
-        );
-        required.set(bomItem.componentId, current);
-      }
-    }
-
-    const componentIds = [...required.keys()];
-    const [stockByComponent, costByComponent] = await Promise.all([
-      this.inventory.getStockForProducts(componentIds, order.warehouseId, tx),
-      this.inventory.getAverageCostForProducts(
-        componentIds,
-        order.warehouseId,
-        tx,
-      ),
-    ]);
-    const stockById = new Map(
-      stockByComponent.map(({ productId, stock }) => [productId, stock]),
-    );
-
-    const shortages: MaterialShortage[] = [];
-    for (const [componentId, { name, quantity }] of required) {
-      const available = stockById.get(componentId) ?? new Prisma.Decimal(0);
-      if (available.lessThan(quantity)) {
-        shortages.push({
-          componentId,
-          componentName: name,
-          required: quantity.toString(),
-          available: available.toString(),
-        });
-      }
-    }
-    if (shortages.length > 0) {
-      this.logger.warn(
-        `Pedido ${order.id} no pasó a almacén: ${shortages.length} material(es) sin stock suficiente`,
-      );
-      throw new BadRequestException({
-        message:
-          'No hay suficiente materia prima en la bodega para pasar este pedido a almacén',
-        shortages,
-      });
-    }
-
-    await tx.stockMovement.createMany({
-      data: Array.from(required, ([componentId, { quantity }]) => ({
-        productId: componentId,
-        warehouseId: order.warehouseId,
-        type: 'SALIDA' as const,
-        quantity: quantity.negated(),
-        unitCost: costByComponent.get(componentId) ?? new Prisma.Decimal(0),
-        reason: `Consumo de materiales, pedido No. ${order.number}`,
-        userId: actingUserId,
-      })),
-    });
-
-    const unitCostByProduct = new Map<string, Prisma.Decimal>();
-    for (const [productId, bom] of bomByProduct) {
-      unitCostByProduct.set(
-        productId,
-        bom.items.reduce(
-          (sum, bomItem) =>
-            sum.plus(
-              bomItem.quantity.times(
-                costByComponent.get(bomItem.componentId) ??
-                  new Prisma.Decimal(0),
-              ),
-            ),
-          new Prisma.Decimal(0),
-        ),
-      );
-    }
-    return unitCostByProduct;
-  }
-
   // #97 se filtró antes del pivote de fabricación sobre pedido (#68-73) y
   // asumía que crear un pedido descontaba stock de inmediato (diseño
   // original #50/#51) — ya no es así (ver comentario de Order en
@@ -579,22 +469,31 @@ export class OrdersService {
       );
     }
 
-    const result = await this.prisma.order.updateMany({
-      where: {
-        id,
-        status: { notIn: ['CANCELADO', 'DESPACHADO'] },
-        remissions: { none: { voidedAt: null } },
-      },
-      data: { status: 'CANCELADO', cancelledAt: new Date() },
+    // Lo que todavía no se produjo deja de producirse (ADR 0012): sus
+    // órdenes pendientes se cancelan con el pedido. Las ya completadas
+    // quedan: lo producido es inventario real.
+    await this.prisma.$transaction(async (tx: TransactionClient) => {
+      const result = await tx.order.updateMany({
+        where: {
+          id,
+          status: { notIn: ['CANCELADO', 'DESPACHADO'] },
+          remissions: { none: { voidedAt: null } },
+        },
+        data: { status: 'CANCELADO', cancelledAt: new Date() },
+      });
+      if (result.count === 0) {
+        this.logger.warn(
+          `Guard atómico: el pedido ${id} ya cambió de estado o tiene una remisión activa antes de poder cancelarlo`,
+        );
+        throw new ConflictException(
+          'El pedido cambió de estado antes de poder cancelarlo, intenta de nuevo',
+        );
+      }
+      await tx.productionOrder.updateMany({
+        where: { orderId: id, status: 'PENDIENTE' },
+        data: { status: 'CANCELADA' },
+      });
     });
-    if (result.count === 0) {
-      this.logger.warn(
-        `Guard atómico: el pedido ${id} ya cambió de estado o tiene una remisión activa antes de poder cancelarlo`,
-      );
-      throw new ConflictException(
-        'El pedido cambió de estado antes de poder cancelarlo, intenta de nuevo',
-      );
-    }
 
     const order = await this.findOne(id);
     await this.audit.log({

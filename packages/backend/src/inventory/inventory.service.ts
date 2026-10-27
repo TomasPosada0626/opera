@@ -148,12 +148,16 @@ export class InventoryService {
       if (movement.quantity.greaterThan(0)) {
         const entryCost = movement.unitCost ?? current.averageCost;
         const newStock = current.stock.plus(movement.quantity);
-        current.averageCost = newStock.greaterThan(0)
-          ? current.stock
-              .times(current.averageCost)
-              .plus(movement.quantity.times(entryCost))
-              .dividedBy(newStock)
-          : entryCost;
+        // Con stock en 0 o negativo (una remisión puede despachar más de lo
+        // que hay, ADR 0012) no queda nada que promediar: la entrada fija el
+        // costo. Mezclar un saldo negativo distorsionaba el promedio.
+        current.averageCost =
+          current.stock.greaterThan(0) && newStock.greaterThan(0)
+            ? current.stock
+                .times(current.averageCost)
+                .plus(movement.quantity.times(entryCost))
+                .dividedBy(newStock)
+            : entryCost;
         current.stock = newStock;
       } else {
         current.stock = current.stock.plus(movement.quantity);
