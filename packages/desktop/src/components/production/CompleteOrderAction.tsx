@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Ban, Check, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useCancelProductionOrder } from '../../hooks/useCancelProductionOrder';
@@ -22,6 +22,14 @@ export function CompleteOrderAction({ order }: CompleteOrderActionProps) {
   const [isAsking, setIsAsking] = useState(false);
   const [produced, setProduced] = useState(String(Number(order.quantity)));
   const [inputError, setInputError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Al abrir el campo, el cursor queda ahí para escribir la cantidad.
+  useEffect(() => {
+    if (isAsking) {
+      inputRef.current?.select();
+    }
+  }, [isAsking]);
 
   if (order.status !== 'PENDIENTE') {
     return <span className="text-ink-faint">—</span>;
@@ -58,7 +66,7 @@ export function CompleteOrderAction({ order }: CompleteOrderActionProps) {
             type="number"
             min="0"
             step="any"
-            autoFocus
+            ref={inputRef}
             value={produced}
             onChange={(event) => setProduced(event.target.value)}
             className="field figures h-8 w-24 px-2 text-right"
