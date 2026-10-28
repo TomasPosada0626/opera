@@ -19,9 +19,13 @@ export class ListQueryDto {
   @IsString()
   sortBy?: string;
 
+  // Sin valor por defecto acá a propósito: con `transform: true` un default
+  // de clase se aplicaba antes que el del servicio y pisaba el 'desc' de las
+  // listas que deben salir de la más reciente a la más vieja (pedidos,
+  // producción, remisiones…). Cada servicio pone el suyo al desestructurar.
   @IsOptional()
   @IsIn(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'asc';
+  sortOrder?: 'asc' | 'desc';
 
   @IsOptional()
   @IsString()

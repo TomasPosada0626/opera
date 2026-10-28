@@ -52,7 +52,7 @@ export class OrdersController {
     summary: 'Listar pedidos (paginado)',
     description:
       'Filtra por estado con ?status=PENDIENTE|EN_PRODUCCION|EN_ALMACEN|DESPACHADO|CANCELADO, por cliente con ?customerId=, ' +
-      'solo atrasados con ?overdue=true (fecha de envío estimada vencida y sin despachar) y por número exacto con ?search=.',
+      'solo atrasados con ?overdue=true (fecha de envío estimada vencida y sin despachar) y con ?search= por número exacto de pedido o por nombre del cliente. Sin sortBy sale del más reciente al más viejo.',
   })
   findAll(@Query() query: ListOrdersDto) {
     return this.ordersService.findAll(query);

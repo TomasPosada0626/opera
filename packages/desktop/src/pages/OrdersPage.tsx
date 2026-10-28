@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Hash, Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useSearchParams } from 'react-router';
 import { Button } from '../components/ui/Button';
 import { DataTable, type DataTableColumn } from '../components/ui/DataTable';
@@ -53,8 +53,8 @@ function OrdersPage() {
   const [filter, setFilter] = useState<OrderFilter>(
     searchParams.get('filtro') === 'atrasados' ? 'ATRASADOS' : undefined,
   );
-  const [numberSearch, setNumberSearch] = useState('');
-  const debouncedNumber = useDebouncedValue(numberSearch.trim(), 300);
+  const [orderSearch, setOrderSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(orderSearch.trim(), 300);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const isAdmin = getCurrentUser()?.roles.includes('ADMIN') ?? false;
   const summary = useDashboardSummary().data;
@@ -64,7 +64,7 @@ function OrdersPage() {
     pageSize: PAGE_SIZE,
     status: filter === 'ATRASADOS' ? undefined : filter,
     overdue: filter === 'ATRASADOS',
-    search: debouncedNumber || undefined,
+    search: debouncedSearch || undefined,
     // Atrasados: primero el que más tiempo lleva incumplido.
     ...(filter === 'ATRASADOS'
       ? { sortBy: 'estimatedDeliveryDate' as const, sortOrder: 'asc' as const }
@@ -235,18 +235,17 @@ function OrdersPage() {
           ]}
         />
         <div className="relative">
-          <Hash className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
+          <Search className="text-ink-faint pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
           <input
             type="search"
-            inputMode="numeric"
-            aria-label="Buscar pedido por número"
-            placeholder="N.º de pedido"
-            value={numberSearch}
+            aria-label="Buscar pedido por número o cliente"
+            placeholder="N.º de pedido o cliente"
+            value={orderSearch}
             onChange={(event) => {
-              setNumberSearch(event.target.value);
+              setOrderSearch(event.target.value);
               setPage(1);
             }}
-            className="field figures h-8 w-44 pr-3 pl-8"
+            className="field h-8 w-56 pr-3 pl-8"
           />
         </div>
       </div>
@@ -257,9 +256,11 @@ function OrdersPage() {
         rowKey={(order) => order.id}
         isLoading={ordersQuery.isLoading}
         emptyMessage={
-          filter === 'ATRASADOS'
-            ? 'Ningún pedido atrasado.'
-            : 'No hay pedidos registrados.'
+          debouncedSearch
+            ? `Ningún pedido coincide con «${debouncedSearch}».`
+            : filter === 'ATRASADOS'
+              ? 'Ningún pedido atrasado.'
+              : 'No hay pedidos registrados.'
         }
         emptyHint={
           filter === 'ATRASADOS'

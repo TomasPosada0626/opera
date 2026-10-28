@@ -229,7 +229,10 @@ describe('OrdersPage', () => {
     renderWithClient(<OrdersPage />);
 
     await screen.findByText('Muebles del Valle S.A.S.');
-    await user.type(screen.getByLabelText('Buscar pedido por número'), '12');
+    await user.type(
+      screen.getByLabelText('Buscar pedido por número o cliente'),
+      '12',
+    );
 
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
@@ -238,14 +241,14 @@ describe('OrdersPage', () => {
     );
   });
 
-  it('shows the "Marcar en producción" row action only for an ADMIN user', async () => {
+  it('shows the "Enviar a producción" row action only for an ADMIN user', async () => {
     setAuthToken(fakeJwt(['ADMIN']));
     mockApi([buildOrder()]);
 
     renderWithClient(<OrdersPage />);
 
     expect(
-      await screen.findByRole('button', { name: /Marcar en producción/ }),
+      await screen.findByRole('button', { name: /Enviar a producción/ }),
     ).toBeInTheDocument();
   });
 
@@ -257,7 +260,7 @@ describe('OrdersPage', () => {
 
     await screen.findByText('Muebles del Valle S.A.S.');
     expect(
-      screen.queryByRole('button', { name: /Marcar en producción/ }),
+      screen.queryByRole('button', { name: /Enviar a producción/ }),
     ).not.toBeInTheDocument();
   });
 });

@@ -87,9 +87,10 @@ export class OrdersService {
     private readonly inventory: InventoryService,
   ) {}
 
-  // `search` busca por número de pedido (entero exacto), mismo criterio que
-  // RemissionsService.findAll: un texto no numérico devuelve una página
-  // vacía en vez de ignorarse.
+  // `search` busca por número de pedido (entero exacto) o por nombre del
+  // cliente (contiene, sin distinguir mayúsculas). Por defecto la lista sale
+  // del pedido más reciente al más viejo; el número desempata los creados en
+  // el mismo instante.
   findAll(query: ListOrdersDto) {
     const {
       page = 1,
@@ -107,14 +108,22 @@ export class OrdersService {
       sortableFields,
       'createdAt',
     );
-    const parsedNumber = search !== undefined ? Number(search) : undefined;
+    const term = search?.trim();
+    const parsedNumber = term ? Number(term) : undefined;
     // overdue va dentro de AND porque también restringe `status` — así se
     // combina con ?status= en vez de pisarlo.
     const where: Prisma.OrderWhereInput = {
       ...(status ? { status } : {}),
       ...(customerId ? { customerId } : {}),
-      ...(search !== undefined
-        ? { number: Number.isInteger(parsedNumber) ? parsedNumber : -1 }
+      ...(term
+        ? {
+            OR: [
+              ...(Number.isInteger(parsedNumber)
+                ? [{ number: parsedNumber }]
+                : []),
+              { customer: { name: { contains: term, mode: 'insensitive' } } },
+            ],
+          }
         : {}),
       ...(overdue ? { AND: [overdueWhere()] } : {}),
     };
@@ -125,7 +134,7 @@ export class OrdersService {
         this.prisma.order.findMany({
           where,
           include: orderInclude,
-          orderBy,
+          orderBy: [orderBy, { number: 'desc' }],
           skip,
           take,
         }),

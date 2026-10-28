@@ -9,6 +9,8 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Pedidos se puede buscar por número de pedido o por nombre del cliente
+  (versión 1.0.5).
 - Pedidos ligados a producción ([ADR 0012](docs/adr/0012-pedidos-ligados-a-produccion-y-despacho-con-stock-negativo.md)):
   "Enviar a producción" crea una orden por línea en la pestaña Producción. Al
   completarla se indica cuántas salieron buenas (eso entra al inventario), y
@@ -167,6 +169,12 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Corregido
 
+- Pedidos, Producción, Remisiones, Compras y el resto de listas que debían
+  mostrar lo más reciente primero salían de la más vieja a la más nueva: el
+  `sortOrder = 'asc'` por defecto de `ListQueryDto` se aplicaba antes que el
+  `'desc'` de cada servicio. Ahora cada servicio pone su propio orden por
+  defecto, y pedidos y órdenes de producción creados en el mismo instante
+  quedan en un orden estable (versión 1.0.5).
 - Remisión impresa: debajo de los productos van solo 2 renglones en blanco, no
   el resto de la plantilla. Rellenar hacía que un solo nombre largo desbordara
   la media hoja y cada copia saliera en su propia hoja (con decenas de filas

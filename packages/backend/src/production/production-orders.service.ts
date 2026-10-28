@@ -53,9 +53,12 @@ export class ProductionOrdersService {
     return paginate(
       () => this.prisma.productionOrder.count(),
       ({ skip, take }) =>
+        // Las órdenes de un mismo pedido nacen en la misma transacción (igual
+        // createdAt): el número del pedido y luego el id las dejan en un
+        // orden estable entre páginas.
         this.prisma.productionOrder.findMany({
           include: orderInclude,
-          orderBy,
+          orderBy: [orderBy, { order: { number: 'desc' } }, { id: 'asc' }],
           skip,
           take,
         }),
