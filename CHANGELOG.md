@@ -9,6 +9,13 @@ hacia atrás; este changelog arranca desde que se creó.
 
 ### Añadido
 
+- Líneas de pedido editables ([ADR 0013](docs/adr/0013-lineas-de-pedido-editables.md)):
+  en el detalle del pedido, "Editar productos" permite cambiar cantidades y
+  precios, agregar productos y quitar líneas. El total se recalcula, y si el
+  pedido ya pasó a producción, lo agregado se manda a Producción y lo
+  quitado se descuenta de lo pendiente. La cantidad no baja de lo ya
+  despachado, y el precio queda fijo en líneas con despachos (versión
+  1.0.6).
 - Pedidos se puede buscar por número de pedido o por nombre del cliente
   (versión 1.0.5).
 - Pedidos ligados a producción ([ADR 0012](docs/adr/0012-pedidos-ligados-a-produccion-y-despacho-con-stock-negativo.md)):

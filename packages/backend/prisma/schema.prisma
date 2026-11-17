@@ -354,9 +354,11 @@ model ProductionOrder {
   // El pedido y la línea que esta orden fabrica (ADR 0012): "Enviar a
   // producción" en Pedidos crea una orden por línea, y completarlas todas
   // pasa el pedido a almacén solo. null = orden para stock, sin pedido.
+  // Una línea puede tener varias (ADR 0013): si el cliente pide extras
+  // después de producida, lo agregado sale en una orden aparte.
   orderId          String?
   order            Order?                @relation(fields: [orderId], references: [id])
-  orderItemId      String?               @unique
+  orderItemId      String?
   orderItem        OrderItem?            @relation(fields: [orderItemId], references: [id])
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
@@ -365,6 +367,7 @@ model ProductionOrder {
   @@index([warehouseId])
   @@index([status])
   @@index([orderId])
+  @@index([orderItemId])
 }
 
 // Empieza M5. Customer y Supplier son modelos separados, no un Party
@@ -635,16 +638,20 @@ model Order {
 // espíritu que el stock derivándose de StockMovement en vez de un número
 // que alguien pueda desincronizar.
 model OrderItem {
-  id              String           @id @default(uuid())
-  orderId         String
-  order           Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId       String
-  product         Product          @relation(fields: [productId], references: [id])
-  quantity        Decimal          @db.Decimal(12, 3)
-  unitPrice       Decimal          @db.Decimal(14, 4)
-  remissionItems  RemissionItem[]
-  productionOrder ProductionOrder?
-  createdAt       DateTime         @default(now())
+  id               String            @id @default(uuid())
+  orderId          String
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product           @relation(fields: [productId], references: [id])
+  quantity         Decimal           @db.Decimal(12, 3)
+  unitPrice        Decimal           @db.Decimal(14, 4)
+  // Orden de la línea dentro del pedido, desde 0. Con líneas editables
+  // (ADR 0013) no basta el orden de inserción: al actualizar una fila,
+  // Postgres puede devolverla al final.
+  position         Int               @default(0)
+  remissionItems   RemissionItem[]
+  productionOrders ProductionOrder[]
+  createdAt        DateTime          @default(now())
 
   @@index([orderId])
   @@index([productId])

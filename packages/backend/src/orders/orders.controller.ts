@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -21,6 +22,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersDto } from './dto/list-orders.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
+import { UpdateOrderItemsDto } from './dto/update-order-items.dto';
 
 type AuthenticatedRequest = Request & { user: JwtPayload };
 
@@ -70,7 +72,7 @@ export class OrdersController {
   @ApiOperation({
     summary: 'Editar fecha de envío estimada y notas (ADMIN)',
     description:
-      'Solo datos de seguimiento — las líneas, el cliente y la bodega no se editan. null borra el valor.',
+      'Solo datos de seguimiento — el cliente y la bodega no se editan, y las líneas van por PUT /orders/:id/items. null borra el valor.',
   })
   @ApiResponse({ status: 200, description: 'Pedido actualizado.' })
   @ApiResponse({ status: 400, description: 'El pedido está cancelado.' })
@@ -82,6 +84,37 @@ export class OrdersController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.ordersService.update(id, dto, req.user.sub);
+  }
+
+  @Put(':id/items')
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Editar las líneas del pedido (ADMIN)',
+    description:
+      'Recibe la lista completa: con id se actualiza la línea, sin id es nueva y la que no viene se quita (ADR 0013). ' +
+      'Si el pedido ya pasó a producción, la diferencia se refleja en sus órdenes de producción y el estado se reacomoda.',
+  })
+  @ApiResponse({ status: 200, description: 'Líneas actualizadas.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Pedido cancelado, una cantidad por debajo de lo despachado, un precio cambiado en una línea con despachos o una línea con remisiones quitada.',
+  })
+  @ApiResponse({ status: 403, description: 'No es ADMIN.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Pedido, línea o producto no encontrado.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflicto de concurrencia — otra request ganó la carrera.',
+  })
+  updateItems(
+    @Param('id') id: string,
+    @Body() dto: UpdateOrderItemsDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.ordersService.updateItems(id, dto, req.user.sub);
   }
 
   @Patch(':id/mark-production')

@@ -29,6 +29,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   ANONYMIZE: 'anonimizó',
   MARK_PRODUCTION: 'pasó a producción',
   MARK_WAREHOUSED: 'pasó a almacén',
+  UPDATE_ITEMS: 'cambió los productos de',
   CANCEL: 'canceló',
   COMPLETE: 'completó',
   VOID: 'anuló',

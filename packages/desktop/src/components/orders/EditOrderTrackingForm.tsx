@@ -11,9 +11,9 @@ interface EditOrderTrackingFormProps {
 }
 
 // Solo lo que cambia mientras el pedido avanza (la fecha que se renegocia
-// con el cliente, una nota de taller) — las líneas no se editan porque ya
-// pueden tener stock y remisiones atados. El IVA sí, pero solo antes de la
-// primera remisión: cada remisión guarda el IVA con el que se emitió.
+// con el cliente, una nota de taller) — las líneas se editan aparte, en
+// EditOrderItemsForm (ADR 0013). El IVA sí, pero solo antes de la primera
+// remisión: cada remisión guarda el IVA con el que se emitió.
 export function EditOrderTrackingForm({
   order,
   onSuccess,

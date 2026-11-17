@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Download,
   HandCoins,
+  ListPlus,
   Pencil,
   Plus,
   Printer,
@@ -16,6 +17,7 @@ import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
+import { EditOrderItemsForm } from '../components/orders/EditOrderItemsForm';
 import { EditOrderTrackingForm } from '../components/orders/EditOrderTrackingForm';
 import {
   DeliveryDate,
@@ -307,6 +309,7 @@ function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const [isRemissionModalOpen, setIsRemissionModalOpen] = useState(false);
   const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [isItemsModalOpen, setIsItemsModalOpen] = useState(false);
   const [payingRemission, setPayingRemission] = useState<Remission | null>(
     null,
   );
@@ -384,7 +387,22 @@ function OrderDetailPage() {
         <div className="flex min-w-0 flex-col gap-6">
           <Card className="overflow-hidden p-0">
             <div className="px-5 pt-4">
-              <CardHeader title="Productos" />
+              <CardHeader
+                title="Productos"
+                action={
+                  isAdmin &&
+                  order.status !== 'CANCELADO' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsItemsModalOpen(true)}
+                    >
+                      <ListPlus />
+                      Editar productos
+                    </Button>
+                  )
+                }
+              />
             </div>
             <table className="w-full text-left text-sm">
               <thead>
@@ -593,6 +611,20 @@ function OrderDetailPage() {
           <RemissionForm
             order={order}
             onSuccess={() => setIsRemissionModalOpen(false)}
+          />
+        </Modal>
+      )}
+
+      {isItemsModalOpen && (
+        <Modal
+          title="Editar productos"
+          description={`Pedido #${order.number} · ${order.customer.name}`}
+          size="lg"
+          onClose={() => setIsItemsModalOpen(false)}
+        >
+          <EditOrderItemsForm
+            order={order}
+            onSuccess={() => setIsItemsModalOpen(false)}
           />
         </Modal>
       )}
